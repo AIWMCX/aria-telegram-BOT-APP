@@ -22,6 +22,7 @@ const SubmitBody = z.object({
   email: z.string().trim().toLowerCase().email(),
   wallet: SolanaAddress,
   interest: z.string().trim().max(500).optional(),
+  website: z.string().max(200).optional(), // honeypot — real users never fill this
 });
 
 const CheckoutBody = z.object({
@@ -30,6 +31,7 @@ const CheckoutBody = z.object({
   email: z.string().trim().toLowerCase().email(),
   wallet: SolanaAddress,
   tier: z.enum(["standard", "pro"]),
+  website: z.string().max(200).optional(), // honeypot
 });
 
 app.get("/healthz", (c) =>
@@ -45,6 +47,11 @@ app.post("/api/submit", async (c) => {
   const parsed = SubmitBody.safeParse(body);
   if (!parsed.success) {
     return c.json({ ok: false, error: parsed.error.issues[0]?.message ?? "invalid input" }, 400);
+  }
+  if (parsed.data.website) {
+    // Honeypot tripped — reject with the same generic shape as any other
+    // validation failure so bots can't distinguish this from a real rejection.
+    return c.json({ ok: false, error: "invalid input" }, 400);
   }
 
   const verified = verifyInitData(parsed.data.initData);

@@ -15,15 +15,25 @@ async function main(): Promise<void> {
 
   startServer();
 
-  bot.start({
-    onStart: (info) => {
-      logger.info({ username: info.username, id: info.id }, "telegram bot online");
-      logger.info(`👉 https://t.me/${info.username}`);
-    },
-  }).catch((err) => {
-    logger.fatal({ err }, "bot crashed");
-    process.exit(1);
-  });
+  // Bot polling failure (bad token, transient Telegram API issue, rate limit)
+  // must not take down the HTTP server — license issuance, health checks,
+  // and Stripe webhooks are independent of whether the bot is connected.
+  // Retry with backoff instead of exiting the whole process.
+  let botRetryDelayMs = 5000;
+  const startBot = () => {
+    bot.start({
+      onStart: (info) => {
+        botRetryDelayMs = 5000;
+        logger.info({ username: info.username, id: info.id }, "telegram bot online");
+        logger.info(`👉 https://t.me/${info.username}`);
+      },
+    }).catch((err) => {
+      logger.error({ err, retryInMs: botRetryDelayMs }, "telegram bot failed to start — HTTP server stays up, retrying");
+      setTimeout(startBot, botRetryDelayMs);
+      botRetryDelayMs = Math.min(botRetryDelayMs * 2, 5 * 60 * 1000);
+    });
+  };
+  startBot();
 
   const shutdown = async (sig: string) => {
     logger.info({ sig }, "shutting down");
