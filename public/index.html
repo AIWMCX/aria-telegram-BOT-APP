@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>ARIA · TERMINAL</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Major+Mono+Display&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0a0c0d;--panel:#11151a;--panel2:#161b22;--line:#1f2630;--line-hot:#2a3340;
+    --ink:#e7ecef;--ink-dim:#8a9199;--ink-mute:#5a626c;
+    --acid:#b6ff3c;--acid2:#6fdd00;--amber:#ffb547;--red:#ff4f5e;--magenta:#ff3cb6;--blue:#6cc4ff;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0;background:var(--bg);color:var(--ink);font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.5; }
+  .brand { font-family:'Major Mono Display',monospace;letter-spacing:.18em;font-size:16px;padding:14px; }
+  .brand .dot { color:var(--acid); }
+  section { max-width:900px;margin:0 auto;padding:32px 16px;border-bottom:1px solid var(--line); }
+  .ph { display:flex;justify-content:space-between;border-bottom:1px dashed var(--line-hot);padding-bottom:8px;margin-bottom:14px; }
+  .ph h2 { margin:0;font-size:10px;letter-spacing:.24em;color:var(--ink-dim);text-transform:uppercase; }
+  .term { background:var(--panel);border:1px solid var(--line);padding:0; }
+  .term .head { display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line); }
+  .live { color:var(--acid);font-size:11px;letter-spacing:.2em; }
+  .live::before { content:"●";margin-right:6px;animation:pulse 1.6s infinite; }
+  @keyframes pulse { 0%{opacity:1;}50%{opacity:.3;}100%{opacity:1;} }
+  .stats { display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line); }
+  @media(min-width:520px){.stats{grid-template-columns:repeat(4,1fr);}}
+  .stat { background:var(--panel2);padding:12px; }
+  .stat .l { font-size:9px;color:var(--ink-mute);letter-spacing:.16em;text-transform:uppercase; }
+  .stat .v { font-size:20px;margin-top:4px;font-variant-numeric:tabular-nums; }
+  .feed { height:200px;overflow-y:auto;background:#07090a;padding:6px 0; }
+  .ev { display:grid;grid-template-columns:56px 60px 1fr;gap:6px;padding:2px 12px;font-size:11px;border-left:2px solid transparent; }
+  .ev .t { color:var(--ink-mute); }
+  .ev.detected{border-color:var(--blue);} .ev.detected .k{color:var(--blue);}
+  .ev.safety{border-color:var(--ink-dim);} .ev.safety .k{color:var(--ink-dim);}
+  .ev.buy{border-color:var(--acid);} .ev.buy .k{color:var(--acid);}
+  .ev.sell{border-color:var(--amber);} .ev.sell .k{color:var(--amber);}
+  .ev.rejected{border-color:var(--red);} .ev.rejected .k{color:var(--red);}
+  .chip { display:inline-block;padding:2px 6px;font-size:9px;letter-spacing:.16em;border:1px solid var(--amber);color:var(--amber);text-transform:uppercase; }
+  h1 { font-size:32px;font-weight:300;line-height:1.15;margin:0 0 14px; }
+  h1 em { color:var(--acid);font-style:normal; }
+  p.lead { color:var(--ink-dim);max-width:560px;line-height:1.7; }
+  .pricing { display:grid;gap:1px;background:var(--line); }
+  @media(min-width:720px){.pricing{grid-template-columns:repeat(3,1fr);}}
+  .tier { background:var(--panel);padding:24px; }
+  .tier.featured { border:1px solid var(--acid); }
+  .tier .name { font-size:11px;letter-spacing:.24em;color:var(--ink-dim); }
+  .tier .price { font-size:32px;margin:8px 0;font-weight:300; }
+  .tier ul { list-style:none;padding:0;margin:16px 0;font-size:12px;color:var(--ink-dim);line-height:1.9; }
+  .btn { display:block;width:100%;padding:12px;text-align:center;font-family:inherit;font-size:11px;letter-spacing:.2em;text-transform:uppercase;border:1px solid var(--acid);background:transparent;color:var(--acid);cursor:pointer;text-decoration:none; }
+  .btn.primary { background:var(--acid);color:#07090a; }
+  .btn:disabled { opacity:.4;cursor:not-allowed; }
+  .form-wrap { display:grid;gap:12px;max-width:520px; }
+  .field label { display:block;font-size:10px;letter-spacing:.2em;color:var(--ink-mute);text-transform:uppercase;margin-bottom:4px; }
+  .field input,.field textarea { width:100%;background:#07090a;border:1px solid var(--line-hot);color:var(--ink);padding:10px 12px;font-family:inherit;font-size:13px; }
+  .field .hint { font-size:10px;color:var(--ink-mute);margin-top:4px; }
+  .status-msg { display:none;padding:12px 14px;font-size:12px;margin-bottom:14px; }
+  .status-msg.ok { display:block;background:rgba(182,255,60,.08);border:1px solid var(--acid);color:var(--acid); }
+  .status-msg.err { display:block;background:rgba(255,79,94,.08);border:1px solid var(--red);color:var(--red); }
+  footer { padding:20px 16px;color:var(--ink-mute);font-size:10px;line-height:1.7; }
+  footer strong { color:var(--amber); }
+</style>
+</head>
+<body>
+
+<div class="brand"><span>aria</span><span class="dot">·</span><span>terminal</span></div>
+
+<section>
+  <h1>A sniper terminal built for<br><em>speed and discipline</em>, not promises.</h1>
+  <p class="lead">ARIA monitors new Solana token launches in real time, runs them through a layered safety pipeline, and executes inside strict caps. Paper mode by default — live only with a paid license, bound to your wallet.</p>
+
+  <div class="term" style="margin-top:20px;">
+    <div class="head"><span>aria-sniper · paper mode</span><span class="live">LIVE</span> <span class="chip">DEMO</span></div>
+    <div class="stats">
+      <div class="stat"><div class="l">Detected</div><div class="v" id="s-detected">0</div></div>
+      <div class="stat"><div class="l">Bought</div><div class="v" id="s-bought">0</div></div>
+      <div class="stat"><div class="l">Win Rate</div><div class="v" id="s-winrate">—</div></div>
+      <div class="stat"><div class="l">Net PnL</div><div class="v" id="s-pnl">+0.0000</div></div>
+    </div>
+    <div class="feed" id="feed"></div>
+  </div>
+</section>
+
+<section>
+  <div class="ph"><h2>Pricing</h2></div>
+  <div class="pricing">
+    <div class="tier">
+      <div class="name">/ TRIAL</div>
+      <div class="price">$0<span style="font-size:13px;color:var(--ink-mute);"> / 7 days</span></div>
+      <ul><li>✓ Paper trading</li><li>✓ Safety + social filters</li><li>✓ Position cap: 3</li><li>✗ No live mode</li></ul>
+      <button class="btn" onclick="document.getElementById('trial-form').scrollIntoView({behavior:'smooth'})">REQUEST TRIAL</button>
+    </div>
+    <div class="tier featured">
+      <div class="name">/ STANDARD</div>
+      <div class="price">$149<span style="font-size:13px;color:var(--ink-mute);"> / mo</span></div>
+      <ul><li>✓ Live mainnet</li><li>✓ Tiered TP + trailing stop</li><li>✓ Position cap: 5</li><li>✗ No Jito bundles</li></ul>
+      <button class="btn primary" onclick="checkout('standard')" id="btn-standard">GET STANDARD</button>
+    </div>
+    <div class="tier">
+      <div class="name">/ PRO</div>
+      <div class="price">$449<span style="font-size:13px;color:var(--ink-mute);"> / mo</span></div>
+      <ul><li>✓ Everything in Standard</li><li>✓ Jito bundles</li><li>✓ Position cap: 10</li><li>✓ Priority support</li></ul>
+      <button class="btn" onclick="checkout('pro')" id="btn-pro">GET PRO</button>
+    </div>
+  </div>
+  <p style="color:var(--ink-mute);font-size:11px;margin-top:14px;">All tiers require your own RPC endpoint and burner wallet. We never ask for your private key.</p>
+</section>
+
+<section id="trial-form">
+  <div class="ph"><h2>Request Trial</h2></div>
+  <div id="status" class="status-msg"></div>
+  <div class="form-wrap" id="form-fields">
+    <div class="field"><label>Name</label><input id="i-name" placeholder="Your name or handle" maxlength="100" /></div>
+    <div class="field"><label>Email</label><input id="i-email" type="email" placeholder="you@example.com" /></div>
+    <div class="field"><label>Solana wallet (public, burner)</label><input id="i-wallet" placeholder="7xKXt...ZqGw" maxlength="44" />
+      <div class="hint">Public address only — never share your private key.</div></div>
+    <div class="field"><label>Notes (optional)</label><textarea id="i-interest" rows="3" maxlength="500" placeholder="Capital range, experience level..."></textarea></div>
+    <button class="btn primary" id="submit-btn" disabled onclick="submitTrial()">SUBMIT REQUEST</button>
+  </div>
+</section>
+
+<footer>
+  <strong>RISK NOTICE</strong> This software is a tool, not a guarantee. Sniping newly launched tokens is highly
+  speculative and most tokens lose all value. Past performance does not predict future results. You are
+  responsible for your own wallet, funds, and decisions. Numbers in the demo terminal are simulated.
+</footer>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const tg = window.Telegram?.WebApp;
+  if (tg) { tg.ready(); tg.expand(); try{tg.setHeaderColor("#0a0c0d");tg.setBackgroundColor("#0a0c0d");}catch{} }
+  const initData = tg?.initData || "";
+  const isInTelegram = !!initData;
+
+  // ── Demo simulator ──────────────────────────────────────────────────
+  let detected=0, bought=0, sold=0, wins=0, pnl=0;
+  const SYMS=["PEPE2","DOGGO","WIFCAT","SOLAI","BONKINU","MOONR","TURBO","GIGA","CHAD"];
+  const rs=()=>SYMS[Math.floor(Math.random()*SYMS.length)];
+  const rmint=()=>Array.from({length:8},()=>"abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ123456789"[Math.floor(Math.random()*57)]).join("");
+  function ev(kind,msg){
+    const feed=$("feed");
+    const row=document.createElement("div");
+    row.className="ev "+kind;
+    row.innerHTML=`<span class="t"></span><span class="k"></span><span class="m"></span>`;
+    row.children[0].textContent=new Date().toTimeString().slice(0,8);
+    row.children[1].textContent=kind;
+    row.children[2].textContent=msg;
+    feed.appendChild(row);
+    while(feed.children.length>60) feed.removeChild(feed.firstChild);
+    feed.scrollTop=feed.scrollHeight;
+  }
+  function tick(){
+    detected++;
+    const mint=rmint();
+    ev("detected",`${mint}…  pumpfun`);
+    setTimeout(()=>{
+      if(Math.random()<0.55){ ev("rejected",`${mint}…  safety block`); render(); return; }
+      ev("safety",`${mint}…  pass`);
+      if(Math.random()<0.4){ ev("rejected",`${mint}…  social block`); render(); return; }
+      const sym=rs();
+      setTimeout(()=>{
+        bought++;
+        ev("buy",`${sym}  0.005 SOL`);
+        render();
+        setTimeout(()=>{
+          sold++;
+          const win=Math.random()<0.3;
+          const pct=win?(20+Math.random()*180):-(15+Math.random()*20);
+          if(win)wins++;
+          pnl+=0.005*(pct/100);
+          ev("sell",`${sym}  ${pct>=0?"+":""}${pct.toFixed(1)}%`);
+          render();
+        },3000+Math.random()*4000);
+      },500);
+    },400+Math.random()*500);
+  }
+  function render(){
+    $("s-detected").textContent=detected;
+    $("s-bought").textContent=bought;
+    $("s-winrate").textContent=sold?Math.round(wins/sold*100)+"%":"—";
+    $("s-pnl").textContent=(pnl>=0?"+":"")+pnl.toFixed(4);
+    $("s-pnl").style.color=pnl>=0?"var(--acid)":"var(--red)";
+  }
+  setTimeout(function loop(){ tick(); setTimeout(loop,1800+Math.random()*2200); },600);
+  render();
+
+  // ── Form validation ─────────────────────────────────────────────────
+  const SOL_RE=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  function formValues(){
+    return { name:$("i-name").value.trim(), email:$("i-email").value.trim(), wallet:$("i-wallet").value.trim(), interest:$("i-interest").value.trim() };
+  }
+  function validate(){
+    const v=formValues();
+    const ok=v.name.length>=2 && EMAIL_RE.test(v.email) && SOL_RE.test(v.wallet);
+    $("submit-btn").disabled=!ok;
+    return ok;
+  }
+  ["i-name","i-email","i-wallet","i-interest"].forEach(id=>$(id).addEventListener("input",validate));
+
+  function showStatus(kind,text){
+    const s=$("status"); s.className="status-msg "+kind; s.textContent=text;
+    s.scrollIntoView({behavior:"smooth",block:"center"});
+  }
+
+  window.submitTrial=async function(){
+    if(!validate())return;
+    if(!isInTelegram){ showStatus("err","Open this from inside the Telegram bot to submit."); return; }
+    const v=formValues();
+    $("submit-btn").disabled=true; $("submit-btn").textContent="SUBMITTING…";
+    try{
+      const res=await fetch("/api/submit",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({initData,name:v.name,email:v.email,wallet:v.wallet,interest:v.interest||undefined})});
+      const data=await res.json();
+      if(!res.ok||!data.ok) throw new Error(data.error||"Submission failed");
+      $("form-fields").classList.add("hidden");
+      $("form-fields").style.display="none";
+      showStatus("ok",`License issued (${data.licenseId}). Check ${v.email} — it's already in your inbox.`);
+      tg?.HapticFeedback?.notificationOccurred?.("success");
+    }catch(err){
+      showStatus("err",err?.message||"Submission failed.");
+      $("submit-btn").disabled=false; $("submit-btn").textContent="SUBMIT REQUEST";
+      tg?.HapticFeedback?.notificationOccurred?.("error");
+    }
+  };
+
+  // ── Paid checkout ────────────────────────────────────────────────────
+  window.checkout=async function(tier){
+    if(!isInTelegram){ alert("Open this from inside the Telegram bot to purchase."); return; }
+    const v=formValues();
+    if(!v.name || !EMAIL_RE.test(v.email) || !SOL_RE.test(v.wallet)){
+      document.getElementById("trial-form").scrollIntoView({behavior:"smooth"});
+      showStatus("err","Fill in name, email, and wallet below first, then tap the plan again.");
+      return;
+    }
+    const btn=$("btn-"+tier); btn.disabled=true; btn.textContent="REDIRECTING…";
+    try{
+      const res=await fetch("/api/checkout",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({initData,name:v.name,email:v.email,wallet:v.wallet,tier})});
+      const data=await res.json();
+      if(!res.ok||!data.ok) throw new Error(data.error||"Checkout failed");
+      if(tg?.openLink) tg.openLink(data.checkoutUrl); else window.location.href=data.checkoutUrl;
+    }catch(err){
+      alert(err?.message||"Checkout failed");
+      btn.disabled=false; btn.textContent=tier==="standard"?"GET STANDARD":"GET PRO";
+    }
+  };
+})();
+</script>
+</body>
+</html>

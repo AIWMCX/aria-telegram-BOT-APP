@@ -1,0 +1,33 @@
+{
+  "name": "aria-terminal-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Trial signup, Ed25519 licensing, and Stripe payments backend for the ARIA Sniper Telegram app.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "keygen": "tsx scripts/generate-keys.ts",
+    "test": "tsx test/e2e.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "dotenv": "^16.4.7",
+    "grammy": "^1.31.0",
+    "hono": "^4.6.14",
+    "pino": "^9.5.0",
+    "pino-pretty": "^13.0.0",
+    "resend": "^4.0.1",
+    "stripe": "^17.4.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

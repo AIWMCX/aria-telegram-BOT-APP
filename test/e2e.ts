@@ -1,0 +1,127 @@
+/**
+ * Self-contained end-to-end test. Sets its own env vars (no .env needed),
+ * uses a throwaway SQLite file, and exercises the real Hono `app` object
+ * in-process — no network binding, no external calls that would need
+ * network access (Resend/Telegram calls are fire-and-forget and fail
+ * safely by design; we assert on the HTTP response, not on delivery).
+ *
+ * Run: npx tsx test/e2e.ts
+ */
+import { generateKeyPairSync } from "node:crypto";
+import crypto from "node:crypto";
+import fs from "node:fs";
+
+const TEST_DB = "./data/e2e-test.db";
+if (fs.existsSync(TEST_DB)) fs.rmSync(TEST_DB);
+for (const suffix of ["-wal", "-shm"]) if (fs.existsSync(TEST_DB + suffix)) fs.rmSync(TEST_DB + suffix);
+
+const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+const privJwk = privateKey.export({ format: "jwk" }) as { d: string; x: string };
+const pubJwk = publicKey.export({ format: "jwk" }) as { x: string };
+
+process.env.TELEGRAM_BOT_TOKEN = "1234567890:TEST_TOKEN_NOT_REAL_xxxxxxxxxxxxxxxxxxxx";
+process.env.PUBLIC_URL = "http://localhost:8080";
+process.env.RESEND_API_KEY = "re_test_fake_key_xxxxxxxxxxxxxxxxxxxx";
+process.env.ADMIN_EMAIL = "admin@example.com";
+process.env.ARIA_LICENSE_PRIVATE_D = privJwk.d;
+process.env.ARIA_LICENSE_PUBLIC_X = pubJwk.x;
+process.env.DB_PATH = TEST_DB;
+process.env.LOG_LEVEL = "error";
+
+const { app } = await import("../src/server.js");
+const { CONFIG } = await import("../src/config.js");
+const { totalLeads } = await import("../src/leads.js");
+const { getActiveLicenseForLead } = await import("../src/licenses.js");
+
+function buildInitData(user: object): string {
+  const authDate = Math.floor(Date.now() / 1000);
+  const params = new URLSearchParams();
+  params.set("user", JSON.stringify(user));
+  params.set("auth_date", String(authDate));
+  const pairs = Array.from(params.keys()).sort().map((k) => `${k}=${params.get(k)}`);
+  const secretKey = crypto.createHmac("sha256", "WebAppData").update(CONFIG.TELEGRAM_BOT_TOKEN).digest();
+  const hash = crypto.createHmac("sha256", secretKey).update(pairs.join("\n")).digest("hex");
+  params.set("hash", hash);
+  return params.toString();
+}
+
+const TEST_WALLET = "So11111111111111111111111111111111111111112";
+let failures = 0;
+function check(name: string, condition: boolean) {
+  console.log(condition ? `✅ ${name}` : `❌ ${name}`);
+  if (!condition) failures++;
+}
+
+async function main() {
+  const r1a = await app.request("/api/submit", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ initData: "x", name: "Test User", email: "t@example.com", wallet: TEST_WALLET }),
+  });
+  check("malformed initData → 400 (schema layer)", r1a.status === 400);
+
+  const forged = "user=" + encodeURIComponent(JSON.stringify({ id: 1, first_name: "Attacker" })) +
+    "&auth_date=" + Math.floor(Date.now() / 1000) + "&hash=" + "0".repeat(64);
+  const r1b = await app.request("/api/submit", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ initData: forged, name: "Test User", email: "t@example.com", wallet: TEST_WALLET }),
+  });
+  check("forged initData → 401 (HMAC layer)", r1b.status === 401);
+
+  const validInitData = buildInitData({ id: 987654321, first_name: "Bogdan", username: "bogdan_test" });
+  const r2 = await app.request("/api/submit", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ initData: validInitData, name: "Bogdan Jeltov", email: "bogdan@example.com", wallet: TEST_WALLET, interest: "test" }),
+  });
+  const body2 = (await r2.json()) as { ok: boolean };
+  check("valid signed request → 200 + license issued", r2.status === 200 && body2.ok === true);
+
+  const license = getActiveLicenseForLead(1);
+  if (license) {
+    const [prefix, payloadB64, sigB64] = license.token.split(".");
+    const { verify, createPublicKey } = await import("node:crypto");
+    const pubKey = createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x: CONFIG.ARIA_LICENSE_PUBLIC_X }, format: "jwk" });
+    const valid = verify(null, Buffer.from(payloadB64!, "utf8"), pubKey, Buffer.from(sigB64!, "base64url"));
+    const payload = JSON.parse(Buffer.from(payloadB64!, "base64url").toString("utf8"));
+    check("license token format is ARIA1.<payload>.<sig>", prefix === "ARIA1");
+    check("license Ed25519 signature verifies offline", valid === true);
+    check("license wallet binding matches submission", payload.wallet === TEST_WALLET);
+    check("license tier defaults to trial", payload.tier === "trial");
+  } else {
+    check("license was issued and retrievable", false);
+  }
+
+  let lastStatus = 0;
+  for (let i = 0; i < 4; i++) {
+    const initData = buildInitData({ id: 555555, first_name: "Spammer" });
+    const r = await app.request("/api/submit", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ initData, name: "Spam", email: `spam${i}@example.com`, wallet: TEST_WALLET }),
+    });
+    lastStatus = r.status;
+  }
+  check("4th submission within an hour → 429 rate limited", lastStatus === 429);
+
+  const rh = await app.request("/healthz");
+  const health = (await rh.json()) as { ok: boolean; paymentsEnabled: boolean };
+  check("/healthz reports ok:true", health.ok === true);
+  check("/healthz reports paymentsEnabled:false (no Stripe configured)", health.paymentsEnabled === false);
+
+  const rCheckout = await app.request("/api/checkout", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ initData: validInitData, name: "Test User", email: "t@example.com", wallet: TEST_WALLET, tier: "standard" }),
+  });
+  check("checkout without Stripe configured → 503, not a crash", rCheckout.status === 503);
+
+  console.log(`\n${failures === 0 ? "✅ ALL TESTS PASSED" : `❌ ${failures} TEST(S) FAILED`} — ${totalLeads()} leads in throwaway test DB`);
+
+  // Close the handle before deleting — node:sqlite (unlike better-sqlite3)
+  // can leave the file locked on Windows if you rm while it's still open.
+  const { db } = await import("../src/db.js");
+  db.close();
+  for (const suffix of ["", "-wal", "-shm"]) {
+    try { fs.rmSync(TEST_DB + suffix, { force: true }); } catch { /* best-effort cleanup, not test-critical */ }
+  }
+  process.exit(failures === 0 ? 0 : 1);
+}
+
+main().catch((e) => { console.error(e); process.exit(1); });
