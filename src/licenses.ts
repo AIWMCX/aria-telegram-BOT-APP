@@ -14,9 +14,16 @@ const revokeStmt = db.prepare(`
   WHERE id = ?
 `);
 
-const revokeByLeadTierStmt = db.prepare(`
+// Scoped by Telegram identity, not lead_id: a lead row is keyed on
+// (tg_user_id, email), so the same Telegram user submitting with a second
+// email creates a SECOND lead row. Revoking by lead_id alone would miss
+// that first lead's still-active license, leaving two live licenses for
+// one identity. Revoke every active license belonging to ANY lead row
+// tied to this Telegram user.
+const revokeByTgUserTierStmt = db.prepare(`
   UPDATE licenses SET revoked = 1, revoked_at = datetime('now'), revoked_reason = 'superseded'
-  WHERE lead_id = ? AND tier = ? AND revoked = 0
+  WHERE tier = ? AND revoked = 0
+    AND lead_id IN (SELECT id FROM leads WHERE tg_user_id = ?)
 `);
 
 const activeForLeadStmt = db.prepare(`
@@ -60,7 +67,7 @@ export function issueLicense(lead: Lead & { id: number }, tier: Tier, orderId?: 
   const token = signLicense(payload);
   const expiresAtIso = new Date(exp * 1000).toISOString();
 
-  revokeByLeadTierStmt.run(lead.id, tier);
+  revokeByTgUserTierStmt.run(tier, lead.tg_user_id);
   insertStmt.run({
     id: licenseId,
     lead_id: lead.id,

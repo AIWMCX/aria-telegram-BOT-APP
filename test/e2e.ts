@@ -149,6 +149,32 @@ async function main() {
   check("cross-user isolation: user B's /api/me returns a DIFFERENT license id than user A's",
     bodyMeUserB.license !== null && bodyMeReturning.license !== null && bodyMeUserB.license.id !== bodyMeReturning.license.id);
 
+  // Duplicate-account regression: the same Telegram user signing up twice
+  // with two different emails must never end up with two simultaneously
+  // active licenses (found via manual audit 2026-08-14, fixed in licenses.ts).
+  const dupUser = { id: 700700700, first_name: "DupUser" };
+  const dupInitData1 = buildInitData(dupUser);
+  await app.request("/api/submit", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ initData: dupInitData1, name: "Dup User", email: "dup1@example.com", wallet: TEST_WALLET }),
+  });
+  const dupInitData2 = buildInitData(dupUser);
+  await app.request("/api/submit", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ initData: dupInitData2, name: "Dup User", email: "dup2@example.com", wallet: TEST_WALLET }),
+  });
+  const { db: rawDb } = await import("../src/db.js");
+  const dupLicenses = rawDb.prepare(
+    `SELECT revoked FROM licenses WHERE lead_id IN (SELECT id FROM leads WHERE tg_user_id = ?)`,
+  ).all(dupUser.id) as { revoked: number }[];
+  const dupActiveCount = dupLicenses.filter((l) => l.revoked === 0).length;
+  check("same Telegram user signing up with 2 different emails → only 1 active license, not 2",
+    dupActiveCount === 1);
+  const rMeDup = await app.request("/api/me", { headers: { "x-init-data": dupInitData2 } });
+  const bodyMeDup = (await rMeDup.json()) as { license: { token: string } | null };
+  check("/api/me for the duplicate-signup user returns the newest (still-active) license",
+    bodyMeDup.license !== null && bodyMeDup.license.token.length > 0);
+
   console.log(`\n${failures === 0 ? "✅ ALL TESTS PASSED" : `❌ ${failures} TEST(S) FAILED`} — ${totalLeads()} leads in throwaway test DB`);
 
   // Close the handle before deleting — node:sqlite (unlike better-sqlite3)
