@@ -425,34 +425,14 @@
 
   $("cta-strip").addEventListener("click", () => $("pricing").scrollIntoView({ behavior: "smooth" }));
 
-  // ── Returning-user account restore — GET /api/me ─────────────────────────
-  // Runs once on load. A returning user with an active license sees it
-  // immediately instead of an empty "NO LICENSE YET" bar and a form asking
-  // them to sign up again. Fails silently (stays on the default new-user
-  // view) on any error — this is a convenience restore, not a login gate.
-  async function restoreAccount() {
-    if (!isInTelegram) return;
-    let data;
-    try {
-      const res = await fetch("/api/me", { headers: { "X-Init-Data": initData } });
-      data = await res.json();
-      if (!res.ok || !data.ok) return;
-    } catch {
-      return;
-    }
-    if (!data.license) return; // new user, or account exists but license expired — show the normal form
-
-    applyLicenseBar({ email: data.email || "", tier: data.license.tier, expiresAt: data.license.expiresAt });
-
-    $("form-fields").classList.add("hidden");
-    const panel = $("existing-license-panel");
-    panel.classList.remove("hidden");
-    $("el-tier").textContent = (data.license.tier === "trial" ? "FREE" : data.license.tier).toUpperCase();
-    $("el-expires").textContent = new Date(data.license.expiresAt).toISOString().slice(0, 10);
-    $("el-token").value = data.license.token;
-
-    if (tg && tg.MainButton) tg.MainButton.hide();
-
+  // ── Existing-license panel: controls wired once at startup, independent of
+  // whether restoreAccount() ever finds a license. restoreAccount() only
+  // ever populates values and toggles visibility — it never attaches
+  // listeners. This is the fix for the exact ambiguity a review flagged:
+  // manually re-attaching a copy of this logic in a browser console tests
+  // a reconstruction, not the shipped handler. Wiring it once, unconditionally,
+  // at startup means there's only ever one real implementation to test.
+  function initExistingLicensePanelControls() {
     $("el-reveal-btn").addEventListener("click", () => {
       $("el-token").style.filter = "none";
       $("el-token").style.userSelect = "text";
@@ -475,6 +455,36 @@
       setTimeout(() => { $("el-copy-btn").textContent = "COPY KEY"; }, 2000);
       if (tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred) tg.HapticFeedback.notificationOccurred("success");
     });
+  }
+  initExistingLicensePanelControls();
+
+  function showExistingLicense(license, email) {
+    applyLicenseBar({ email: email || "", tier: license.tier, expiresAt: license.expiresAt });
+    $("form-fields").classList.add("hidden");
+    $("existing-license-panel").classList.remove("hidden");
+    $("el-tier").textContent = (license.tier === "trial" ? "FREE" : license.tier).toUpperCase();
+    $("el-expires").textContent = new Date(license.expiresAt).toISOString().slice(0, 10);
+    $("el-token").value = license.token;
+    if (tg && tg.MainButton) tg.MainButton.hide();
+  }
+
+  // ── Returning-user account restore — GET /api/me ─────────────────────────
+  // Runs once on load. A returning user with an active license sees it
+  // immediately instead of an empty "NO LICENSE YET" bar and a form asking
+  // them to sign up again. Fails silently (stays on the default new-user
+  // view) on any error — this is a convenience restore, not a login gate.
+  async function restoreAccount() {
+    if (!isInTelegram) return;
+    let data;
+    try {
+      const res = await fetch("/api/me", { headers: { "X-Init-Data": initData } });
+      data = await res.json();
+      if (!res.ok || !data.ok) return;
+    } catch {
+      return;
+    }
+    if (!data.license) return; // new user, or account exists but license expired — show the normal form
+    showExistingLicense(data.license, data.email);
   }
   restoreAccount();
 
