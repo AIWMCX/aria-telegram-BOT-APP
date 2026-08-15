@@ -1,6 +1,24 @@
 # ARIA Funds Architecture v1
 
-Status: **DRAFT — architecture only, no code written against this yet.**
+Status: **ACCEPTED WITH AMENDMENTS (v1.1) — architecture only, no code
+written against this yet.** Revised after independent review: chain-event
+uniqueness generalized beyond transaction signature (§3d), ledger upgraded
+to journal/posting semantics (§3c), withdrawal uncertainty made a
+first-class state (§3e), reconciliation made asset- and
+commitment-aware (§6), and §2a resolved below (`DELEGATED_VENDOR` for v1).
+
+## 0. Decision record (ADR)
+
+> Adopt `DELEGATED_VENDOR` as the ARIA Free v1 funds-authority architecture.
+> Reject unrestricted ARIA-held private keys. Use a vendor-neutral
+> `SignerPort` abstraction (§2a) so the financial domain never depends
+> directly on Turnkey/Privy/any specific vendor's API. Run Turnkey as the
+> first constrained-Solana-signing POC and Privy as the comparison
+> implementation. Defer any self-built Solana authorization program until
+> ARIA has validated real users/volume and can justify the independent
+> security-audit expense. No ledger/deposit/withdrawal code gets written
+> until GitHub CI is green (§9 step 0) and this ADR has owner sign-off.
+
 Owner sign-off required before any deposit/ledger/withdrawal implementation starts.
 
 ## 1. Purpose
@@ -32,24 +50,66 @@ match "ARIA ON → trades happen automatically." Delegated authority is the
 minimum privilege that makes automated trading possible without ARIA holding
 unrestricted keys.
 
-### 2a. Open sub-decision: vendor-delegated vs. self-built program
+### 2a. Resolved: `DELEGATED_VENDOR` for v1
 
 | | Vendor (Turnkey / Privy / Dfns) | Self-built Solana program |
 |---|---|---|
 | Time to safe production | Weeks | Months (design + audit) |
 | Audit burden | Vendor's, already done, ongoing | ARIA's — a real paid security audit, non-negotiable before real funds |
-| Cost | Recurring vendor fee (Turnkey policy engine, Dfns ~$2,500/mo for a useful tier) | Audit cost (often $30k–$100k+) + engineering time |
-| Control granularity | Whatever the vendor's policy engine exposes (Turnkey: program allowlist, amount caps, address restrictions — best fit found so far) | Unlimited — ARIA defines the exact program logic |
+| Cost | Recurring vendor fee — not decision-grade until separately quoted per §2a-i | Audit cost (often $30k–$100k+) + engineering time |
+| Control granularity | Whatever the vendor's policy engine exposes | Unlimited — ARIA defines the exact program logic |
 | Blast radius if compromised | Bounded by vendor policy engine | Bounded by ARIA's own program logic — only as good as the audit |
 
-**This document does not resolve 2a.** It's marked
-`PROFESSIONAL_REVIEW_REQUIRED` / owner decision. Recommendation carried
-forward from prior session discussion: start with a vendor (fastest safe
-path to real users), keep the self-built-program option open for later if
-vendor economics or control granularity stop fitting. Everything below is
-written to work under either choice — the ledger, state machines, and
-domain model don't change based on which signer sits behind
-`chain_transactions.signed_by`.
+**Decision:** `DELEGATED_VENDOR` for the initial commercial beta (see ADR,
+§0). Self-built Solana authorization program deferred until real user/volume
+evidence justifies the audit expense.
+
+**Evaluation order:** Turnkey first (POC), Privy second (comparison
+implementation), Dfns evaluated separately and with caution — its own
+policy documentation states the policy engine does not apply to delegated
+wallets, since end-user activity on a delegated wallet bypasses it. That
+doesn't disqualify Dfns outright, but it means Dfns's "delegated wallet"
+mode needs a deeper architecture check before assuming it provides the same
+policy-bounded automation model as Turnkey/Privy.
+
+**Why Turnkey first:** its Solana policy engine can inspect and constrain
+program interactions, accounts, and SOL/token transfers, with IDL support
+letting policies understand Solana program calls rather than just raw
+instruction bytes — the closest fit to the ARIA policy shape below.
+
+```
+ALLOW:
+  approved swap programs
+  approved System/Token/ATA programs
+  approved user wallet
+  <= per-trade spend limit
+  <= daily authorization limit
+  expected token mints
+  bounded fees
+
+DENY:
+  arbitrary SOL transfer
+  arbitrary destination
+  unapproved program
+  arbitrary token approval
+  wallet authority modification
+  key export
+```
+
+**`SignerPort` abstraction:** the financial domain (ledger, withdrawal
+processor, execution engine) never calls Turnkey/Privy/Dfns SDKs directly.
+It calls an internal `SignerPort` interface (`requestSignature`,
+`getPolicyState`, `revokeAuthority`) that a vendor-specific adapter
+implements. This is what makes `wallet_accounts.authority_ref` (§3b)
+genuinely opaque to app logic and keeps a future vendor swap or
+self-built-program migration from requiring a ledger rewrite.
+
+#### §2a-i. Not yet decision-grade
+
+Vendor pricing above is directional only (e.g. Dfns's ~$2,500/mo figure)
+and must be separately re-quoted against ARIA's actual expected user/volume
+numbers before any commercial contract is signed — this document does not
+treat those figures as verified.
 
 ## 3. Domain model
 
@@ -102,70 +162,124 @@ trading logic never need to know *how* signing happens, only that
 `wallet_accounts.status = active` gates whether the execution engine is
 allowed to request a signature at all.
 
-### 3c. Ledger — the authoritative balance
+### 3c. Ledger — journal/posting semantics
 
 **Rule, non-negotiable:** balance is never computed from the frontend, never
 floating point. All amounts are integer base units (lamports for SOL,
 token's native decimals for SPL tokens).
 
+Revised from a plain signed-entries model to true double-entry journal
+semantics: every economic operation writes one `journal_entries` row and
+two or more balanced `ledger_postings` rows whose amounts sum to zero per
+asset. This is strictly stronger than isolated signed mutations to
+`available`/`reserved`/`pending` — it makes "for every journal and asset,
+postings sum to zero" a mechanically checkable invariant, not just a
+convention.
+
 ```
 ledger_accounts
   id                    pk
-  user_id               fk -> users.id
+  user_id               fk -> users.id      -- null for system/clearing accounts, see below
+  account_type            enum: user | external_clearing | withdrawal_clearing | fee_clearing
   asset                  e.g. "SOL", or SPL mint address
-  available               integer, base units
-  reserved                integer, base units
-  pending                 integer, base units
+  available               integer, base units  -- derived/cached, see below
+  reserved                integer, base units  -- derived/cached
+  pending                 integer, base units  -- derived/cached
   updated_at
 
-ledger_entries            -- append-only, one row per state transition
+journal_entries           -- one per economic operation
   id                    pk
-  ledger_account_id      fk
-  event_type             enum: deposit_detected | deposit_confirmed | trade_reserved |
-                               trade_spent | trade_released | trade_received |
-                               network_fee | withdrawal_requested | withdrawal_reserved |
-                               withdrawal_broadcast | withdrawal_confirmed |
-                               withdrawal_failed | reconciliation_adjustment
-  amount                 integer, base units (signed: +credit / -debit)
-  balance_field           enum: available | reserved | pending
-  reference_type          enum: deposit | withdrawal | trade | reconciliation
-  reference_id            fk to the deposits/withdrawals/trade_intents row
-  idempotency_key         unique — see 3f
+  event_type              enum: deposit_confirmed | trade_reserved | trade_spent |
+                               trade_released | trade_received | network_fee |
+                               withdrawal_reserved | withdrawal_broadcast |
+                               withdrawal_confirmed | withdrawal_failed |
+                               reconciliation_adjustment
+  reference_type           enum: deposit | withdrawal | trade | reconciliation
+  reference_id              fk to the deposits/withdrawals/trade_intents row
+  idempotency_key           unique — see 3f
   created_at
+
+ledger_postings            -- >=2 rows per journal_entries row; MUST sum to 0 per asset within a journal
+  id                    pk
+  journal_entry_id        fk -> journal_entries.id
+  ledger_account_id        fk -> ledger_accounts.id
+  asset
+  amount                    integer, base units (signed: +credit / -debit)
+  balance_field             enum: available | reserved | pending
+```
+
+Example — deposit confirmed (1 SOL):
+```
+external_clearing SOL   -1 SOL  (available)
+user available SOL      +1 SOL  (available)
+```
+Withdrawal reservation:
+```
+user available SOL      -1 SOL  (available)
+user reserved SOL       +1 SOL  (reserved)
+```
+Confirmed withdrawal:
+```
+user reserved SOL       -1 SOL  (reserved)
+withdrawal_clearing SOL +1 SOL  (available)
 ```
 
 `ledger_accounts.available/reserved/pending` are **derived, cached
-totals** — recomputable at any time as `SUM(ledger_entries.amount) WHERE
-balance_field = X`. The entries table is the source of truth; the
-cached total exists for read performance and gets reconciled against the
-sum, not the other way around. This is what makes "opening state + valid
-entries = closing state" (the audit's own accounting test) checkable by
-construction.
+totals** — recomputable at any time as `SUM(ledger_postings.amount) WHERE
+balance_field = X`. `ledger_postings` is the source of truth; the cached
+total exists for read performance and gets reconciled against the sum, not
+the other way around.
 
-### 3d. Deposits
+### 3d. Deposits and exact-once crediting
+
+Transaction-signature uniqueness alone is not sufficient on Solana: a
+single transaction can carry multiple instructions, including multiple
+transfers to different accounts in one signature. Identity has to live at
+the instruction/event level, not the transaction level.
 
 ```
+chain_events               -- one row per economically meaningful instruction observed on-chain
+  id                    pk
+  signature                the transaction signature (NOT unique alone)
+  instruction_index
+  inner_instruction_index   nullable
+  account                   the affected account
+  asset_mint                null for native SOL, mint address for SPL
+  amount                    integer, base units
+  event_type                enum: transfer_in | transfer_out | ...
+  slot                      the Solana slot the event was observed in
+  commitment                 enum: processed | confirmed | finalized
+
+  UNIQUE (signature, instruction_index, inner_instruction_index, account, asset_mint, event_type)
+
 deposits
   id                    pk
   user_id               fk
   wallet_account_id      fk
+  chain_event_id         fk -> chain_events.id, unique   -- one deposit per chain_event, not per signature
   asset
   amount                 integer, base units
-  chain_tx_signature     unique — the actual on-chain signature, this is what prevents double-credit
   status                  enum: created | detected | confirming | confirmed | credited | failed | ignored
-  confirmations           int
   detected_at
   confirmed_at
   credited_at
 ```
 
-**Invariant:** `UNIQUE(chain_tx_signature)`. A rescan or restart that
-re-observes the same signature is a no-op, enforced at the DB constraint
-level, not just application logic — this is what makes "replay the same
-event → no duplicate credit" actually hold under process restarts, not
-just under normal operation.
+**Invariant:** the `UNIQUE` constraint on `chain_events` is what makes
+exact-once processing hold at the transfer/event level under restart or
+rescan — not the transaction signature by itself. A `deposits` row only
+exists once its backing `chain_event` is uniquely recorded, and the FK
+uniqueness on `chain_event_id` prevents a second `deposits` row from ever
+attaching to the same event.
 
-### 3e. Withdrawals
+### 3e. Withdrawals — uncertainty is a first-class state
+
+A network timeout after broadcasting a withdrawal transaction does **not**
+prove the transaction failed — the transaction may still land. Releasing
+reserved funds back to `available` on a mere RPC timeout risks a double
+withdrawal if the original transaction later confirms. The state machine
+has to represent "we don't know yet" as its own state, not collapse it
+into `failed`.
 
 ```
 withdrawals
@@ -175,10 +289,12 @@ withdrawals
   asset
   amount                 integer, base units
   destination_address
-  status                  enum: requested | validated | reserved | authorized |
-                               broadcast | confirming | confirmed | failed
+  status                  enum: requested | validated | reserved | signing | signed |
+                               broadcast | confirmation_pending | confirmed |
+                               failed_prebroadcast | broadcast_unknown | expired |
+                               cancelled | manual_review
   idempotency_key         unique — see 3f
-  chain_tx_signature      nullable until broadcast
+  chain_tx_signature      nullable until signed
   requested_at
   broadcast_at
   confirmed_at
@@ -186,11 +302,18 @@ withdrawals
 ```
 
 **Invariant:** moving `available → reserved` happens in the same DB
-transaction as creating the `withdrawals` row and its `ledger_entries` row.
-Two concurrent withdrawal requests for the same user race on that
-transaction, not on application-level checks — this is what makes "two
-concurrent withdrawals never spend the same funds" true under real
-concurrency, not just true in the happy-path test.
+transaction as creating the `withdrawals` row and its `ledger_postings`
+rows. Two concurrent withdrawal requests for the same user race on that
+transaction, not on application-level checks.
+
+**Invariant:** once a withdrawal has reached `signed` or later, funds are
+never released back to `available` on a timeout or RPC error alone — that
+outcome routes to `broadcast_unknown`, which is resolved only by querying
+chain state for the signature (confirmed → `confirmed`; genuinely absent
+after the transaction's blockhash expires → `expired`, only then eligible
+for fund release, and even then via the reconciliation job, not the
+request handler that timed out). Anything the reconciliation job can't
+resolve automatically routes to `manual_review`, not to a guessed outcome.
 
 ### 3f. Idempotency
 
@@ -219,7 +342,7 @@ risk_events           any rejection, limit breach, or anomaly, for audit
 ```
 
 Full design deferred to a `FREE-4` follow-up doc — listed here only to show
-`ledger_entries.reference_type = 'trade'` and `trade_reserved` /
+`journal_entries.reference_type = 'trade'` and `trade_reserved` /
 `trade_spent` / `trade_released` / `trade_received` events are already
 accounted for in the ledger schema above, so the ledger doesn't need to
 change shape when trading is added.
@@ -273,13 +396,31 @@ over-build this on day one):
 
 ## 6. Reconciliation
 
-Runs on a schedule (not just on-demand). For each `wallet_account`:
+Runs on a schedule (not just on-demand). Native SOL and SPL tokens are
+reconciled **per asset**, not as a single wallet-level number — Solana
+holds SPL balances in separate token accounts (owner+mint derived), so
+`getBalance()` on the wallet pubkey only ever covers native SOL:
 
 ```
-on_chain_balance = getBalance(wallet.solana_pubkey)   -- real RPC call
-ledger_balance    = SUM(ledger_accounts.available + reserved + pending) for that account
-expected_balance  = on_chain_balance   -- these must be equal for a delegated (non-pooled) wallet
+for each wallet_account:
+  # native SOL
+  on_chain_sol      = getBalance(wallet.solana_pubkey)          -- real RPC call
+  ledger_sol        = SUM(ledger_accounts WHERE asset='SOL': available+reserved+pending)
+
+  # each SPL asset the wallet has ever held
+  for each associated token account (owner=wallet.solana_pubkey, mint=X):
+    on_chain_token_X  = getTokenAccountBalance(ata)              -- real RPC call
+    ledger_token_X    = SUM(ledger_accounts WHERE asset=X: available+reserved+pending)
+
+  # every on_chain_* must equal its corresponding ledger_* for a delegated, non-pooled wallet
 ```
+
+Reconciliation reads and records **slot and commitment level**
+(`processed` / `confirmed` / `finalized`), not a generic "confirmations"
+counter — that's the concept Solana's RPC actually exposes, and it's what
+`chain_events.commitment` (§3d) is for. A balance read at `processed` can
+still roll back; only `finalized` (or the policy-defined minimum
+commitment) is treated as settled for reconciliation purposes.
 
 Any mismatch: halt withdrawals for that specific `wallet_account` (via
 `system_controls`, scoped, not global) and raise an incident. Never
@@ -303,22 +444,45 @@ automatic-failure standard.
 ## 8. What this document does NOT do
 
 - It does not implement anything. No table in §3 exists yet.
-- It does not resolve §2a (vendor vs. self-built delegated authority) —
-  that's the actual next decision, and it's the owner's / a security
-  professional's call, not something to default into by writing code.
+- It does not obtain vendor pricing at decision-grade accuracy (§2a-i) —
+  that requires an actual quote against real expected volume.
 - It does not cover trading engine internals beyond what's needed to show
   the ledger schema is forward-compatible (§3g).
 
-## 9. Sequencing from here (unchanged from the agreed plan)
+## 9. Sequencing from here
 
-1. ~~Add CI~~ — done, `acbe9f8`.
-2. This document — draft complete, awaiting owner sign-off, especially §2a.
-3. Once §2a is resolved: stand up PostgreSQL, migrate `users` identity model
-   (§3a), build `wallet_accounts` + ledger (§3b–§3c) with **no deposit or
-   withdrawal endpoints live yet** — ledger plumbing first, proven with
-   synthetic entries, before real money touches it.
-4. Deposit pipeline (§3d), tested with controlled real funds per the audit's
-   `AUDIT: DEPOSIT` checklist, before withdrawal.
-5. Withdrawal pipeline (§3e), tested per `AUDIT: WITHDRAWAL`, including the
-   concurrency and duplicate-request cases, before trading integration.
-6. Only then: trading engine (§3g), gated behind `FREE-4`.
+0. **Fix CI red.** Done — `e0b8ca7`. Root cause was `node:sqlite` requiring
+   Node ≥22.13.0 (flag dropped there) while CI pinned the literal string
+   `"22.5"`, resolving to exact v22.5.0. Production was unaffected —
+   `node:22-slim` floats to the latest 22.x patch. Confirmed genuinely green
+   by polling the real GitHub Actions run, not assumed from a passing local
+   test.
+1. This document — accepted with amendments (v1.1), ADR recorded in §0,
+   §2a resolved (`DELEGATED_VENDOR`). Awaiting final owner sign-off.
+2. Vendor signer POC with **zero real user funds** — Turnkey first, Privy as
+   comparison, against Solana devnet.
+3. Stand up PostgreSQL + migrations.
+4. Migrate `users` identity model (§3a).
+5. Build `wallet_accounts` (§3b).
+6. Build the double-entry ledger — `ledger_accounts` / `journal_entries` /
+   `ledger_postings` (§3c) — with **no deposit or withdrawal endpoint live
+   yet**, proven with synthetic journal entries first.
+7. Build the reconciliation engine (§6) against synthetic fixtures before
+   it ever touches a real wallet.
+8. Controlled devnet deposit, tested against the full `AUDIT: DEPOSIT`
+   checklist including duplicate-event replay at the `chain_events` level.
+9. Controlled devnet withdrawal, tested against `AUDIT: WITHDRAWAL`,
+   including the `broadcast_unknown` recovery path specifically.
+10. Adversarial concurrency/idempotency tests — concurrent withdrawal
+    requests, idempotency-key reuse with a mismatched payload, restart
+    mid-`signing`.
+11. Controlled mainnet tiny-value test — real SOL, minimal amount, full
+    lifecycle, before any real user is let near it.
+12. Only then: `FREE-2`/`FREE-3` certification against the independent
+    audit standard.
+13. Trading architecture (`FREE-4`, §3g) — separate follow-up document.
+
+This sequence deliberately does not put a Deposit/Withdraw button in front
+of a real user quickly. It puts the ledger, reconciliation, and failure-mode
+handling in front of synthetic and devnet tests first — that ordering is
+the actual point of this document.
