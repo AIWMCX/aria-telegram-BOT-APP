@@ -37,6 +37,12 @@ const Env = z.object({
   // docs/ARIA_FUNDS_ARCHITECTURE_V1.md. The license product above never
   // reads this; absent locally/in CI, that migration step is just skipped) ──
   DATABASE_URL: z.string().optional(),
+
+  // ── Ledger self-test (temporary, manual — see src/ledger-selftest.ts) ──
+  // Set to "true" on Railway to run the self-test once on boot, check
+  // logs, then unset it. Never leaves data behind (rolls back its own
+  // transaction) but is not meant to run on every normal boot.
+  RUN_LEDGER_SELFTEST: z.coerce.boolean().default(false),
 });
 
 const parsed = Env.safeParse(process.env);

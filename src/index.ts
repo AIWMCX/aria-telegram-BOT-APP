@@ -4,6 +4,7 @@ import { logger } from "./logger.js";
 import { bot } from "./bot.js";
 import { startServer } from "./server.js";
 import { runPgMigrations } from "./migrate.js";
+import { runLedgerSelfTest } from "./ledger-selftest.js";
 
 async function main(): Promise<void> {
   logger.info(
@@ -22,6 +23,14 @@ async function main(): Promise<void> {
     await runPgMigrations();
   } catch (err) {
     logger.error({ err }, "Postgres migration failed — funded-account domain unavailable, license product unaffected");
+  }
+
+  if (CONFIG.RUN_LEDGER_SELFTEST) {
+    try {
+      await runLedgerSelfTest();
+    } catch (err) {
+      logger.error({ err }, "ledger selftest crashed outside its own try/catch — this itself is a finding");
+    }
   }
 
   startServer();

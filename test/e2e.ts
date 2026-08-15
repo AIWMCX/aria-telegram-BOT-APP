@@ -199,6 +199,33 @@ async function main() {
   });
   check("/api/auth/telegram with missing initData → 400", rAuthBadBody.status === 400);
 
+  // ── Ledger invariant — pure function, no Postgres needed, runs in CI ────
+  const { validateBalancedPostings } = await import("../src/ledger.js");
+  try {
+    validateBalancedPostings([
+      { ledgerAccountId: 1, asset: "SOL", amount: 5n, balanceField: "available" },
+      { ledgerAccountId: 2, asset: "SOL", amount: -5n, balanceField: "available" },
+    ]);
+    check("balanced postings (sum to zero) are accepted", true);
+  } catch {
+    check("balanced postings (sum to zero) are accepted", false);
+  }
+  try {
+    validateBalancedPostings([
+      { ledgerAccountId: 1, asset: "SOL", amount: 5n, balanceField: "available" },
+      { ledgerAccountId: 2, asset: "SOL", amount: -3n, balanceField: "available" },
+    ]);
+    check("unbalanced postings are rejected", false);
+  } catch {
+    check("unbalanced postings are rejected", true);
+  }
+  try {
+    validateBalancedPostings([{ ledgerAccountId: 1, asset: "SOL", amount: 0n, balanceField: "available" }]);
+    check("a journal entry with fewer than 2 postings is rejected", false);
+  } catch {
+    check("a journal entry with fewer than 2 postings is rejected", true);
+  }
+
   console.log(`\n${failures === 0 ? "✅ ALL TESTS PASSED" : `❌ ${failures} TEST(S) FAILED`} — ${totalLeads()} leads in throwaway test DB`);
 
   // Close the handle before deleting — node:sqlite (unlike better-sqlite3)
