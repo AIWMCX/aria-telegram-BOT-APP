@@ -39,10 +39,14 @@ const Env = z.object({
   DATABASE_URL: z.string().optional(),
 
   // ── Ledger self-test (temporary, manual — see src/ledger-selftest.ts) ──
-  // Set to "true" on Railway to run the self-test once on boot, check
-  // logs, then unset it. Never leaves data behind (rolls back its own
-  // transaction) but is not meant to run on every normal boot.
-  RUN_LEDGER_SELFTEST: z.coerce.boolean().default(false),
+  // Set to the literal string "true" on Railway to run the self-test once
+  // on boot, check logs, then unset it. Never leaves data behind (rolls
+  // back its own transaction) but is not meant to run on every normal
+  // boot. z.coerce.boolean() is deliberately NOT used here — it coerces
+  // via JS Boolean(str), and Boolean("false") is true (any non-empty
+  // string is truthy), so setting this to "false" would silently never
+  // turn it off. Exact string match instead.
+  RUN_LEDGER_SELFTEST: z.string().optional().transform((v) => v === "true"),
 });
 
 const parsed = Env.safeParse(process.env);
