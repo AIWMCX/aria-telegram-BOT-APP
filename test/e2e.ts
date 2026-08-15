@@ -115,6 +115,40 @@ async function main() {
   });
   check("checkout without Stripe configured → 503, not a crash", rCheckout.status === 503);
 
+  // ── /api/me — returning-user account restore (P0.2) ─────────────────────
+
+  const rMeMissing = await app.request("/api/me");
+  check("/api/me with no initData header → 400", rMeMissing.status === 400);
+
+  const rMeForged = await app.request("/api/me", { headers: { "x-init-data": forged } });
+  check("/api/me with forged initData → 401", rMeForged.status === 401);
+
+  const brandNewUserInitData = buildInitData({ id: 424242424, first_name: "NeverSignedUp" });
+  const rMeNew = await app.request("/api/me", { headers: { "x-init-data": brandNewUserInitData } });
+  const bodyMeNew = (await rMeNew.json()) as { ok: boolean; hasAccount: boolean; license: unknown };
+  check("/api/me for a brand-new Telegram user → 200, hasAccount:false, license:null",
+    rMeNew.status === 200 && bodyMeNew.ok === true && bodyMeNew.hasAccount === false && bodyMeNew.license === null);
+
+  // Bogdan (id 987654321) already has an active license from the earlier /api/submit call.
+  const rMeReturning = await app.request("/api/me", { headers: { "x-init-data": validInitData } });
+  const bodyMeReturning = (await rMeReturning.json()) as { ok: boolean; hasAccount: boolean; license: { id: string; token: string; tier: string } | null };
+  check("/api/me for a returning user with an active license → returns the real license, not NO LICENSE YET",
+    rMeReturning.status === 200 && bodyMeReturning.hasAccount === true &&
+    bodyMeReturning.license !== null && bodyMeReturning.license.token.startsWith("ARIA1.") &&
+    bodyMeReturning.license.tier === "trial");
+
+  // Cross-user isolation: sign up a second, distinct user and confirm each
+  // user's /api/me returns ONLY their own license, never the other's.
+  const userBInitData = buildInitData({ id: 111222333, first_name: "SecondUser" });
+  await app.request("/api/submit", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ initData: userBInitData, name: "Second User", email: "second@example.com", wallet: TEST_WALLET }),
+  });
+  const rMeUserB = await app.request("/api/me", { headers: { "x-init-data": userBInitData } });
+  const bodyMeUserB = (await rMeUserB.json()) as { license: { id: string } | null };
+  check("cross-user isolation: user B's /api/me returns a DIFFERENT license id than user A's",
+    bodyMeUserB.license !== null && bodyMeReturning.license !== null && bodyMeUserB.license.id !== bodyMeReturning.license.id);
+
   console.log(`\n${failures === 0 ? "✅ ALL TESTS PASSED" : `❌ ${failures} TEST(S) FAILED`} — ${totalLeads()} leads in throwaway test DB`);
 
   // Close the handle before deleting — node:sqlite (unlike better-sqlite3)

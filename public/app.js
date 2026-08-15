@@ -425,5 +425,58 @@
 
   $("cta-strip").addEventListener("click", () => $("pricing").scrollIntoView({ behavior: "smooth" }));
 
+  // ── Returning-user account restore — GET /api/me ─────────────────────────
+  // Runs once on load. A returning user with an active license sees it
+  // immediately instead of an empty "NO LICENSE YET" bar and a form asking
+  // them to sign up again. Fails silently (stays on the default new-user
+  // view) on any error — this is a convenience restore, not a login gate.
+  async function restoreAccount() {
+    if (!isInTelegram) return;
+    let data;
+    try {
+      const res = await fetch("/api/me", { headers: { "X-Init-Data": initData } });
+      data = await res.json();
+      if (!res.ok || !data.ok) return;
+    } catch {
+      return;
+    }
+    if (!data.license) return; // new user, or account exists but license expired — show the normal form
+
+    applyLicenseBar({ email: data.email || "", tier: data.license.tier, expiresAt: data.license.expiresAt });
+
+    $("form-fields").classList.add("hidden");
+    const panel = $("existing-license-panel");
+    panel.classList.remove("hidden");
+    $("el-tier").textContent = (data.license.tier === "trial" ? "FREE" : data.license.tier).toUpperCase();
+    $("el-expires").textContent = new Date(data.license.expiresAt).toISOString().slice(0, 10);
+    $("el-token").value = data.license.token;
+
+    if (tg && tg.MainButton) tg.MainButton.hide();
+
+    $("el-reveal-btn").addEventListener("click", () => {
+      $("el-token").style.filter = "none";
+      $("el-token").style.userSelect = "text";
+      $("el-reveal-btn").classList.add("hidden");
+      $("el-copy-btn").classList.remove("hidden");
+    });
+    $("el-copy-btn").addEventListener("click", async () => {
+      const token = $("el-token").value;
+      try {
+        await navigator.clipboard.writeText(token);
+      } catch {
+        // Clipboard API may be unavailable in some Telegram WebView versions —
+        // fall back to select + execCommand, which works in more contexts.
+        $("el-token").removeAttribute("readonly");
+        $("el-token").select();
+        try { document.execCommand("copy"); } catch { /* best effort */ }
+        $("el-token").setAttribute("readonly", "true");
+      }
+      $("el-copy-btn").textContent = "COPIED ✓";
+      setTimeout(() => { $("el-copy-btn").textContent = "COPY KEY"; }, 2000);
+      if (tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred) tg.HapticFeedback.notificationOccurred("success");
+    });
+  }
+  restoreAccount();
+
   validate();
 })();

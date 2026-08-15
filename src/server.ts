@@ -5,7 +5,7 @@ import { z } from "zod";
 import { CONFIG, PAYMENTS_ENABLED } from "./config.js";
 import { logger } from "./logger.js";
 import { verifyInitData } from "./telegram-auth.js";
-import { upsertLead, recentSubmissionsByUser, totalLeads } from "./leads.js";
+import { upsertLead, recentSubmissionsByUser, totalLeads, getLatestLeadByTgUser } from "./leads.js";
 import { sendAdminLeadNotification, sendLicenseEmail } from "./email.js";
 import { notifyAdminOfLicense, notifyCustomerLicenseIssued } from "./bot.js";
 import { issueLicense, getActiveLicenseForLead } from "./licenses.js";
@@ -37,6 +37,40 @@ const CheckoutBody = z.object({
 app.get("/healthz", (c) =>
   c.json({ ok: true, uptime: process.uptime(), leads: totalLeads(), paymentsEnabled: PAYMENTS_ENABLED }),
 );
+
+/**
+ * Returning-user account restore. Verifies Telegram initData (sent as a
+ * header, never a query param, so it never lands in access logs or a
+ * Referer header) and returns the caller's OWN account/license state —
+ * there is no code path here that can return a different Telegram user's
+ * license, because the identity is derived entirely from the verified
+ * signature, never from client-supplied input.
+ *
+ * Returns the full license token (not just tier/expiry) so a returning
+ * user can recover their key from the Mini App itself even if the
+ * original delivery email never arrived — license delivery must not
+ * depend on email being reliable.
+ */
+app.get("/api/me", (c) => {
+  const initData = c.req.header("x-init-data");
+  if (!initData) return c.json({ ok: false, error: "missing initData" }, 400);
+
+  const verified = verifyInitData(initData);
+  if (!verified) return c.json({ ok: false, error: "Telegram verification failed. Open via the bot, not directly." }, 401);
+
+  const lead = getLatestLeadByTgUser(verified.user.id);
+  if (!lead?.id) return c.json({ ok: true, hasAccount: false, license: null });
+
+  const license = getActiveLicenseForLead(lead.id);
+  if (!license) return c.json({ ok: true, hasAccount: true, license: null });
+
+  return c.json({
+    ok: true,
+    hasAccount: true,
+    license: { id: license.id, token: license.token, tier: license.tier, expiresAt: license.expiresAt },
+    email: lead.email,
+  });
+});
 
 /** Trial signup — verifies Telegram identity, saves lead, issues a trial license immediately. */
 app.post("/api/submit", async (c) => {

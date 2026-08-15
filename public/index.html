@@ -168,6 +168,22 @@
 
       <button class="submit-btn" id="submit-btn" type="button" disabled>SUBMIT — GET FREE LICENSE</button>
     </form>
+
+    <!-- Shown instead of the form for a returning user with an active license.
+         Recovering the key here means license delivery never depends on
+         email actually arriving. -->
+    <div class="form-wrap hidden" id="existing-license-panel">
+      <div class="status-msg ok" style="display:block;">
+        Welcome back — your <strong id="el-tier">FREE</strong> license is active. No need to sign up again.
+      </div>
+      <div class="field">
+        <label for="el-token">Your license key</label>
+        <textarea id="el-token" rows="3" readonly style="font-family:'JetBrains Mono',monospace;font-size:11px;filter:blur(4px);user-select:none;" aria-label="license key, hidden until revealed"></textarea>
+        <div class="hint">Expires: <span id="el-expires"></span> · Paste into your sniper's <code>.env</code> as <code>ARIA_LICENSE=...</code></div>
+      </div>
+      <button class="plan-btn" id="el-reveal-btn" type="button">SHOW KEY</button>
+      <button class="plan-btn primary hidden" id="el-copy-btn" type="button">COPY KEY</button>
+    </div>
   </section>
 </main>
 
