@@ -1,6 +1,8 @@
 FROM node:22-slim
-# node:sqlite (used instead of better-sqlite3) requires Node >=22.5 — do not
-# downgrade this base image without also reverting src/db.ts to a native driver.
+# node:sqlite (used instead of better-sqlite3) needs the flag dropped in
+# 22.13.0 (existed but required --experimental-sqlite from 22.5–22.12) — do
+# not pin this to an exact patch below 22.13, and don't downgrade below 22
+# at all without reverting src/db.ts to a native driver.
 
 WORKDIR /app
 

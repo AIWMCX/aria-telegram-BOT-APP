@@ -14,7 +14,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22.5"
+          # Matches production: Dockerfile builds FROM node:22-slim, which
+          # floats to the latest 22.x patch. node:sqlite requires >=22.13.0
+          # (flag dropped there, see package.json "engines") — pinning the
+          # exact string "22.5" here previously resolved to literal v22.5.0,
+          # which predates that and broke CI while production stayed fine.
+          node-version: "22"
           cache: npm
 
       - run: npm ci

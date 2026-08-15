@@ -5,7 +5,7 @@
   "description": "Trial signup, Ed25519 licensing, and Stripe payments backend for the ARIA Sniper Telegram app.",
   "type": "module",
   "engines": {
-    "node": ">=22.5"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
