@@ -13,6 +13,7 @@ COPY tsconfig.json ./
 COPY src ./src
 COPY public ./public
 COPY scripts ./scripts
+COPY migrations ./migrations
 
 RUN mkdir -p /data
 ENV DB_PATH=/data/aria.db

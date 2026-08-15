@@ -3,6 +3,7 @@ import { CONFIG, PAYMENTS_ENABLED } from "./config.js";
 import { logger } from "./logger.js";
 import { bot } from "./bot.js";
 import { startServer } from "./server.js";
+import { runPgMigrations } from "./migrate.js";
 
 async function main(): Promise<void> {
   logger.info(
@@ -11,6 +12,16 @@ async function main(): Promise<void> {
   );
   if (!PAYMENTS_ENABLED) {
     logger.warn("Stripe not configured — trial tier works, paid checkout is disabled until STRIPE_* vars are set");
+  }
+
+  // Funded-account domain (users/wallet_accounts/ledger, see
+  // docs/ARIA_FUNDS_ARCHITECTURE_V1.md) — a migration failure here must not
+  // be silently swallowed, but it also must not be allowed to take down the
+  // still-live license product if Postgres is ever briefly unreachable.
+  try {
+    await runPgMigrations();
+  } catch (err) {
+    logger.error({ err }, "Postgres migration failed — funded-account domain unavailable, license product unaffected");
   }
 
   startServer();

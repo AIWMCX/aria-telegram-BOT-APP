@@ -32,6 +32,11 @@ const Env = z.object({
   PORT: z.coerce.number().int().positive().default(8080),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
   DB_PATH: z.string().default("./data/aria.db"),
+
+  // ── Postgres (optional — for the new funded-account domain only, see
+  // docs/ARIA_FUNDS_ARCHITECTURE_V1.md. The license product above never
+  // reads this; absent locally/in CI, that migration step is just skipped) ──
+  DATABASE_URL: z.string().optional(),
 });
 
 const parsed = Env.safeParse(process.env);
