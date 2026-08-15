@@ -60,6 +60,9 @@ export const PAYMENTS_ENABLED = Boolean(
   CONFIG.STRIPE_SECRET_KEY && CONFIG.STRIPE_WEBHOOK_SECRET,
 );
 
+/** True once DATABASE_URL is present — gates the new users/wallet-accounts domain endpoints. */
+export const USERS_DOMAIN_ENABLED = Boolean(CONFIG.DATABASE_URL);
+
 export const TIER_LIMITS = {
   // The "trial" key is kept for backward compatibility with the DB and
   // existing issued licenses — it now means "free tier", not a time-limited

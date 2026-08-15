@@ -175,6 +175,30 @@ async function main() {
   check("/api/me for the duplicate-signup user returns the newest (still-active) license",
     bodyMeDup.license !== null && bodyMeDup.license.token.length > 0);
 
+  // ── /api/auth/telegram — real users domain (FREE-1) ─────────────────────
+  // No DATABASE_URL in this test environment (matches CI), so the only
+  // honest thing to assert here is graceful degradation, not real Postgres
+  // behavior — that needs a real Postgres instance, which this suite
+  // intentionally does not stand up. See docs/ARIA_FUNDS_ARCHITECTURE_V1.md.
+
+  const rAuthNoDb = await app.request("/api/auth/telegram", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ initData: validInitData }),
+  });
+  check("/api/auth/telegram with no DATABASE_URL configured → 503, not a crash", rAuthNoDb.status === 503);
+
+  const rAuthForged = await app.request("/api/auth/telegram", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ initData: forged }),
+  });
+  check("/api/auth/telegram with forged initData → 401 (checked before the DB call)", rAuthForged.status === 401);
+
+  const rAuthBadBody = await app.request("/api/auth/telegram", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  check("/api/auth/telegram with missing initData → 400", rAuthBadBody.status === 400);
+
   console.log(`\n${failures === 0 ? "✅ ALL TESTS PASSED" : `❌ ${failures} TEST(S) FAILED`} — ${totalLeads()} leads in throwaway test DB`);
 
   // Close the handle before deleting — node:sqlite (unlike better-sqlite3)

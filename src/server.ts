@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { z } from "zod";
-import { CONFIG, PAYMENTS_ENABLED } from "./config.js";
+import { CONFIG, PAYMENTS_ENABLED, USERS_DOMAIN_ENABLED } from "./config.js";
 import { logger } from "./logger.js";
 import { verifyInitData } from "./telegram-auth.js";
 import { upsertLead, recentSubmissionsByUser, totalLeads, getLatestLeadByTgUser } from "./leads.js";
@@ -11,6 +11,7 @@ import { notifyAdminOfLicense, notifyCustomerLicenseIssued } from "./bot.js";
 import { issueLicense, getActiveLicenseForLead } from "./licenses.js";
 import { createCheckoutSession, handleStripeWebhook } from "./stripe.js";
 import { getOrderById } from "./orders.js";
+import { upsertUserFromTelegram } from "./users.js";
 
 export const app = new Hono();
 
@@ -70,6 +71,54 @@ app.get("/api/me", (c) => {
     license: { id: license.id, token: license.token, tier: license.tier, expiresAt: license.expiresAt },
     email: lead.email,
   });
+});
+
+/**
+ * Real ARIA identity — per docs/ARIA_FUNDS_ARCHITECTURE_V1.md §3a. Additive
+ * to `/api/me`: creates/restores a `users` row keyed on telegram_user_id
+ * alone (not the leads table's tg_user_id+email pair). This is the account
+ * domain the funded product will build on; it does not yet return a
+ * wallet, balance, or anything financial — those don't exist until
+ * wallet_accounts/ledger are wired to a real SignerPort adapter.
+ */
+app.post("/api/auth/telegram", async (c) => {
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ ok: false, error: "invalid JSON" }, 400); }
+
+  const parsed = z.object({ initData: z.string().min(10) }).safeParse(body);
+  if (!parsed.success) {
+    return c.json({ ok: false, error: parsed.error.issues[0]?.message ?? "invalid input" }, 400);
+  }
+
+  const verified = verifyInitData(parsed.data.initData);
+  if (!verified) {
+    logger.warn("auth/telegram rejected — bad initData");
+    return c.json({ ok: false, error: "Telegram verification failed. Open via the bot, not directly." }, 401);
+  }
+
+  if (!USERS_DOMAIN_ENABLED) {
+    return c.json({ ok: false, error: "Account service not yet available." }, 503);
+  }
+
+  try {
+    const user = await upsertUserFromTelegram({
+      id: verified.user.id,
+      username: verified.user.username,
+      first_name: verified.user.first_name,
+      last_name: verified.user.last_name,
+    });
+    return c.json({
+      ok: true,
+      user: {
+        id: user.id,
+        accountStatus: user.account_status,
+        createdAt: user.created_at,
+      },
+    });
+  } catch (err: any) {
+    logger.error({ err }, "auth/telegram failed — Postgres users domain unavailable");
+    return c.json({ ok: false, error: "Account service temporarily unavailable." }, 503);
+  }
 });
 
 /** Trial signup — verifies Telegram identity, saves lead, issues a trial license immediately. */
