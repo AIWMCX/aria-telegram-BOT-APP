@@ -19,14 +19,20 @@ function esc(s: string): string {
   return s.replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
 }
 
+/** "trial" is the internal DB/license key for the (now permanently free) default
+ *  tier — never show that word to users, who'd read it as time-limited. */
+function tierLabel(tier: string): string {
+  return tier === "trial" ? "FREE" : tier.toUpperCase();
+}
+
 bot.command("start", async (ctx) => {
   const firstName = ctx.from?.first_name ?? "trader";
   const keyboard = new InlineKeyboard().webApp("🟢 OPEN TERMINAL", TERMINAL_URL);
   await ctx.reply(
     [
       `*ARIA · Solana Sniper Terminal*`, ``,
-      `Hi ${esc(firstName)} — tap below to open the live terminal.`, ``,
-      `To request access, fill the form inside: name, email, Solana wallet.`, ``,
+      `Hi ${esc(firstName)} — tap below to open the live terminal. Full access is free — no license fees, no tiers.`, ``,
+      `Fill the form inside: name, email, Solana wallet. You'll get your license instantly.`, ``,
       `_Burner wallets only. We never ask for your private key._`,
     ].join("\n"),
     { parse_mode: "Markdown", reply_markup: keyboard },
@@ -51,7 +57,7 @@ bot.command("license", async (ctx) => {
     [
       `Your active license:`, ``,
       `\`${license.token}\``, ``,
-      `Tier: *${license.tier.toUpperCase()}*`,
+      `Tier: *${tierLabel(license.tier)}*`,
       `Expires: ${license.expiresAt.slice(0, 10)}`,
       `Wallet: \`${lead.wallet}\``, ``,
       `Paste into your \`.env\` as \`ARIA_LICENSE=...\``,
@@ -70,7 +76,7 @@ bot.command("status", async (ctx) => {
   const daysLeft = Math.ceil((new Date(license.expiresAt).getTime() - Date.now()) / 86_400_000);
   await ctx.reply(
     [
-      `Tier: *${license.tier.toUpperCase()}*`,
+      `Tier: *${tierLabel(license.tier)}*`,
       `Days remaining: ${daysLeft}`,
       `Wallet: \`${lead.wallet}\``,
     ].join("\n"),
@@ -106,12 +112,12 @@ bot.catch((err) => {
   logger.error({ err: err.error, update: err.ctx.update.update_id }, "bot error");
 });
 
-/** DM the admin whenever a license is issued (trial, purchase, or renewal). */
+/** DM the admin whenever a license is issued (signup, purchase, or renewal). */
 export async function notifyAdminOfLicense(lead: Lead, license: IssuedLicense, kind: "trial" | "paid" | "renewed"): Promise<void> {
   if (!CONFIG.ADMIN_TELEGRAM_CHAT_ID) return;
-  const label = { trial: "🎯 Trial", paid: "💰 PAID", renewed: "🔁 Renewed" }[kind];
+  const label = { trial: "🆓 Free signup", paid: "💰 PAID", renewed: "🔁 Renewed" }[kind];
   const text = [
-    `${label} · \`${license.tier}\` · lic \`${license.id}\``, ``,
+    `${label} · \`${tierLabel(license.tier)}\` · lic \`${license.id}\``, ``,
     `Name: ${esc(lead.name)}`,
     `Email: \`${esc(lead.email)}\``,
     `Wallet: \`${esc(lead.wallet)}\``,
@@ -129,10 +135,9 @@ export async function notifyAdminOfLicense(lead: Lead, license: IssuedLicense, k
  * never before. No-op if RYPTO_CHANNEL_URL isn't set.
  */
 export async function notifyCustomerLicenseIssued(lead: Lead, license: IssuedLicense): Promise<void> {
-  const tierLabel = license.tier.toUpperCase();
   const expiresDate = license.expiresAt.slice(0, 10);
   const text = [
-    `Your ARIA *${tierLabel}* license is active.`, ``,
+    `Your ARIA *${tierLabel(license.tier)}* license is active — full features, free.`, ``,
     `Expires: ${expiresDate}`,
     `Wallet: \`${esc(lead.wallet)}\``, ``,
     `Full key + install steps are in your email. Use /license here anytime to see it again.`,

@@ -20,7 +20,7 @@
   // Mirrors src/config.ts TIER_LIMITS — used only to render the license bar
   // client-side after a real signup response; never used for enforcement.
   const TIER_LIMITS = {
-    trial:    { label: "TRIAL",    buy: "0.005 SOL", pos: "3",  total: "0.015 SOL" },
+    trial:    { label: "FREE",     buy: "0.02 SOL",  pos: "5",  total: "0.1 SOL" },
     standard: { label: "STANDARD", buy: "0.01 SOL",  pos: "5",  total: "0.05 SOL" },
     pro:      { label: "PRO",      buy: "0.05 SOL",  pos: "10", total: "0.5 SOL" },
   };
@@ -285,10 +285,9 @@
     const v = formValues();
     const valid = v.name.length >= 2 && EMAIL_RE.test(v.email) && SOLANA_RE.test(v.wallet);
     $("submit-btn").disabled = !valid;
-    $("btn-standard").disabled = !valid;
-    $("btn-pro").disabled = !valid;
+    // btn-standard / btn-pro stay permanently disabled — not for sale yet.
     if (tg && tg.MainButton) {
-      tg.MainButton.setText(valid ? "SUBMIT — GET 7-DAY TRIAL" : "FILL FORM TO SUBMIT");
+      tg.MainButton.setText(valid ? "SUBMIT — GET FREE LICENSE" : "FILL FORM TO SUBMIT");
       if (valid) tg.MainButton.enable(); else tg.MainButton.disable();
     }
     return { valid, ...v };
@@ -349,7 +348,7 @@
       if (!res.ok || !data.ok) throw new Error(data.error || "Submission failed");
 
       $("form-fields").classList.add("hidden");
-      showStatus("ok", `Trial license issued (${data.licenseId}). Check ${email} for your key and setup steps — you can close this terminal.`);
+      showStatus("ok", `Free license issued (${data.licenseId}). Check ${email} for your key and setup steps — you can close this terminal.`);
       applyLicenseBar({ email, tier: data.tier || "trial", expiresAt: data.expiresAt });
       if (tg) {
         if (tg.HapticFeedback && tg.HapticFeedback.notificationOccurred) tg.HapticFeedback.notificationOccurred("success");
@@ -360,7 +359,7 @@
       showStatus("err", message);
       btn.disabled = false;
       btn.classList.remove("loading");
-      btn.textContent = "SUBMIT — GET 7-DAY TRIAL";
+      btn.textContent = "SUBMIT — GET FREE LICENSE";
       if (tg) {
         if (tg.HapticFeedback && tg.HapticFeedback.notificationOccurred) tg.HapticFeedback.notificationOccurred("error");
         if (tg.MainButton) { tg.MainButton.hideProgress(); tg.MainButton.enable(); }

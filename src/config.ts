@@ -56,12 +56,19 @@ export const PAYMENTS_ENABLED = Boolean(
 );
 
 export const TIER_LIMITS = {
+  // The "trial" key is kept for backward compatibility with the DB and
+  // existing issued licenses — it now means "free tier", not a time-limited
+  // trial. durationDays is long (not infinite — the token format requires a
+  // real expiry) so free licenses effectively don't expire in practice;
+  // display copy calls this "FREE", never "TRIAL". Standard/Pro stay defined
+  // and dormant below for when paid tiers are actually turned on — removing
+  // them would throw away real, tested Stripe integration work for no reason.
   trial: {
     priceId: null as string | null,
     amountUsd: 0,
-    durationDays: 7,
-    features: ["paper", "tiered_tp"],
-    limits: { maxBuySol: 0.005, maxPositions: 3, maxTotalSol: 0.015 },
+    durationDays: 3650,
+    features: ["paper", "live", "tiered_tp", "trailing_stop", "webhook_alerts"],
+    limits: { maxBuySol: 0.02, maxPositions: 5, maxTotalSol: 0.1 },
   },
   standard: {
     priceId: CONFIG.STRIPE_STANDARD_PRICE_ID ?? null,

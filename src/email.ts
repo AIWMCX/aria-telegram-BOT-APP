@@ -52,16 +52,18 @@ export async function sendAdminLeadNotification(lead: Lead, leadId: number): Pro
 
 /** Sent to the customer with their signed license — trial or paid, same template. */
 export async function sendLicenseEmail(lead: Lead, license: IssuedLicense): Promise<boolean> {
-  const tierLabel = license.tier.toUpperCase();
+  // "trial" is the internal DB/license key for the (now permanently free)
+  // default tier — never show that word to users, who'd read it as time-limited.
+  const tierLabel = license.tier === "trial" ? "FREE" : license.tier.toUpperCase();
   const expiresDate = new Date(license.expiresAt).toISOString().slice(0, 10);
   const html = wrap(`
     <div style="padding:22px;border-bottom:1px solid #1f2630;">
       <div style="font-size:11px;letter-spacing:0.3em;color:#8a9199;text-transform:uppercase;">ARIA · LICENSE ISSUED</div>
-      <div style="font-size:22px;margin-top:6px;color:#b6ff3c;">${tierLabel} — active</div>
+      <div style="font-size:22px;margin-top:6px;color:#b6ff3c;">${tierLabel} — active, no fees</div>
     </div>
     <div style="padding:22px;line-height:1.6;font-size:14px;">
       <p>Hi ${escapeHtml(lead.name.split(" ")[0] ?? lead.name)},</p>
-      <p>Your ARIA ${tierLabel} license is ready. It expires <strong>${expiresDate}</strong> and is bound to wallet
+      <p>Your ARIA ${tierLabel} license is ready — full features, free, no pricing tiers. It expires <strong>${expiresDate}</strong> and is bound to wallet
         <code style="color:#8a9199;">${escapeHtml(lead.wallet.slice(0, 8))}…${escapeHtml(lead.wallet.slice(-4))}</code>.</p>
       <p style="margin-top:20px;color:#8a9199;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;">Your license key</p>
       <div style="background:#07090a;border:1px solid #2a3340;border-radius:2px;padding:14px;font-family:monospace;font-size:12px;word-break:break-all;color:#e7ecef;">
