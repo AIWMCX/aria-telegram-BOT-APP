@@ -22,6 +22,8 @@
     "test:engine-paper": "tsx engine/src/paper.test.ts && tsx engine/src/safety.test.ts",
     "test:engine-loop": "tsx engine/src/control-loop.test.ts",
     "test:frontend": "tsx test/frontend-reality.ts",
+    "test:real1-smoke": "tsx test/real1-smoke.ts",
+    "scan:real1": "tsx scripts/scan-real1-secrets.ts",
     "typecheck:engine": "tsc --noEmit -p engine/tsconfig.json",
     "test": "npm run test:reality && npm run test:backend"
   },

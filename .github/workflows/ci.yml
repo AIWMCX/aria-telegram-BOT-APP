@@ -24,4 +24,13 @@ jobs:
 
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run typecheck:engine
       - run: npm test
+      - run: npm run test:engine-config
+      - run: npm run test:engine-store
+      - run: npm run test:engine-api
+      - run: npm run test:engine-rpc
+      - run: npm run test:engine-paper
+      - run: npm run test:engine-loop
+      - run: npm run test:frontend
+      - run: npm run scan:real1

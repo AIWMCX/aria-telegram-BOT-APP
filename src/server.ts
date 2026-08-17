@@ -51,6 +51,12 @@ function requireEngineStore(c: any): EngineStore | null {
   if (!engineStore) { c.header("Cache-Control", "no-store"); return null; }
   return engineStore;
 }
+async function resolveEngineUser(initData: string) {
+  const verified = verifyInitData(initData);
+  if (!verified) return null;
+  if (!USERS_DOMAIN_ENABLED) return null;
+  return upsertUserFromTelegram({ id: verified.user.id, username: verified.user.username, first_name: verified.user.first_name, last_name: verified.user.last_name });
+}
 
 app.post("/api/engine/pairing", async (c) => {
   const initData = telegramInitData(c);
@@ -59,7 +65,9 @@ app.post("/api/engine/pairing", async (c) => {
   if (!verified) return c.json({ ok: false, error: "Telegram verification failed" }, 401);
   const store = requireEngineStore(c);
   if (!store) return c.json({ ok: false, error: "Engine service not yet available." }, 503);
-  const code = await store.createPairingCode(verified.user.id, new Date(Date.now() + 5 * 60_000));
+  let user; try { user = await resolveEngineUser(initData); } catch { user = null; }
+  if (!user) return c.json({ ok: false, error: "Account service not yet available." }, 503);
+  const code = await store.createPairingCode(user.id, new Date(Date.now() + 5 * 60_000));
   return c.json({ ok: true, pairingCode: code.code, expiresAt: code.expiresAt.toISOString() });
 });
 
@@ -118,7 +126,9 @@ app.get("/api/engine/devices", async (c) => {
   if (!initData) return c.json({ ok: false, error: "missing initData" }, 400);
   const verified = verifyInitData(initData); if (!verified) return c.json({ ok: false, error: "Telegram verification failed" }, 401);
   const store = requireEngineStore(c); if (!store) return c.json({ ok: false, error: "Engine service not yet available." }, 503);
-  return c.json({ ok: true, devices: await store.listDevices(verified.user.id) });
+  let user; try { user = await resolveEngineUser(initData); } catch { user = null; }
+  if (!user) return c.json({ ok: false, error: "Account service not yet available." }, 503);
+  return c.json({ ok: true, devices: await store.listDevices(user.id) });
 });
 
 app.get("/api/engine/dashboard", async (c) => {
@@ -126,7 +136,9 @@ app.get("/api/engine/dashboard", async (c) => {
   if (!initData) return c.json({ ok: false, error: "missing initData" }, 400);
   const verified = verifyInitData(initData); if (!verified) return c.json({ ok: false, error: "Telegram verification failed" }, 401);
   const store = requireEngineStore(c); if (!store) return c.json({ ok: false, error: "Engine service not yet available." }, 503);
-  return c.json({ ok: true, dashboard: await store.readDashboardState(verified.user.id) });
+  let user; try { user = await resolveEngineUser(initData); } catch { user = null; }
+  if (!user) return c.json({ ok: false, error: "Account service not yet available." }, 503);
+  return c.json({ ok: true, dashboard: await store.readDashboardState(user.id) });
 });
 
 app.post("/api/engine/commands", async (c) => {
@@ -134,10 +146,12 @@ app.post("/api/engine/commands", async (c) => {
   if (!initData) return c.json({ ok: false, error: "missing initData" }, 400);
   const verified = verifyInitData(initData); if (!verified) return c.json({ ok: false, error: "Telegram verification failed" }, 401);
   const store = requireEngineStore(c); if (!store) return c.json({ ok: false, error: "Engine service not yet available." }, 503);
+  let user; try { user = await resolveEngineUser(initData); } catch { user = null; }
+  if (!user) return c.json({ ok: false, error: "Account service not yet available." }, 503);
   let body: unknown; try { body = await c.req.json(); } catch { return c.json({ ok: false, error: "invalid JSON" }, 400); }
   const parsed = z.object({ deviceId: z.string().uuid(), command: EngineCommand }).strict().safeParse(body);
   if (!parsed.success) return c.json({ ok: false, error: "invalid engine command" }, 400);
-  await store.appendCommand(verified.user.id, parsed.data.deviceId, parsed.data.command);
+  await store.appendCommand(user.id, parsed.data.deviceId, parsed.data.command);
   return c.json({ ok: true, commandId: parsed.data.command.id });
 });
 
@@ -146,7 +160,9 @@ app.post("/api/engine/devices/:id/revoke", async (c) => {
   if (!initData) return c.json({ ok: false, error: "missing initData" }, 400);
   const verified = verifyInitData(initData); if (!verified) return c.json({ ok: false, error: "Telegram verification failed" }, 401);
   const store = requireEngineStore(c); if (!store) return c.json({ ok: false, error: "Engine service not yet available." }, 503);
-  const revoked = await store.revokeDevice(verified.user.id, c.req.param("id"));
+  let user; try { user = await resolveEngineUser(initData); } catch { user = null; }
+  if (!user) return c.json({ ok: false, error: "Account service not yet available." }, 503);
+  const revoked = await store.revokeDevice(user.id, c.req.param("id"));
   return revoked ? c.json({ ok: true }) : c.json({ ok: false, error: "device not found" }, 404);
 });
 
