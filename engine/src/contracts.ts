@@ -77,6 +77,7 @@ export const PaperEvent = z.object({
   paperOnly: z.literal(true),
 }).strict();
 export type PaperEvent = z.infer<typeof PaperEvent>;
+export type SanitizedEvent = PaperEvent;
 
 export const SanitizedHeartbeat = z.object({
   engineVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
