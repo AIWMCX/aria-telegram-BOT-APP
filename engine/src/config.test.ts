@@ -17,6 +17,7 @@ const config = loadEngineConfig(env);
 const redacted = redactEngineConfig(config);
 assert.equal(redacted.walletReference, "[LOCAL_ONLY]");
 assert.equal(redacted.license, "[REDACTED]");
+assert.equal(redacted.credentialFile, ".aria-engine-credential");
 assert.equal(JSON.stringify(redacted).includes("api.devnet.solana.com"), true);
 assert.equal(JSON.stringify(redacted).includes("ARIA1.payload.signature"), false);
 assert.throws(() => loadEngineConfig({ ...env, ARIA_ENGINE_MODE: "live" }));

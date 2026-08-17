@@ -70,4 +70,8 @@ variables or Telegram.
 
 The engine requires HTTPS values for `ARIA_ENGINE_API_URL` and
 `ARIA_ENGINE_RPC_URL`, a local `ARIA_ENGINE_WALLET_REF`, an ARIA licence, and
-`ARIA_ENGINE_MODE=paper`. Diagnostics redact the wallet reference and token.
+`ARIA_ENGINE_PUBLIC_ADDRESS`, and `ARIA_ENGINE_MODE=paper`. Diagnostics redact
+the wallet reference and token. Follow
+[`docs/REAL1_CUSTOMER_SETUP.md`](./docs/REAL1_CUSTOMER_SETUP.md) for pairing
+and [`docs/REAL1_OPERATOR_RUNBOOK.md`](./docs/REAL1_OPERATOR_RUNBOOK.md) for
+deployment and incident handling.

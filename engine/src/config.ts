@@ -9,6 +9,7 @@ const EngineEnvironment = z.object({
   ARIA_ENGINE_NETWORK: z.enum(["solana-devnet", "solana-mainnet"]).default("solana-devnet"),
   ARIA_ENGINE_MODE: z.literal("paper").default("paper"),
   ARIA_ENGINE_VERSION: z.string().regex(/^\d+\.\d+\.\d+$/).default("0.1.0"),
+  ARIA_ENGINE_CREDENTIAL_FILE: z.string().min(1).max(500).default(".aria-engine-credential"),
 }).strict();
 
 export type EngineConfig = z.infer<typeof EngineEnvironment>;
@@ -35,5 +36,6 @@ export function redactEngineConfig(config: EngineConfig): Record<string, string>
     network: config.ARIA_ENGINE_NETWORK,
     mode: config.ARIA_ENGINE_MODE,
     version: config.ARIA_ENGINE_VERSION,
+    credentialFile: config.ARIA_ENGINE_CREDENTIAL_FILE,
   };
 }

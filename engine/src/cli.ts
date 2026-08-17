@@ -4,6 +4,7 @@ import { SolanaRpc } from "./rpc.js";
 import { Engine } from "./engine.js";
 import { ControlLoop } from "./control-loop.js";
 import { AuthenticatedClient, exchangePairingCode } from "./authenticated-client.js";
+import { readFile, writeFile } from "node:fs/promises";
 
 function requiredArgument(name: string): string {
   const index = process.argv.indexOf(name);
@@ -19,6 +20,7 @@ async function main(): Promise<void> {
   const rpc = new SolanaRpc(config.ARIA_ENGINE_RPC_URL, config.ARIA_ENGINE_NETWORK);
   if (command === "pair") {
     const result = await exchangePairingCode(config.ARIA_ENGINE_API_URL, requiredArgument("--code"));
+    await writeFile(config.ARIA_ENGINE_CREDENTIAL_FILE, `${result.credential}\n`, { encoding: "utf8", mode: 0o600 });
     console.log(JSON.stringify({ paired: true, deviceId: result.deviceId }));
     return;
   }
@@ -31,7 +33,7 @@ async function main(): Promise<void> {
   const result = license();
   if (result.status !== "valid") throw new Error("licence is not valid");
   const engine = new Engine({ rpc, publicAddress: config.ARIA_ENGINE_PUBLIC_ADDRESS, strategy: { buyAmountSol: Math.min(result.limits.maxBuySol, 0.01), maxPositions: Math.min(result.limits.maxPositions, 1), maxSlippageBps: 200, stopLossPct: 20, takeProfit1Pct: 80, takeProfit2Pct: 200, trailingStopPct: 10, minimumLiquiditySol: 500, maximumTokenAgeSeconds: 300, safetyFilters: { requireRevokedAuthorities: true, requireSocials: true } }, license: () => license().status });
-  if (command === "start-paper") { await engine.start(); await new ControlLoop(new AuthenticatedClient(config.ARIA_ENGINE_API_URL, requiredArgument("--credential")), engine).run(); return; }
+  if (command === "start-paper") { const credential = process.argv.includes("--credential") ? requiredArgument("--credential") : (await readFile(config.ARIA_ENGINE_CREDENTIAL_FILE, "utf8")).trim(); await engine.start(); await new ControlLoop(new AuthenticatedClient(config.ARIA_ENGINE_API_URL, credential), engine).run(); return; }
   if (command === "stop") { await engine.stop(); return; }
   throw new Error("unknown command");
 }
