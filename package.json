@@ -14,6 +14,8 @@
     "keygen": "tsx scripts/generate-keys.ts",
     "test:reality": "tsx test/product-reality.ts",
     "test:backend": "tsx test/e2e.ts",
+    "test:engine-contract": "tsx engine/src/contracts.test.ts",
+    "typecheck:engine": "tsc --noEmit -p engine/tsconfig.json",
     "test": "npm run test:reality && npm run test:backend"
   },
   "dependencies": {
