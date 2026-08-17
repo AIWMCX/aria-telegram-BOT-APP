@@ -1,6 +1,8 @@
 (() => {
   "use strict";
+
   const $ = (id) => document.getElementById(id);
+  const realityLabels = () => Array.from(document.querySelectorAll("[data-reality-label]"));
 
   // ── Telegram WebApp init ───────────────────────────────────────────────
   const tg = window.Telegram && window.Telegram.WebApp;
@@ -11,18 +13,98 @@
       tg.setHeaderColor("#0a0c0d");
       tg.setBackgroundColor("#0a0c0d");
     } catch {
-      /* older Telegram clients may not support header/background color APIs */
+      // Older Telegram clients may not expose theme-color methods.
     }
   }
   const initData = (tg && tg.initData) || "";
   const isInTelegram = Boolean(initData);
 
-  // Mirrors src/config.ts TIER_LIMITS — used only to render the license bar
-  // client-side after a real signup response; never used for enforcement.
+  // ── Product reality ────────────────────────────────────────────────────
+  const SAFE_REALITY = Object.freeze({
+    environment: "production",
+    network: "offline",
+    dataMode: "unavailable",
+    executionMode: "disabled",
+    controlState: "stopped",
+    paymentsEnabled: false,
+  });
+
+  const VALID = Object.freeze({
+    environment: new Set(["production", "staging", "development"]),
+    network: new Set(["offline", "solana-devnet", "solana-mainnet"]),
+    dataMode: new Set(["unavailable", "simulated", "live"]),
+    executionMode: new Set(["disabled", "paper", "devnet", "mainnet"]),
+    controlState: new Set(["stopped", "starting", "running", "stopping"]),
+  });
+
+  function validateRealityPayload(payload) {
+    if (!payload || payload.ok !== true || !payload.reality || typeof payload.reality !== "object") return null;
+    const r = payload.reality;
+    if (!VALID.environment.has(r.environment)) return null;
+    if (!VALID.network.has(r.network)) return null;
+    if (!VALID.dataMode.has(r.dataMode)) return null;
+    if (!VALID.executionMode.has(r.executionMode)) return null;
+    if (!VALID.controlState.has(r.controlState)) return null;
+    if (typeof r.paymentsEnabled !== "boolean") return null;
+    return Object.freeze({
+      environment: r.environment,
+      network: r.network,
+      dataMode: r.dataMode,
+      executionMode: r.executionMode,
+      controlState: r.controlState,
+      paymentsEnabled: r.paymentsEnabled,
+    });
+  }
+
+  const NETWORK_LABEL = Object.freeze({
+    offline: "OFFLINE",
+    "solana-devnet": "SOLANA DEVNET",
+    "solana-mainnet": "SOLANA MAINNET",
+  });
+  const DATA_LABEL = Object.freeze({ unavailable: "UNAVAILABLE", simulated: "SIMULATED", live: "LIVE DATA" });
+  const EXECUTION_LABEL = Object.freeze({
+    disabled: "EXECUTION DISABLED",
+    paper: "PAPER EXECUTION",
+    devnet: "DEVNET EXECUTION",
+    mainnet: "MAINNET EXECUTION",
+  });
+
+  function setRealityClass(el, reality) {
+    el.classList.remove("unavailable", "live");
+    if (reality.dataMode === "unavailable") el.classList.add("unavailable");
+    if (reality.dataMode === "live") el.classList.add("live");
+  }
+
+  function renderProductReality(reality) {
+    $("data-mode").textContent = DATA_LABEL[reality.dataMode];
+    $("network-mode").textContent = NETWORK_LABEL[reality.network];
+    $("execution-mode").textContent = EXECUTION_LABEL[reality.executionMode];
+    $("control-state").textContent = reality.controlState.toUpperCase();
+
+    const disclosure = reality.dataMode === "simulated"
+      ? "SIMULATED - NO REAL FUNDS"
+      : reality.dataMode === "live"
+        ? "LIVE DATA"
+        : "UNAVAILABLE - NO REAL FUNDS";
+    const banner = reality.dataMode === "simulated"
+      ? `${disclosure} - ${EXECUTION_LABEL[reality.executionMode]}`
+      : reality.dataMode === "live"
+        ? `${disclosure} - ${EXECUTION_LABEL[reality.executionMode]} - ${NETWORK_LABEL[reality.network]}`
+        : `UNAVAILABLE - ${EXECUTION_LABEL[reality.executionMode]} - NO REAL FUNDS`;
+
+    $("reality-banner").textContent = banner;
+    setRealityClass($("reality-banner"), reality);
+    for (const label of realityLabels()) {
+      label.textContent = disclosure;
+      setRealityClass(label, reality);
+    }
+  }
+
+  // ── License bar ────────────────────────────────────────────────────────
   const TIER_LIMITS = {
-    trial:    { label: "FREE",     buy: "0.02 SOL",  pos: "5",  total: "0.1 SOL" },
-    standard: { label: "STANDARD", buy: "0.01 SOL",  pos: "5",  total: "0.05 SOL" },
-    pro:      { label: "PRO",      buy: "0.05 SOL",  pos: "10", total: "0.5 SOL" },
+    trial: { label: "FREE", buy: "0.02 SOL", pos: "5", total: "0.1 SOL" },
+    standard: { label: "STANDARD", buy: "0.01 SOL", pos: "5", total: "0.05 SOL" },
+    pro: { label: "PRO", buy: "0.05 SOL", pos: "10", total: "0.5 SOL" },
   };
 
   function applyLicenseBar({ email, tier, expiresAt }) {
@@ -52,7 +134,7 @@
     return Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m";
   };
 
-  // ── State ──────────────────────────────────────────────────────────────
+  // ── Synthetic demo state ───────────────────────────────────────────────
   const startedAt = Date.now();
   const stats = {
     detected: 0, tooOld: 0, capacityFull: 0,
@@ -62,8 +144,8 @@
   };
   let positions = [];
   let eventCount = 0;
+  let simulationStarted = false;
 
-  // ── Demo-data generators — everything below is simulated for illustration ──
   const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
   const randMint = () => Array.from({ length: 44 }, () => B58[Math.floor(Math.random() * B58.length)]).join("");
   const SYMBOLS = [
@@ -85,24 +167,13 @@
     $("s-traded").textContent = `${stats.queued} · ${stats.bought}`;
     const blocked = stats.blockedSafety + stats.blockedSocial + stats.tooOld + stats.capacityFull;
     $("s-blocked").textContent = blocked + " blocked / filtered";
-    const latEl = $("s-latency");
-    latEl.textContent = "";
-    latEl.append(stats.avgLatencyMs ? String(Math.round(stats.avgLatencyMs)) : "—");
-    const unit = document.createElement("span");
-    unit.style.fontSize = "14px";
-    unit.style.color = "var(--ink-mute)";
-    unit.textContent = " ms";
-    latEl.append(unit);
-
+    $("s-latency").textContent = stats.avgLatencyMs ? Math.round(stats.avgLatencyMs) + " ms" : "—";
     const pnl = stats.paperPnlSol;
-    const pnlEl = $("s-pnl");
-    pnlEl.textContent = fmtSol(pnl);
-    pnlEl.className = "num big " + (pnl > 0 ? "acid" : pnl < 0 ? "red" : "");
+    $("s-pnl").textContent = fmtSol(pnl);
+    $("s-pnl").className = "num big " + (pnl > 0 ? "acid" : pnl < 0 ? "red" : "");
     $("s-pnl-pct").textContent = stats.bought > 0 ? `${stats.sold} closed / ${stats.openPositions} open` : "—";
-
     const upSec = Math.floor((Date.now() - startedAt) / 1000);
-    $("uptime").textContent = "UPTIME " + fmtUptime(upSec);
-
+    $("s-detected-rate").textContent = (stats.detected / Math.max(upSec / 3600, 0.0167)).toFixed(1) + " / hr";
     $("f-detected").textContent = String(stats.detected);
     $("f-tooOld").textContent = String(stats.tooOld);
     $("f-safety").textContent = String(stats.blockedSafety);
@@ -110,9 +181,6 @@
     $("f-queued").textContent = String(stats.queued);
     $("f-bought").textContent = String(stats.bought);
     $("f-sold").textContent = String(stats.sold);
-
-    const hrs = Math.max(upSec / 3600, 0.0167);
-    $("s-detected-rate").textContent = (stats.detected / hrs).toFixed(1) + " / hr";
   }
 
   function applyPositions() {
@@ -123,7 +191,7 @@
       tr.className = "empty";
       const td = document.createElement("td");
       td.colSpan = 5;
-      td.textContent = "no open positions";
+      td.textContent = "no simulated open positions";
       tr.append(td);
       tbody.append(tr);
       $("pos-count").textContent = "0 / 3";
@@ -152,25 +220,50 @@
     $("pos-count").textContent = `${positions.length} / 3`;
   }
 
+  function renderGeneratedDataUnavailable() {
+    positions = [];
+    eventCount = 0;
+    $("s-detected").textContent = "—";
+    $("s-detected-rate").textContent = "unavailable";
+    $("s-traded").textContent = "—";
+    $("s-blocked").textContent = "unavailable";
+    $("s-latency").textContent = "—";
+    $("s-pnl").textContent = "—";
+    $("s-pnl").className = "num big";
+    $("s-pnl-pct").textContent = "unavailable";
+    for (const id of ["f-detected", "f-tooOld", "f-safety", "f-social", "f-queued", "f-bought", "f-sold"]) $(id).textContent = "—";
+    $("feed").textContent = "";
+    $("feed-count").textContent = "0 events";
+    const tbody = $("pos-body");
+    tbody.textContent = "";
+    const tr = document.createElement("tr");
+    tr.className = "empty";
+    const td = document.createElement("td");
+    td.colSpan = 5;
+    td.textContent = "position data unavailable";
+    tr.append(td);
+    tbody.append(tr);
+    $("pos-count").textContent = "—";
+  }
+
   function appendEvent(ev) {
     eventCount++;
     $("feed-count").textContent = eventCount + " events";
     const feed = $("feed");
-    const t = fmtTime(ev.ts);
     let msg = "";
     switch (ev.kind) {
-      case "detected": msg = `${ev.source.padEnd(7)} ${ev.mint.slice(0, 8)}…  lat ${ev.latencyMs}ms`; break;
-      case "safety": msg = `${ev.mint.slice(0, 8)}…  ${ev.safe ? "✓ pass" : "✗ " + ev.reason}`; break;
-      case "social": msg = `${ev.mint.slice(0, 8)}…  ${ev.passed ? "✓ " + ev.symbol : "✗ " + ev.reason}`; break;
-      case "queued": msg = `→ buy queue: ${ev.symbol}`; break;
-      case "buy": msg = `DEMO BUY  ${ev.symbol}  ${ev.sizeSol.toFixed(4)} SOL`; break;
-      case "sell": msg = `DEMO SELL ${ev.symbol}  ${fmtSol(ev.pnlSol)} (${fmtPct(ev.pnlPct)})  via ${ev.reason}`; break;
-      case "rejected": msg = `${ev.mint.slice(0, 8)}…  [${ev.stage}] ${ev.reason}`; break;
-      default: msg = "";
+      case "detected": msg = `${ev.source.padEnd(7)} ${ev.mint.slice(0, 8)}… lat ${ev.latencyMs}ms`; break;
+      case "safety": msg = `${ev.mint.slice(0, 8)}… ${ev.safe ? "pass" : ev.reason}`; break;
+      case "social": msg = `${ev.mint.slice(0, 8)}… ${ev.passed ? ev.symbol : ev.reason}`; break;
+      case "queued": msg = `SIMULATED queue: ${ev.symbol}`; break;
+      case "buy": msg = `SIMULATED BUY ${ev.symbol} ${ev.sizeSol.toFixed(4)} SOL`; break;
+      case "sell": msg = `SIMULATED SELL ${ev.symbol} ${fmtSol(ev.pnlSol)} (${fmtPct(ev.pnlPct)}) via ${ev.reason}`; break;
+      case "rejected": msg = `${ev.mint.slice(0, 8)}… [${ev.stage}] ${ev.reason}`; break;
+      default: return;
     }
     const div = document.createElement("div");
     div.className = "ev " + ev.kind;
-    const tSpan = document.createElement("span"); tSpan.className = "t"; tSpan.textContent = t;
+    const tSpan = document.createElement("span"); tSpan.className = "t"; tSpan.textContent = fmtTime(ev.ts);
     const kSpan = document.createElement("span"); kSpan.className = "k"; kSpan.textContent = ev.kind;
     const mSpan = document.createElement("span"); mSpan.className = "m"; mSpan.textContent = msg;
     div.append(tSpan, kSpan, mSpan);
@@ -179,7 +272,6 @@
     feed.scrollTop = feed.scrollHeight;
   }
 
-  // ── Simulation loop — demo dashboard only, no network calls, no real trades ──
   function simulateDetection() {
     const ts = Date.now();
     const mint = randMint();
@@ -200,7 +292,6 @@
         return;
       }
       appendEvent({ kind: "safety", ts: Date.now(), mint, safe: true });
-
       if (Math.random() < 0.5) {
         const reason = REJECT_SOCIAL[Math.floor(Math.random() * REJECT_SOCIAL.length)];
         stats.blockedSocial++;
@@ -211,21 +302,18 @@
       }
       const symbol = randSymbol();
       appendEvent({ kind: "social", ts: Date.now(), mint, passed: true, symbol });
-
       if (positions.length >= 3) {
         stats.capacityFull++;
-        appendEvent({ kind: "rejected", ts: Date.now(), mint, stage: "capacity", reason: "3/3 positions open" });
+        appendEvent({ kind: "rejected", ts: Date.now(), mint, stage: "capacity", reason: "3/3 simulated positions open" });
         applyStats();
         return;
       }
       stats.queued++;
       appendEvent({ kind: "queued", ts: Date.now(), symbol, mint });
-
       setTimeout(() => {
         const sizeSol = 0.005 + Math.random() * 0.005;
         stats.bought++;
-        const pos = { mint, symbol, entrySol: sizeSol, openedAt: Date.now(), pnlSol: 0, pnlPct: 0 };
-        positions.push(pos);
+        positions.push({ mint, symbol, entrySol: sizeSol, openedAt: Date.now(), pnlSol: 0, pnlPct: 0 });
         stats.openPositions = positions.length;
         appendEvent({ kind: "buy", ts: Date.now(), symbol, mint, sizeSol });
         applyStats();
@@ -241,9 +329,7 @@
       p.pnlSol = p.entrySol * (p.pnlPct / 100);
     }
     const ageMs = (p) => Date.now() - p.openedAt;
-    const closing = positions.filter(
-      (p) => p.pnlPct >= 200 || p.pnlPct <= -25 || (p.pnlPct >= 80 && Math.random() < 0.2) || (ageMs(p) > 90_000 && Math.random() < 0.1),
-    );
+    const closing = positions.filter((p) => p.pnlPct >= 200 || p.pnlPct <= -25 || (p.pnlPct >= 80 && Math.random() < 0.2) || (ageMs(p) > 90_000 && Math.random() < 0.1));
     for (const p of closing) {
       let reason = "TP1";
       if (p.pnlPct >= 200) reason = "TP2";
@@ -259,15 +345,46 @@
     applyPositions();
   }
 
+  function scheduleDetect() {
+    simulateDetection();
+    setTimeout(scheduleDetect, 1500 + Math.random() * 2500);
+  }
+
+  function startSimulation() {
+    if (simulationStarted) return;
+    simulationStarted = true;
+    applyStats();
+    applyPositions();
+    setTimeout(scheduleDetect, 800);
+    setInterval(simulatePositionTick, 1500);
+  }
+
+  async function loadProductReality() {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    try {
+      const res = await fetch("/api/product-reality", { signal: controller.signal, headers: { Accept: "application/json" } });
+      if (!res.ok) throw new Error("product reality unavailable");
+      const parsed = validateRealityPayload(await res.json());
+      if (!parsed) throw new Error("invalid product reality response");
+      renderProductReality(parsed);
+      if (parsed.dataMode === "simulated") startSimulation();
+      else renderGeneratedDataUnavailable();
+    } catch {
+      renderProductReality(SAFE_REALITY);
+      renderGeneratedDataUnavailable();
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  // Clock is cosmetic and independent of operational truth state.
   setInterval(() => { $("clock").textContent = new Date().toTimeString().slice(0, 8); }, 1000);
-  function scheduleDetect() { simulateDetection(); setTimeout(scheduleDetect, 1500 + Math.random() * 2500); }
-  setTimeout(scheduleDetect, 800);
-  setInterval(simulatePositionTick, 1500);
+  renderProductReality(SAFE_REALITY);
+  renderGeneratedDataUnavailable();
+  void loadProductReality();
 
-  applyStats();
-  applyPositions();
-
-  // ── Form validation ──────────────────────────────────────────────────
+  // ── Form validation ────────────────────────────────────────────────────
   const SOLANA_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -285,7 +402,6 @@
     const v = formValues();
     const valid = v.name.length >= 2 && EMAIL_RE.test(v.email) && SOLANA_RE.test(v.wallet);
     $("submit-btn").disabled = !valid;
-    // btn-standard / btn-pro stay permanently disabled — not for sale yet.
     if (tg && tg.MainButton) {
       tg.MainButton.setText(valid ? "SUBMIT — GET FREE LICENSE" : "FILL FORM TO SUBMIT");
       if (valid) tg.MainButton.enable(); else tg.MainButton.disable();
@@ -296,8 +412,15 @@
   function showFieldErr(id, show) {
     const field = $("field-" + id);
     const input = $("i-" + id);
-    if (show) { field.classList.add("show-err"); input.classList.add("invalid"); input.setAttribute("aria-invalid", "true"); }
-    else { field.classList.remove("show-err"); input.classList.remove("invalid"); input.removeAttribute("aria-invalid"); }
+    if (show) {
+      field.classList.add("show-err");
+      input.classList.add("invalid");
+      input.setAttribute("aria-invalid", "true");
+    } else {
+      field.classList.remove("show-err");
+      input.classList.remove("invalid");
+      input.removeAttribute("aria-invalid");
+    }
   }
 
   ["name", "email", "wallet", "interest"].forEach((id) => {
@@ -319,13 +442,15 @@
     s.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  // ── Trial submit — POST /api/submit, issues a real license instantly ────
   let submitInFlight = false;
   async function submitTrial() {
     if (submitInFlight) return;
     const { valid, name, email, wallet, interest, website } = validate();
     if (!valid) return;
-    if (!isInTelegram) { showStatus("err", "Please open this terminal from inside the Telegram bot to submit a request."); return; }
+    if (!isInTelegram) {
+      showStatus("err", "Please open this terminal from inside the Telegram bot to submit a request.");
+      return;
+    }
 
     submitInFlight = true;
     const btn = $("submit-btn");
@@ -336,7 +461,6 @@
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
-
     try {
       const res = await fetch("/api/submit", {
         method: "POST",
@@ -346,7 +470,6 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data.error || "Submission failed");
-
       $("form-fields").classList.add("hidden");
       showStatus("ok", `Free license issued (${data.licenseId}). Check ${email} for your key and setup steps — you can close this terminal.`);
       applyLicenseBar({ email, tier: data.tier || "trial", expiresAt: data.expiresAt });
@@ -370,7 +493,6 @@
     }
   }
 
-  // ── Paid checkout — POST /api/checkout, redirects to Stripe ─────────────
   async function checkout(tier) {
     if (!isInTelegram) { showStatus("err", "Please open this terminal from inside the Telegram bot to purchase."); return; }
     const { valid, name, email, wallet } = validate();
@@ -398,13 +520,14 @@
       btn.textContent = originalText;
     }
   }
+
   $("btn-standard").addEventListener("click", () => checkout("standard"));
   $("btn-pro").addEventListener("click", () => checkout("pro"));
   $("btn-trial").addEventListener("click", () => $("request-form").scrollIntoView({ behavior: "smooth" }));
   $("btn-trial").disabled = false;
   $("btn-trial").textContent = "SCROLL TO FORM ↓";
-
   $("submit-btn").addEventListener("click", submitTrial);
+  $("cta-strip").addEventListener("click", () => $("pricing").scrollIntoView({ behavior: "smooth" }));
 
   if (tg && tg.MainButton) {
     tg.MainButton.setText("FILL FORM TO SUBMIT");
@@ -420,18 +543,9 @@
   }
 
   if (!isInTelegram) {
-    setTimeout(() => { showStatus("err", "⚠ Open this terminal from inside the Telegram bot to submit your request."); }, 500);
+    setTimeout(() => { showStatus("err", "Open this terminal from inside the Telegram bot to submit your request."); }, 500);
   }
 
-  $("cta-strip").addEventListener("click", () => $("pricing").scrollIntoView({ behavior: "smooth" }));
-
-  // ── Existing-license panel: controls wired once at startup, independent of
-  // whether restoreAccount() ever finds a license. restoreAccount() only
-  // ever populates values and toggles visibility — it never attaches
-  // listeners. This is the fix for the exact ambiguity a review flagged:
-  // manually re-attaching a copy of this logic in a browser console tests
-  // a reconstruction, not the shipped handler. Wiring it once, unconditionally,
-  // at startup means there's only ever one real implementation to test.
   function initExistingLicensePanelControls() {
     $("el-reveal-btn").addEventListener("click", () => {
       $("el-token").style.filter = "none";
@@ -444,14 +558,12 @@
       try {
         await navigator.clipboard.writeText(token);
       } catch {
-        // Clipboard API may be unavailable in some Telegram WebView versions —
-        // fall back to select + execCommand, which works in more contexts.
         $("el-token").removeAttribute("readonly");
         $("el-token").select();
         try { document.execCommand("copy"); } catch { /* best effort */ }
         $("el-token").setAttribute("readonly", "true");
       }
-      $("el-copy-btn").textContent = "COPIED ✓";
+      $("el-copy-btn").textContent = "COPIED";
       setTimeout(() => { $("el-copy-btn").textContent = "COPY KEY"; }, 2000);
       if (tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred) tg.HapticFeedback.notificationOccurred("success");
     });
@@ -468,25 +580,17 @@
     if (tg && tg.MainButton) tg.MainButton.hide();
   }
 
-  // ── Returning-user account restore — GET /api/me ─────────────────────────
-  // Runs once on load. A returning user with an active license sees it
-  // immediately instead of an empty "NO LICENSE YET" bar and a form asking
-  // them to sign up again. Fails silently (stays on the default new-user
-  // view) on any error — this is a convenience restore, not a login gate.
   async function restoreAccount() {
     if (!isInTelegram) return;
-    let data;
     try {
       const res = await fetch("/api/me", { headers: { "X-Init-Data": initData } });
-      data = await res.json();
-      if (!res.ok || !data.ok) return;
+      const data = await res.json();
+      if (!res.ok || !data.ok || !data.license) return;
+      showExistingLicense(data.license, data.email);
     } catch {
-      return;
+      // Account restore is convenience behavior, not an auth gate.
     }
-    if (!data.license) return; // new user, or account exists but license expired — show the normal form
-    showExistingLicense(data.license, data.email);
   }
-  restoreAccount();
-
+  void restoreAccount();
   validate();
 })();
