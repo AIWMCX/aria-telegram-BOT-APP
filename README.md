@@ -59,3 +59,15 @@ claude
 
 Claude Code will read `CLAUDE.md` automatically on start — that's the
 context file, keep it updated as you build.
+
+## REAL-1 local paper engine
+
+REAL-1 adds a non-custodial local engine in `engine/`. It is paper-only: it
+reads the Solana network and a public wallet balance, but it never signs or
+broadcasts transactions. The wallet reference, RPC credential, and licence
+token stay on the customer's computer. Do not put any of them in Railway
+variables or Telegram.
+
+The engine requires HTTPS values for `ARIA_ENGINE_API_URL` and
+`ARIA_ENGINE_RPC_URL`, a local `ARIA_ENGINE_WALLET_REF`, an ARIA licence, and
+`ARIA_ENGINE_MODE=paper`. Diagnostics redact the wallet reference and token.
