@@ -187,3 +187,8 @@ footer { padding: 14px 18px; border-top: 1px solid var(--line); color: var(--ink
 footer strong { color: var(--amber); letter-spacing: 0.08em; }
 
 .hidden { display: none !important; }
+
+.reality-banner { margin: 10px 14px 0; padding: 10px 12px; border: 1px solid var(--amber); color: var(--amber); font-size: 11px; letter-spacing: .12em; text-align: center; }
+.engine-controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.engine-controls .plan-btn { margin: 0; }
+.mono { overflow: hidden; text-overflow: ellipsis; }
