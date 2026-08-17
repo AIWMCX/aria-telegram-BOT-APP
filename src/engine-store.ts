@@ -6,7 +6,7 @@ import { pgPool } from "./db-pg.js";
 export interface PoolLike { query<T extends QueryResultRow = any>(text: string, values?: unknown[]): Promise<{ rows: T[]; rowCount: number | null }>; }
 export interface PairingCode { id: string; code: string; expiresAt: Date; }
 export interface Device { id: string; userId: number; status: "active" | "revoked"; createdAt: string; lastSeenAt: string | null; }
-export interface NewCommand { id: string; type: EngineCommand["type"]; payload: unknown; issuedAt: string; expiresAt: string; }
+export interface NewCommand { id: string; type: EngineCommand["type"]; payload?: unknown; issuedAt: string; expiresAt: string; }
 
 function requirePool(pool: PoolLike | null = pgPool): PoolLike {
   if (!pool) throw new Error("DATABASE_URL not configured — engine control storage is unavailable");
@@ -85,7 +85,7 @@ export class EngineStore {
   }
 
   async appendCommand(userId: number, deviceId: string, command: NewCommand): Promise<void> {
-    const result = await this.pool.query(`INSERT INTO engine_commands (id, user_id, device_id, type, payload, issued_at, expires_at) SELECT $1, $2, id, $3, $4::jsonb, $5, $6 FROM engine_devices WHERE id = $7 AND user_id = $2 AND status = 'active'`, [command.id, userId, command.type, JSON.stringify(command.payload), command.issuedAt, command.expiresAt, deviceId]);
+    const result = await this.pool.query(`INSERT INTO engine_commands (id, user_id, device_id, type, payload, issued_at, expires_at) SELECT $1, $2, id, $3, $4::jsonb, $5, $6 FROM engine_devices WHERE id = $7 AND user_id = $2 AND status = 'active'`, [command.id, userId, command.type, JSON.stringify(command.payload ?? null), command.issuedAt, command.expiresAt, deviceId]);
     if (result.rowCount !== 1) throw new Error("device unavailable");
   }
 
@@ -104,6 +104,11 @@ export class EngineStore {
     for (const event of events) await this.pool.query(`INSERT INTO engine_events (device_id, user_id, event_id, event, occurred_at) SELECT id, user_id, $2, $3::jsonb, $4 FROM engine_devices WHERE id = $1 AND status = 'active' ON CONFLICT (device_id, event_id) DO NOTHING`, [deviceId, event.id, JSON.stringify(event), event.occurredAt]);
   }
 
+  async consumeNonce(deviceId: string, nonce: string, expiresAt: Date): Promise<boolean> {
+    const result = await this.pool.query(`INSERT INTO engine_request_nonces (device_id, nonce, expires_at) VALUES ($1, $2, $3) ON CONFLICT (device_id, nonce) DO NOTHING`, [deviceId, nonce, expiresAt]);
+    return result.rowCount === 1;
+  }
+
   async readDashboardState(userId: number): Promise<{ state: EngineState; events: SanitizedEvent[] } | null> {
     const state = await this.pool.query<{ state: EngineState }>(`SELECT state FROM engine_states WHERE user_id = $1 ORDER BY reported_at DESC LIMIT 1`, [userId]);
     if (state.rows.length === 0) return null;
@@ -112,4 +117,6 @@ export class EngineStore {
   }
 }
 
-export const engineStore = pgPool ? new EngineStore(pgPool, process.env.ARIA_ENGINE_CREDENTIAL_PEPPER ?? "") : null;
+export const engineStore = pgPool && process.env.ARIA_ENGINE_CREDENTIAL_PEPPER
+  ? new EngineStore(pgPool, process.env.ARIA_ENGINE_CREDENTIAL_PEPPER)
+  : null;

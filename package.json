@@ -17,6 +17,7 @@
     "test:engine-contract": "tsx engine/src/contracts.test.ts",
     "test:engine-config": "tsx engine/src/config.test.ts",
     "test:engine-store": "tsx test/engine-store.ts",
+    "test:engine-api": "tsx test/engine-api.ts",
     "typecheck:engine": "tsc --noEmit -p engine/tsconfig.json",
     "test": "npm run test:reality && npm run test:backend"
   },

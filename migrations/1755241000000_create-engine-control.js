@@ -57,9 +57,18 @@ exports.up = (pgm) => {
   });
   pgm.createIndex("engine_events", ["device_id", "event_id"], { unique: true });
   pgm.createIndex("engine_events", ["user_id", "occurred_at"]);
+
+  pgm.createTable("engine_request_nonces", {
+    device_id: { type: "text", notNull: true, references: "engine_devices", onDelete: "CASCADE" },
+    nonce: { type: "text", notNull: true },
+    expires_at: { type: "timestamptz", notNull: true },
+  });
+  pgm.addConstraint("engine_request_nonces", "engine_request_nonces_pk", { primaryKey: ["device_id", "nonce"] });
+  pgm.createIndex("engine_request_nonces", "expires_at");
 };
 
 exports.down = (pgm) => {
+  pgm.dropTable("engine_request_nonces");
   pgm.dropTable("engine_events");
   pgm.dropTable("engine_states");
   pgm.dropTable("engine_commands");

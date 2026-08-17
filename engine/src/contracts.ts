@@ -63,7 +63,7 @@ export const EngineCommand = z.object({
   type: z.enum(["start_paper", "stop", "update_strategy"]),
   issuedAt: z.string().datetime({ offset: true }),
   expiresAt: z.string().datetime({ offset: true }),
-  payload: z.unknown(),
+  payload: z.any(),
 }).strict();
 export type EngineCommand = z.infer<typeof EngineCommand>;
 

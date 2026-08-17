@@ -11,6 +11,9 @@ import { notifyAdminOfLicense, notifyCustomerLicenseIssued } from "./bot.js";
 import { issueLicense, getActiveLicenseForLead } from "./licenses.js";
 import { createCheckoutSession, handleStripeWebhook } from "./stripe.js";
 import { upsertUserFromTelegram } from "./users.js";
+import { EngineStore, engineStore } from "./engine-store.js";
+import { authenticateEngineRequest } from "./engine-auth.js";
+import { EngineCommand, SanitizedHeartbeat, PaperEvent } from "../engine/src/contracts.js";
 
 export const app = new Hono();
 
@@ -42,6 +45,99 @@ app.get("/healthz", (c) =>
 app.get("/api/product-reality", (c) =>
   c.json({ ok: true, reality: PRODUCT_REALITY }),
 );
+
+function telegramInitData(c: any): string | null { return c.req.header("x-init-data") ?? null; }
+function requireEngineStore(c: any): EngineStore | null {
+  if (!engineStore) { c.header("Cache-Control", "no-store"); return null; }
+  return engineStore;
+}
+
+app.post("/api/engine/pairing", async (c) => {
+  const initData = telegramInitData(c);
+  if (!initData) return c.json({ ok: false, error: "missing initData" }, 400);
+  const verified = verifyInitData(initData);
+  if (!verified) return c.json({ ok: false, error: "Telegram verification failed" }, 401);
+  const store = requireEngineStore(c);
+  if (!store) return c.json({ ok: false, error: "Engine service not yet available." }, 503);
+  const code = await store.createPairingCode(verified.user.id, new Date(Date.now() + 5 * 60_000));
+  return c.json({ ok: true, pairingCode: code.code, expiresAt: code.expiresAt.toISOString() });
+});
+
+app.post("/api/engine/pairing/exchange", async (c) => {
+  const store = requireEngineStore(c);
+  if (!store) return c.json({ ok: false, error: "Engine service not yet available." }, 503);
+  let body: unknown; try { body = await c.req.json(); } catch { return c.json({ ok: false, error: "invalid JSON" }, 400); }
+  const parsed = z.object({ code: z.string().min(16).max(256) }).safeParse(body);
+  if (!parsed.success) return c.json({ ok: false, error: "invalid pairing code" }, 400);
+  const result = await store.exchangePairingCode(parsed.data.code);
+  if (!result) return c.json({ ok: false, error: "invalid or expired pairing code" }, 401);
+  return c.json({ ok: true, deviceId: result.deviceId, credential: result.credential });
+});
+
+app.post("/api/engine/heartbeat", async (c) => {
+  const raw = await c.req.text();
+  const auth = await authenticateEngineRequest(c.req.raw.headers, "POST", "/api/engine/heartbeat", raw);
+  if (!auth) return c.json({ ok: false, error: "engine authentication failed" }, 401);
+  let body: unknown; try { body = JSON.parse(raw); } catch { return c.json({ ok: false, error: "invalid JSON" }, 400); }
+  const parsed = SanitizedHeartbeat.safeParse(body);
+  if (!parsed.success) return c.json({ ok: false, error: "invalid heartbeat" }, 400);
+  await engineStore!.recordHeartbeat(auth.device.id, parsed.data);
+  return c.json({ ok: true });
+});
+
+app.post("/api/engine/events", async (c) => {
+  const raw = await c.req.text();
+  const auth = await authenticateEngineRequest(c.req.raw.headers, "POST", "/api/engine/events", raw);
+  if (!auth) return c.json({ ok: false, error: "engine authentication failed" }, 401);
+  let body: unknown; try { body = JSON.parse(raw); } catch { return c.json({ ok: false, error: "invalid JSON" }, 400); }
+  const parsed = z.object({ events: z.array(PaperEvent).max(100) }).strict().safeParse(body);
+  if (!parsed.success) return c.json({ ok: false, error: "invalid engine events" }, 400);
+  await engineStore!.appendEngineEvents(auth.device.id, parsed.data.events);
+  return c.json({ ok: true });
+});
+
+app.get("/api/engine/commands", async (c) => {
+  const auth = await authenticateEngineRequest(c.req.raw.headers, "GET", "/api/engine/commands", "");
+  if (!auth) return c.json({ ok: false, error: "engine authentication failed" }, 401);
+  return c.json({ ok: true, commands: await engineStore!.readPendingCommands(auth.device.id) });
+});
+
+app.get("/api/engine/devices", async (c) => {
+  const initData = telegramInitData(c);
+  if (!initData) return c.json({ ok: false, error: "missing initData" }, 400);
+  const verified = verifyInitData(initData); if (!verified) return c.json({ ok: false, error: "Telegram verification failed" }, 401);
+  const store = requireEngineStore(c); if (!store) return c.json({ ok: false, error: "Engine service not yet available." }, 503);
+  return c.json({ ok: true, devices: await store.listDevices(verified.user.id) });
+});
+
+app.get("/api/engine/dashboard", async (c) => {
+  const initData = telegramInitData(c);
+  if (!initData) return c.json({ ok: false, error: "missing initData" }, 400);
+  const verified = verifyInitData(initData); if (!verified) return c.json({ ok: false, error: "Telegram verification failed" }, 401);
+  const store = requireEngineStore(c); if (!store) return c.json({ ok: false, error: "Engine service not yet available." }, 503);
+  return c.json({ ok: true, dashboard: await store.readDashboardState(verified.user.id) });
+});
+
+app.post("/api/engine/commands", async (c) => {
+  const initData = telegramInitData(c);
+  if (!initData) return c.json({ ok: false, error: "missing initData" }, 400);
+  const verified = verifyInitData(initData); if (!verified) return c.json({ ok: false, error: "Telegram verification failed" }, 401);
+  const store = requireEngineStore(c); if (!store) return c.json({ ok: false, error: "Engine service not yet available." }, 503);
+  let body: unknown; try { body = await c.req.json(); } catch { return c.json({ ok: false, error: "invalid JSON" }, 400); }
+  const parsed = z.object({ deviceId: z.string().uuid(), command: EngineCommand }).strict().safeParse(body);
+  if (!parsed.success) return c.json({ ok: false, error: "invalid engine command" }, 400);
+  await store.appendCommand(verified.user.id, parsed.data.deviceId, parsed.data.command);
+  return c.json({ ok: true, commandId: parsed.data.command.id });
+});
+
+app.post("/api/engine/devices/:id/revoke", async (c) => {
+  const initData = telegramInitData(c);
+  if (!initData) return c.json({ ok: false, error: "missing initData" }, 400);
+  const verified = verifyInitData(initData); if (!verified) return c.json({ ok: false, error: "Telegram verification failed" }, 401);
+  const store = requireEngineStore(c); if (!store) return c.json({ ok: false, error: "Engine service not yet available." }, 503);
+  const revoked = await store.revokeDevice(verified.user.id, c.req.param("id"));
+  return revoked ? c.json({ ok: true }) : c.json({ ok: false, error: "device not found" }, 404);
+});
 
 /**
  * Returning-user account restore. Verifies Telegram initData (sent as a
