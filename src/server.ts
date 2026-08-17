@@ -10,7 +10,6 @@ import { sendAdminLeadNotification, sendLicenseEmail } from "./email.js";
 import { notifyAdminOfLicense, notifyCustomerLicenseIssued } from "./bot.js";
 import { issueLicense, getActiveLicenseForLead } from "./licenses.js";
 import { createCheckoutSession, handleStripeWebhook } from "./stripe.js";
-import { getOrderById } from "./orders.js";
 import { upsertUserFromTelegram } from "./users.js";
 
 export const app = new Hono();
@@ -231,17 +230,14 @@ app.post("/api/webhook/stripe", async (c) => {
   }
 });
 
-/** Post-checkout landing — looks up the order, returns license info once issued. */
-app.get("/api/license-by-order/:orderId", (c) => {
-  const orderId = c.req.param("orderId");
-  const order = getOrderById(orderId);
-  if (!order) return c.json({ ok: false, error: "order not found" }, 404);
-  if (order.status !== "paid") return c.json({ ok: true, status: order.status });
-
-  const license = getActiveLicenseForLead(order.lead_id);
-  if (!license) return c.json({ ok: true, status: "paid", license: null });
-  return c.json({ ok: true, status: "paid", license });
-});
+/**
+ * Retired legacy post-checkout lookup. An order ID is not an authentication
+ * capability, so this route must never disclose order or license data.
+ * Returning users recover licenses through Telegram-authenticated `/api/me`.
+ */
+app.get("/api/license-by-order/:orderId", (c) =>
+  c.json({ ok: false, error: "endpoint retired; use authenticated /api/me" }, 410),
+);
 
 app.use("/*", serveStatic({ root: "./public" }));
 app.get("*", serveStatic({ path: "./public/index.html" }));

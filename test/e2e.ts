@@ -31,7 +31,7 @@ process.env.LOG_LEVEL = "error";
 const { app } = await import("../src/server.js");
 const { CONFIG } = await import("../src/config.js");
 const { totalLeads } = await import("../src/leads.js");
-const { getActiveLicenseForLead } = await import("../src/licenses.js");
+const { getActiveLicenseForLead, issueLicense } = await import("../src/licenses.js");
 
 function buildInitData(user: object): string {
   const authDate = Math.floor(Date.now() / 1000);
@@ -114,6 +114,23 @@ async function main() {
     body: JSON.stringify({ initData: validInitData, name: "Test User", email: "t@example.com", wallet: TEST_WALLET, tier: "standard" }),
   });
   check("checkout without Stripe configured → 503, not a crash", rCheckout.status === 503);
+
+  // The legacy post-checkout order lookup previously accepted only a
+  // client-supplied order ID and returned the full paid license token. Order
+  // IDs are not authentication capabilities. The endpoint is retired: paid
+  // license recovery remains available only through Telegram-authenticated
+  // /api/me.
+  const { createOrder, markOrderPaid } = await import("../src/orders.js");
+  const { getLeadById } = await import("../src/leads.js");
+  const paidOrderId = createOrder(1, "standard", 29);
+  markOrderPaid(paidOrderId);
+  const paidLead = getLeadById(1);
+  if (!paidLead?.id) throw new Error("test setup failed: lead 1 missing");
+  const paidLicense = issueLicense({ ...paidLead, id: paidLead.id }, "standard", paidOrderId);
+  const rLegacyOrderLookup = await app.request(`/api/license-by-order/${paidOrderId}`);
+  const legacyOrderBody = await rLegacyOrderLookup.text();
+  check("legacy order lookup → 410 and never discloses a paid license token",
+    rLegacyOrderLookup.status === 410 && !legacyOrderBody.includes(paidLicense.token));
 
   // ── /api/me — returning-user account restore (P0.2) ─────────────────────
 
