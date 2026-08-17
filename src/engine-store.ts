@@ -94,6 +94,11 @@ export class EngineStore {
     return result.rows;
   }
 
+  async acknowledgeCommand(deviceId: string, commandId: string, accepted: boolean): Promise<boolean> {
+    const result = await this.pool.query(`UPDATE engine_commands SET status = 'acknowledged', acknowledged_at = now() WHERE id = $1 AND device_id = $2 AND status = 'pending'`, [commandId, deviceId]);
+    return result.rowCount === 1;
+  }
+
   async recordHeartbeat(deviceId: string, heartbeat: SanitizedHeartbeat): Promise<void> {
     const result = await this.pool.query(`WITH device AS (UPDATE engine_devices SET last_seen_at = now() WHERE id = $1 AND status = 'active' RETURNING id, user_id) INSERT INTO engine_states (device_id, user_id, state, reported_at) SELECT id, user_id, $2::jsonb, now() FROM device ON CONFLICT (device_id) DO UPDATE SET state = excluded.state, reported_at = excluded.reported_at`, [deviceId, JSON.stringify(heartbeat.state)]);
     if (result.rowCount !== 1) throw new Error("device unavailable");

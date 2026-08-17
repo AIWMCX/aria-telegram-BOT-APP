@@ -7,6 +7,7 @@ const env = {
   ARIA_ENGINE_API_URL: "https://aria.example.com",
   ARIA_ENGINE_RPC_URL: "https://api.devnet.solana.com",
   ARIA_ENGINE_WALLET_REF: "os-keystore://aria/default",
+  ARIA_ENGINE_PUBLIC_ADDRESS: "So11111111111111111111111111111111111111112",
   ARIA_ENGINE_LICENSE: "ARIA1.payload.signature",
   ARIA_ENGINE_NETWORK: "solana-devnet",
   ARIA_ENGINE_MODE: "paper",

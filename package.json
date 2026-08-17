@@ -20,6 +20,7 @@
     "test:engine-api": "tsx test/engine-api.ts",
     "test:engine-rpc": "tsx engine/src/rpc.test.ts",
     "test:engine-paper": "tsx engine/src/paper.test.ts && tsx engine/src/safety.test.ts",
+    "test:engine-loop": "tsx engine/src/control-loop.test.ts",
     "typecheck:engine": "tsc --noEmit -p engine/tsconfig.json",
     "test": "npm run test:reality && npm run test:backend"
   },

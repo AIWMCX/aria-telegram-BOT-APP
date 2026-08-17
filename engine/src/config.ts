@@ -4,6 +4,7 @@ const EngineEnvironment = z.object({
   ARIA_ENGINE_API_URL: z.string().url().refine((value) => new URL(value).protocol === "https:", "engine API must use HTTPS"),
   ARIA_ENGINE_RPC_URL: z.string().url().refine((value) => new URL(value).protocol === "https:", "RPC URL must use HTTPS"),
   ARIA_ENGINE_WALLET_REF: z.string().min(1).max(500),
+  ARIA_ENGINE_PUBLIC_ADDRESS: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/),
   ARIA_ENGINE_LICENSE: z.string().startsWith("ARIA1.").max(10_000),
   ARIA_ENGINE_NETWORK: z.enum(["solana-devnet", "solana-mainnet"]).default("solana-devnet"),
   ARIA_ENGINE_MODE: z.literal("paper").default("paper"),

@@ -102,6 +102,17 @@ app.get("/api/engine/commands", async (c) => {
   return c.json({ ok: true, commands: await engineStore!.readPendingCommands(auth.device.id) });
 });
 
+app.post("/api/engine/commands/:id/ack", async (c) => {
+  const raw = await c.req.text();
+  const auth = await authenticateEngineRequest(c.req.raw.headers, "POST", `/api/engine/commands/${c.req.param("id")}/ack`, raw);
+  if (!auth) return c.json({ ok: false, error: "engine authentication failed" }, 401);
+  let body: unknown; try { body = JSON.parse(raw); } catch { return c.json({ ok: false, error: "invalid JSON" }, 400); }
+  const parsed = z.object({ accepted: z.boolean(), reason: z.string().max(200).optional() }).strict().safeParse(body);
+  if (!parsed.success) return c.json({ ok: false, error: "invalid command acknowledgement" }, 400);
+  const acknowledged = await engineStore!.acknowledgeCommand(auth.device.id, c.req.param("id"), parsed.data.accepted);
+  return acknowledged ? c.json({ ok: true }) : c.json({ ok: false, error: "command not pending" }, 409);
+});
+
 app.get("/api/engine/devices", async (c) => {
   const initData = telegramInitData(c);
   if (!initData) return c.json({ ok: false, error: "missing initData" }, 400);
