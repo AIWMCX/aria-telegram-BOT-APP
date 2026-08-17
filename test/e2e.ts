@@ -1,7 +1,7 @@
 /**
  * Self-contained end-to-end test. Sets its own env vars (no .env needed),
  * uses a throwaway SQLite file, and exercises the real Hono `app` object
- * in-process вЂ” no network binding, no external calls that would need
+ * in-process — no network binding, no external calls that would need
  * network access (Resend/Telegram calls are fire-and-forget and fail
  * safely by design; we assert on the HTTP response, not on delivery).
  *
@@ -48,7 +48,7 @@ function buildInitData(user: object): string {
 const TEST_WALLET = "So11111111111111111111111111111111111111112";
 let failures = 0;
 function check(name: string, condition: boolean) {
-  console.log(condition ? `вњ… ${name}` : `вќЊ ${name}`);
+  console.log(condition ? `✅ ${name}` : `❌ ${name}`);
   if (!condition) failures++;
 }
 
@@ -57,7 +57,7 @@ async function main() {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ initData: "x", name: "Test User", email: "t@example.com", wallet: TEST_WALLET }),
   });
-  check("malformed initData в†’ 400 (schema layer)", r1a.status === 400);
+  check("malformed initData → 400 (schema layer)", r1a.status === 400);
 
   const forged = "user=" + encodeURIComponent(JSON.stringify({ id: 1, first_name: "Attacker" })) +
     "&auth_date=" + Math.floor(Date.now() / 1000) + "&hash=" + "0".repeat(64);
@@ -65,7 +65,7 @@ async function main() {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ initData: forged, name: "Test User", email: "t@example.com", wallet: TEST_WALLET }),
   });
-  check("forged initData в†’ 401 (HMAC layer)", r1b.status === 401);
+  check("forged initData → 401 (HMAC layer)", r1b.status === 401);
 
   const validInitData = buildInitData({ id: 987654321, first_name: "Bogdan", username: "bogdan_test" });
   const r2 = await app.request("/api/submit", {
@@ -73,7 +73,7 @@ async function main() {
     body: JSON.stringify({ initData: validInitData, name: "Bogdan Jeltov", email: "bogdan@example.com", wallet: TEST_WALLET, interest: "test" }),
   });
   const body2 = (await r2.json()) as { ok: boolean };
-  check("valid signed request в†’ 200 + license issued", r2.status === 200 && body2.ok === true);
+  check("valid signed request → 200 + license issued", r2.status === 200 && body2.ok === true);
 
   const license = getActiveLicenseForLead(1);
   if (license) {
@@ -102,7 +102,7 @@ async function main() {
     });
     lastStatus = r.status;
   }
-  check("4th submission within an hour в†’ 429 rate limited", lastStatus === 429);
+  check("4th submission within an hour → 429 rate limited", lastStatus === 429);
 
   const rh = await app.request("/healthz");
   const health = (await rh.json()) as { ok: boolean; paymentsEnabled: boolean };
@@ -113,7 +113,7 @@ async function main() {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ initData: validInitData, name: "Test User", email: "t@example.com", wallet: TEST_WALLET, tier: "standard" }),
   });
-  check("checkout without Stripe configured в†’ 503, not a crash", rCheckout.status === 503);
+  check("checkout without Stripe configured → 503, not a crash", rCheckout.status === 503);
 
   // The legacy post-checkout order lookup previously accepted only a
   // client-supplied order ID and returned the full paid license token. Order
@@ -126,30 +126,30 @@ async function main() {
   markOrderPaid(paidOrderId);
   const paidLead = getLeadById(1);
   if (!paidLead?.id) throw new Error("test setup failed: lead 1 missing");
-  const paidLicense = issueLicense(paidLead, "standard", paidOrderId);
+  const paidLicense = issueLicense({ ...paidLead, id: paidLead.id }, "standard", paidOrderId);
   const rLegacyOrderLookup = await app.request(`/api/license-by-order/${paidOrderId}`);
   const legacyOrderBody = await rLegacyOrderLookup.text();
-  check("legacy order lookup в†’ 410 and never discloses a paid license token",
+  check("legacy order lookup → 410 and never discloses a paid license token",
     rLegacyOrderLookup.status === 410 && !legacyOrderBody.includes(paidLicense.token));
 
-  // в”Ђв”Ђ /api/me вЂ” returning-user account restore (P0.2) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+  // ── /api/me — returning-user account restore (P0.2) ─────────────────────
 
   const rMeMissing = await app.request("/api/me");
-  check("/api/me with no initData header в†’ 400", rMeMissing.status === 400);
+  check("/api/me with no initData header → 400", rMeMissing.status === 400);
 
   const rMeForged = await app.request("/api/me", { headers: { "x-init-data": forged } });
-  check("/api/me with forged initData в†’ 401", rMeForged.status === 401);
+  check("/api/me with forged initData → 401", rMeForged.status === 401);
 
   const brandNewUserInitData = buildInitData({ id: 424242424, first_name: "NeverSignedUp" });
   const rMeNew = await app.request("/api/me", { headers: { "x-init-data": brandNewUserInitData } });
   const bodyMeNew = (await rMeNew.json()) as { ok: boolean; hasAccount: boolean; license: unknown };
-  check("/api/me for a brand-new Telegram user в†’ 200, hasAccount:false, license:null",
+  check("/api/me for a brand-new Telegram user → 200, hasAccount:false, license:null",
     rMeNew.status === 200 && bodyMeNew.ok === true && bodyMeNew.hasAccount === false && bodyMeNew.license === null);
 
   // Bogdan (id 987654321) already has an active license from the earlier /api/submit call.
   const rMeReturning = await app.request("/api/me", { headers: { "x-init-data": validInitData } });
   const bodyMeReturning = (await rMeReturning.json()) as { ok: boolean; hasAccount: boolean; license: { id: string; token: string; tier: string } | null };
-  check("/api/me for a returning user with an active license в†’ returns the real license, not NO LICENSE YET",
+  check("/api/me for a returning user with an active license → returns the real license, not NO LICENSE YET",
     rMeReturning.status === 200 && bodyMeReturning.hasAccount === true &&
     bodyMeReturning.license !== null && bodyMeReturning.license.token.startsWith("ARIA1.") &&
     bodyMeReturning.license.tier === "trial");
@@ -185,38 +185,38 @@ async function main() {
     `SELECT revoked FROM licenses WHERE lead_id IN (SELECT id FROM leads WHERE tg_user_id = ?)`,
   ).all(dupUser.id) as { revoked: number }[];
   const dupActiveCount = dupLicenses.filter((l) => l.revoked === 0).length;
-  check("same Telegram user signing up with 2 different emails в†’ only 1 active license, not 2",
+  check("same Telegram user signing up with 2 different emails → only 1 active license, not 2",
     dupActiveCount === 1);
   const rMeDup = await app.request("/api/me", { headers: { "x-init-data": dupInitData2 } });
   const bodyMeDup = (await rMeDup.json()) as { license: { token: string } | null };
   check("/api/me for the duplicate-signup user returns the newest (still-active) license",
     bodyMeDup.license !== null && bodyMeDup.license.token.length > 0);
 
-  // в”Ђв”Ђ /api/auth/telegram вЂ” real users domain (FREE-1) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+  // ── /api/auth/telegram — real users domain (FREE-1) ─────────────────────
   // No DATABASE_URL in this test environment (matches CI), so the only
   // honest thing to assert here is graceful degradation, not real Postgres
-  // behavior вЂ” that needs a real Postgres instance, which this suite
+  // behavior — that needs a real Postgres instance, which this suite
   // intentionally does not stand up. See docs/ARIA_FUNDS_ARCHITECTURE_V1.md.
 
   const rAuthNoDb = await app.request("/api/auth/telegram", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ initData: validInitData }),
   });
-  check("/api/auth/telegram with no DATABASE_URL configured в†’ 503, not a crash", rAuthNoDb.status === 503);
+  check("/api/auth/telegram with no DATABASE_URL configured → 503, not a crash", rAuthNoDb.status === 503);
 
   const rAuthForged = await app.request("/api/auth/telegram", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ initData: forged }),
   });
-  check("/api/auth/telegram with forged initData в†’ 401 (checked before the DB call)", rAuthForged.status === 401);
+  check("/api/auth/telegram with forged initData → 401 (checked before the DB call)", rAuthForged.status === 401);
 
   const rAuthBadBody = await app.request("/api/auth/telegram", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
   });
-  check("/api/auth/telegram with missing initData в†’ 400", rAuthBadBody.status === 400);
+  check("/api/auth/telegram with missing initData → 400", rAuthBadBody.status === 400);
 
-  // в”Ђв”Ђ Ledger invariant вЂ” pure function, no Postgres needed, runs in CI в”Ђв”Ђв”Ђв”Ђ
+  // ── Ledger invariant — pure function, no Postgres needed, runs in CI ────
   const { validateBalancedPostings } = await import("../src/ledger.js");
   try {
     validateBalancedPostings([
@@ -243,9 +243,9 @@ async function main() {
     check("a journal entry with fewer than 2 postings is rejected", true);
   }
 
-  console.log(`\n${failures === 0 ? "вњ… ALL TESTS PASSED" : `вќЊ ${failures} TEST(S) FAILED`} вЂ” ${totalLeads()} leads in throwaway test DB`);
+  console.log(`\n${failures === 0 ? "✅ ALL TESTS PASSED" : `❌ ${failures} TEST(S) FAILED`} — ${totalLeads()} leads in throwaway test DB`);
 
-  // Close the handle before deleting вЂ” node:sqlite (unlike better-sqlite3)
+  // Close the handle before deleting — node:sqlite (unlike better-sqlite3)
   // can leave the file locked on Windows if you rm while it's still open.
   const { db } = await import("../src/db.js");
   db.close();
@@ -256,4 +256,3 @@ async function main() {
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
-
