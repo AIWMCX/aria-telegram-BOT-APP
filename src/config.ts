@@ -48,6 +48,7 @@ const Env = z.object({
   // string is truthy), so setting this to "false" would silently never
   // turn it off. Exact string match instead.
   RUN_LEDGER_SELFTEST: z.string().optional().transform((v) => v === "true"),
+  ARIA_ENGINE_CREDENTIAL_PEPPER: z.string().min(32).optional(),
 });
 
 const parsed = Env.safeParse(process.env);
