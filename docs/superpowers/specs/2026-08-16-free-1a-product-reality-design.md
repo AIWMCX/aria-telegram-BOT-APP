@@ -1,8 +1,8 @@
 # FREE-1A Product Reality Contract Design
 
 **Status:** Owner-approved design, pending implementation plan  
-**Phase:** FREE-1 вЂ” Real Telegram account and application shell  
-**Bounded increment:** FREE-1A вЂ” truthful product-state presentation  
+**Phase:** FREE-1 - Real Telegram account and application shell  
+**Bounded increment:** FREE-1A - truthful product-state presentation  
 **Accepted architecture:** `docs/ARIA_FUNDS_ARCHITECTURE_V1.md` v1.1 (`DELEGATED_VENDOR`)  
 **Design baseline:** `main` at `f36b6c788cf8050ae48ec0e7700269b4d5d2a388`
 
@@ -26,15 +26,15 @@ The current deployment must resolve to simulated data, disabled execution, and s
 
 ## 3. Approaches considered
 
-### A. Backend-owned reality contract with existing UI вЂ” selected
+### A. Backend-owned reality contract with existing UI - selected
 
 Add a typed server-owned state contract and make the shipped UI render only from it. This creates one auditable trust boundary, preserves the recognizable interface, and supports later phases without another presentation rewrite.
 
-### B. Frontend-only copy correction вЂ” rejected
+### B. Frontend-only copy correction - rejected
 
 Changing labels in `public/app.js` would address today's screenshots but would leave the frontend able to claim a stronger mode than the backend. It would not establish an invariant for future RPC, wallet, or execution integrations.
 
-### C. Full shell redesign вЂ” deferred
+### C. Full shell redesign - deferred
 
 A redesign could improve navigation but expands scope before identity and real account state exist. FREE-1A changes truth semantics only; FREE-1C owns navigation and shell restructuring.
 
@@ -113,7 +113,7 @@ If the request fails, times out, returns non-JSON, or violates the contract, the
 - `STOPPED`;
 - no generated positions, PnL, purchase counts, or event stream.
 
-For `dataMode: "simulated"`, generated dashboard blocks may remain for demonstration, but each relevant block receives a persistent, visible `SIMULATED вЂ” NO REAL FUNDS` label. The word `LIVE` is absent. вЂњBoughtвЂќ, вЂњSoldвЂќ, вЂњOpen positionsвЂќ, and PnL are prefixed or grouped under the simulation label so they cannot be interpreted as account activity.
+For `dataMode: "simulated"`, generated dashboard blocks may remain for demonstration, but each relevant block receives a persistent, visible `SIMULATED - NO REAL FUNDS` label. The word `LIVE` is absent. `Bought`, `Sold`, `Open positions`, and PnL are prefixed or grouped under the simulation label so they cannot be interpreted as account activity.
 
 For `dataMode: "unavailable"`, simulated generators do not start and operational metrics display an explicit unavailable/empty state.
 
@@ -164,7 +164,7 @@ Implementation uses red-green-refactor.
 
 ### Shipped frontend tests
 
-- Simulated mode contains a persistent `SIMULATED вЂ” NO REAL FUNDS` disclosure and contains no standalone `LIVE` claim.
+- Simulated mode contains a persistent `SIMULATED - NO REAL FUNDS` disclosure and contains no standalone `LIVE` claim.
 - Unavailable mode does not start or render generated positions, PnL, purchase counts, or events.
 - A failed or malformed API response renders unavailable/disabled/stopped.
 - Execution-disabled mode cannot render mainnet execution language.
@@ -209,7 +209,7 @@ FREE-1A is complete only when all conditions hold for one exact deployed SHA:
 
 1. The backend owns and publishes a validated product-reality contract.
 2. Production reports `offline/simulated/disabled/stopped` until real integrations exist.
-3. Every generated operational block is permanently labeled `SIMULATED вЂ” NO REAL FUNDS`.
+3. Every generated operational block is permanently labeled `SIMULATED - NO REAL FUNDS`.
 4. Failed state retrieval displays unavailable/disabled/stopped and no generated activity.
 5. The production UI contains no contradictory `LIVE` or live-mainnet execution claim.
 6. Targeted tests, full tests, typecheck, exact-SHA CI, Railway deployment, health, and runtime endpoint checks pass.
