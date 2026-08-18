@@ -50,6 +50,11 @@ src/
   leads.ts            Lead upsert/lookup, rate-limit check
   license-signer.ts   Ed25519 sign/token format — the crypto core, keep this file small and boring
   licenses.ts         Issues + revokes licenses, ties signer to DB + tier config
+  engine-entitlement-signer.ts  ARIAE1 token issuer for the ARIA engine product (separate keypair from
+                       license-signer.ts — see ARIA_ENTITLEMENT_PRIVATE_D/_X in .env.example). The only
+                       file allowed to hold that private key.
+  engine-entitlements.ts        Postgres storage for engine entitlements (trial/active/expired/revoked) —
+                       storage only, never signs anything itself
   orders.ts           Stripe order tracking (pending → paid → refunded)
   subscriptions.ts    Stripe subscription state mirror
   telegram-auth.ts    initData HMAC verification — DO NOT weaken this
@@ -74,6 +79,12 @@ public/
 - [x] Audit log on every mutation
 - [x] Admin bot commands: `/stats`, `/revoke <license_id>`
 - [x] Zero TypeScript errors, verified with `npx tsc --noEmit` (re-verify after this reconstruction — see note below)
+- [x] ARIA engine (separate product, `AIWMCX/aria-engine`) Telegram `/pair` flow + ARIAE1 entitlement
+      issuance at `/api/engine/pair` (commit `c7e7f1c`, CI green) — the engine consumes and offline-verifies
+      the token, including a real `aria paper start` enforcement gate (`aria-engine` commits `651b098`,
+      `146ff2e`). Revocation before natural 7-day expiry is NOT yet enforced (needs the sync-protocol
+      upgrade below); this is otherwise the ARIA engine's full commercial entitlement loop, separate from
+      this repo's original license/Stripe product above.
 
 ## Reconstruction note (read this first)
 
