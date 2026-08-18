@@ -86,10 +86,16 @@ export async function ackCommand(commandId: string, clientId: string, status: Ex
     return { applied: false, reason: `command is already ${existing.status}, refusing to regress to ${status}` };
   }
 
+  // $3 is cast explicitly — used both as the status column assignment
+  // (engine_command_status enum) and inside the CASE comparison, and
+  // Postgres's parameter-type inference can't reconcile those two
+  // contexts on its own ("inconsistent types deduced for parameter $3",
+  // caught by engine-sync-selftest.ts's real-Postgres run). Casting once
+  // resolves it for both usages.
   await pool.query(
-    `UPDATE engine_commands SET status = $3, detail = $4,
+    `UPDATE engine_commands SET status = $3::engine_command_status, detail = $4,
        acknowledged_at = COALESCE(acknowledged_at, now()),
-       completed_at = CASE WHEN $3 IN ('completed','failed') THEN now() ELSE completed_at END
+       completed_at = CASE WHEN $3::engine_command_status IN ('completed','failed') THEN now() ELSE completed_at END
      WHERE id = $1 AND client_id = $2`,
     [commandId, clientId, status, detail ?? null],
   );
