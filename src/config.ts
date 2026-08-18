@@ -56,6 +56,19 @@ const Env = z.object({
   // ── Engine auth self-test (temporary, manual — see
   // src/engine-auth-selftest.ts). Same exact-string-match gate.
   RUN_ENGINE_AUTH_SELFTEST: z.string().optional().transform((v) => v === "true"),
+
+  // ── ARIAE1 entitlement signing (optional — gates real entitlement
+  // issuance; without it, pairing still works but returns no entitlement
+  // token). A DIFFERENT keypair from ARIA_LICENSE_PRIVATE_D/PUBLIC_X above
+  // — that one signs the legacy product's license tokens, this one signs
+  // aria-engine's ARIAE1 tokens. Never share these across the two token
+  // formats, even though both are Ed25519/JWK "x" — different signing
+  // domains should never share a key. The private half must never leave
+  // this service; aria-engine only ever holds the public half, baked in
+  // as a constant, matching the ARIA_LICENSE_PUBLIC_X pattern already
+  // used for the legacy product's client-side verifier.
+  ARIA_ENTITLEMENT_PRIVATE_D: z.string().optional(),
+  ARIA_ENTITLEMENT_PUBLIC_X: z.string().optional(),
 });
 
 const parsed = Env.safeParse(process.env);
@@ -81,6 +94,9 @@ export const PAYMENTS_ENABLED = Boolean(
 
 /** True once DATABASE_URL is present — gates the new users/wallet-accounts domain endpoints. */
 export const USERS_DOMAIN_ENABLED = Boolean(CONFIG.DATABASE_URL);
+
+/** True once the ARIAE1 signing keypair is configured — gates real entitlement issuance at pairing time. */
+export const ENTITLEMENT_ISSUANCE_ENABLED = Boolean(CONFIG.ARIA_ENTITLEMENT_PRIVATE_D && CONFIG.ARIA_ENTITLEMENT_PUBLIC_X);
 
 export const TIER_LIMITS = {
   // The "trial" key is kept for backward compatibility with the DB and

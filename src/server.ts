@@ -2,7 +2,8 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { z } from "zod";
-import { CONFIG, PAYMENTS_ENABLED, USERS_DOMAIN_ENABLED } from "./config.js";
+import { randomUUID } from "node:crypto";
+import { CONFIG, PAYMENTS_ENABLED, USERS_DOMAIN_ENABLED, ENTITLEMENT_ISSUANCE_ENABLED } from "./config.js";
 import { logger } from "./logger.js";
 import { verifyInitData } from "./telegram-auth.js";
 import { upsertLead, recentSubmissionsByUser, totalLeads, getLatestLeadByTgUser } from "./leads.js";
@@ -13,6 +14,8 @@ import { createCheckoutSession, handleStripeWebhook } from "./stripe.js";
 import { upsertUserFromTelegram } from "./users.js";
 import { createPairingCode, consumePairingCode } from "./engine-pairing.js";
 import { registerClient, getClientById, atomicAdvanceSequence } from "./engine-clients.js";
+import { getOrCreateTrialEntitlement } from "./engine-entitlements.js";
+import { issueReal1BetaEntitlementToken, REAL1_BETA_DURATION_SECONDS } from "./engine-entitlement-signer.js";
 import { canonicalSyncMessage, verifyDeviceSignature, isTimestampWithinReplayWindow, type SyncPayload } from "./device-auth.js";
 
 export const app = new Hono();
@@ -204,7 +207,29 @@ app.post("/api/engine/pair", async (c) => {
       platform: parsed.data.platform,
       engineVersion: parsed.data.engineVersion,
     });
-    return c.json({ ok: true, clientId: client.id, pairedAt: client.paired_at });
+
+    // REAL-1 Task 8 — issue the device's initial signed ARIAE1 entitlement
+    // in the same call, so a paired device can immediately verify it has
+    // real (not assumed) paper-trading access. Failure here does NOT fail
+    // pairing itself — a paired-but-unentitled device is a real, valid
+    // state (e.g. entitlement issuance briefly misconfigured); the device
+    // is still registered either way.
+    let entitlementToken: string | undefined;
+    if (ENTITLEMENT_ISSUANCE_ENABLED) {
+      try {
+        await getOrCreateTrialEntitlement({
+          userId: consumed.userId,
+          durationSeconds: REAL1_BETA_DURATION_SECONDS,
+          maxPaperBuyLamports: 5_000_000n,
+          maxPaperPositions: 3,
+        });
+        entitlementToken = issueReal1BetaEntitlementToken(client.id, randomUUID()).token;
+      } catch (err: any) {
+        logger.error({ err }, "entitlement issuance failed during pairing — device is still paired");
+      }
+    }
+
+    return c.json({ ok: true, clientId: client.id, pairedAt: client.paired_at, entitlementToken });
   } catch (err: any) {
     // A duplicate device_public_key (unique constraint) surfaces here as a
     // generic DB error — treated as a conflict, not a 500, since it's a

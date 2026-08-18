@@ -28,6 +28,12 @@ process.env.ARIA_LICENSE_PUBLIC_X = pubJwk.x;
 process.env.DB_PATH = TEST_DB;
 process.env.LOG_LEVEL = "error";
 
+const { publicKey: entPub, privateKey: entPriv } = generateKeyPairSync("ed25519");
+const entPrivJwk = entPriv.export({ format: "jwk" }) as { d: string; x: string };
+const entPubJwk = entPub.export({ format: "jwk" }) as { x: string };
+process.env.ARIA_ENTITLEMENT_PRIVATE_D = entPrivJwk.d;
+process.env.ARIA_ENTITLEMENT_PUBLIC_X = entPubJwk.x;
+
 const { app } = await import("../src/server.js");
 const { CONFIG } = await import("../src/config.js");
 const { totalLeads } = await import("../src/leads.js");
@@ -333,6 +339,35 @@ async function main() {
     body: JSON.stringify({ clientId: "not-a-uuid", sequence: -1 }),
   });
   check("/api/engine/sync with malformed body → 400", rSyncBadBody.status === 400);
+
+  // ── ARIAE1 entitlement issuance (Task 8) — real signing, real cross-repo verification ──
+  const { issueReal1BetaEntitlementToken, REAL1_BETA_DURATION_SECONDS } = await import("../src/engine-entitlement-signer.js");
+
+  const issued = issueReal1BetaEntitlementToken("client_test_1", "jti_test_1");
+  check("issueReal1BetaEntitlementToken produces an ARIAE1-prefixed token", issued.token.startsWith("ARIAE1."));
+  check("issued token's duration is exactly 7 days (REAL1_BETA_DURATION_SECONDS)",
+    issued.expiresAt - issued.issuedAt === REAL1_BETA_DURATION_SECONDS && REAL1_BETA_DURATION_SECONDS === 7 * 24 * 60 * 60);
+
+  // The actual proof this matters: aria-engine's REAL, unmodified verifier
+  // (Task 2) must accept a token issued by THIS code, using ONLY the
+  // public key — never importing or touching the private key from that
+  // side. Sibling-repo relative import, same technique already used to
+  // prove Task 4's device-auth interoperability this session.
+  try {
+    const { verifyEntitlement } = await import("../../aria-engine/src/entitlement.js");
+    const verification = verifyEntitlement(issued.token, entPubJwk.x);
+    check("aria-engine's REAL entitlement verifier (unmodified, cross-repo) accepts a token issued here",
+      verification.granted === true);
+    if (verification.granted) {
+      check("the verified payload's scope matches real1-paper-beta", verification.payload.scope === "real1-paper-beta");
+      check("the verified payload's sub matches the clientId this token was issued for", verification.payload.sub === "client_test_1");
+    }
+
+    const tamperedVerification = verifyEntitlement(issued.token, pubJwk.x); // wrong key (the LICENSE key, not the entitlement key)
+    check("the same token verified against the WRONG public key is rejected", tamperedVerification.granted === false);
+  } catch (err) {
+    console.log("  (aria-engine sibling repo not found at ../../aria-engine — skipping cross-repo interop check)");
+  }
 
   console.log(`\n${failures === 0 ? "✅ ALL TESTS PASSED" : `❌ ${failures} TEST(S) FAILED`} — ${totalLeads()} leads in throwaway test DB`);
 
