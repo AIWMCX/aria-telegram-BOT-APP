@@ -14,9 +14,12 @@ import { createCheckoutSession, handleStripeWebhook } from "./stripe.js";
 import { upsertUserFromTelegram } from "./users.js";
 import { createPairingCode, consumePairingCode } from "./engine-pairing.js";
 import { registerClient, getClientById, atomicAdvanceSequence } from "./engine-clients.js";
-import { getOrCreateTrialEntitlement } from "./engine-entitlements.js";
+import { getOrCreateTrialEntitlement, getEntitlementForUser } from "./engine-entitlements.js";
 import { issueReal1BetaEntitlementToken, REAL1_BETA_DURATION_SECONDS } from "./engine-entitlement-signer.js";
 import { canonicalSyncMessage, verifyDeviceSignature, isTimestampWithinReplayWindow, type SyncPayload } from "./device-auth.js";
+import { recordSnapshot } from "./engine-snapshots.js";
+import { recordEventBatch } from "./engine-events.js";
+import { getPendingCommands, ackCommand } from "./engine-commands.js";
 
 export const app = new Hono();
 
@@ -246,6 +249,16 @@ app.post("/api/engine/pair", async (c) => {
  * engine_commands) — this endpoint exists to prove the auth+replay
  * mechanism itself works end-to-end before anything is built on top of it.
  */
+const SYNC_PAYLOAD_SCHEMA = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("heartbeat") }),
+  z.object({ kind: z.literal("snapshot"), snapshot: z.unknown() }),
+  z.object({ kind: z.literal("event_batch"), events: z.array(z.object({
+    eventType: z.string().min(1), occurredAt: z.string().min(1), payload: z.unknown(),
+  })) }),
+  z.object({ kind: z.literal("command_ack"), commandId: z.string().uuid(), status: z.enum(["acknowledged", "completed", "failed"]), detail: z.string().optional() }),
+  z.object({ kind: z.literal("diagnostic_status"), ready: z.boolean(), version: z.string().min(1), executionMode: z.literal("paper") }),
+]);
+
 app.post("/api/engine/sync", async (c) => {
   let body: unknown;
   try { body = await c.req.json(); } catch { return c.json({ ok: false, error: "invalid JSON" }, 400); }
@@ -254,7 +267,7 @@ app.post("/api/engine/sync", async (c) => {
     clientId: z.string().uuid(),
     sequence: z.number().int().positive(),
     timestamp: z.number().int().positive(),
-    payload: z.object({ kind: z.literal("heartbeat") }),
+    payload: SYNC_PAYLOAD_SCHEMA,
     signature: z.string().min(20),
   }).safeParse(body);
   if (!parsed.success) {
@@ -287,7 +300,57 @@ app.post("/api/engine/sync", async (c) => {
       return c.json({ ok: false, error: "Sequence not strictly increasing — stale or replayed request." }, 409);
     }
 
-    return c.json({ ok: true });
+    // Every payload kind reaches this point already authenticated and
+    // replay-protected — dispatch is pure bookkeeping from here.
+    switch (payload.kind) {
+      case "heartbeat":
+        break; // no persisted side effect — last_seen_at was already updated by atomicAdvanceSequence above
+      case "snapshot":
+        await recordSnapshot(clientId, sequence, payload.snapshot);
+        break;
+      case "event_batch":
+        await recordEventBatch(clientId, sequence, payload.events);
+        break;
+      case "command_ack":
+        // A stale/unknown/out-of-order ack is logged, not fatal — the
+        // envelope itself is still a valid, accepted sync exchange.
+        await ackCommand(payload.commandId, clientId, payload.status, payload.detail)
+          .then((result) => { if (!result.applied) logger.warn({ clientId, commandId: payload.commandId, reason: result.reason }, "command_ack not applied"); });
+        break;
+      case "diagnostic_status":
+        // Accepted but not yet persisted — no dedicated table exists for
+        // this yet; a future task can add one without touching the wire
+        // format, since the client already sends it correctly today.
+        break;
+    }
+
+    // Every response — regardless of which payload kind was sent — carries
+    // the LIVE entitlement status and any pending commands. This is the
+    // actual revocation-propagation mechanism: an engine that syncs even a
+    // bare heartbeat still learns immediately if its entitlement was
+    // revoked server-side, which offline signature verification alone can
+    // never detect before the token's natural 7-day expiry.
+    let entitlementStatus: { status: string; expiresAt: string | null } | undefined;
+    try {
+      const entitlement = await getEntitlementForUser(client.user_id, "real-1");
+      if (entitlement) entitlementStatus = { status: entitlement.status, expiresAt: entitlement.expires_at };
+    } catch (err) {
+      logger.warn({ err, clientId }, "entitlement status lookup failed during sync — omitting from response, not failing the sync");
+    }
+
+    let pendingCommands: Array<{ commandId: string; type: string; payload: unknown; issuedAt: string; expiresAt: string; expectedState?: string }> = [];
+    try {
+      const pending = await getPendingCommands(clientId);
+      pendingCommands = pending.map((cmd) => ({
+        commandId: cmd.id, type: cmd.type, payload: cmd.payload,
+        issuedAt: cmd.issued_at, expiresAt: cmd.expires_at,
+        expectedState: cmd.expected_state ?? undefined,
+      }));
+    } catch (err) {
+      logger.warn({ err, clientId }, "pending-command lookup failed during sync — omitting from response, not failing the sync");
+    }
+
+    return c.json({ ok: true, entitlementStatus, pendingCommands });
   } catch (err: any) {
     logger.error({ err }, "engine sync failed");
     return c.json({ ok: false, error: "Sync service temporarily unavailable." }, 503);

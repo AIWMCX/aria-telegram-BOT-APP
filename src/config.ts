@@ -57,6 +57,10 @@ const Env = z.object({
   // src/engine-auth-selftest.ts). Same exact-string-match gate.
   RUN_ENGINE_AUTH_SELFTEST: z.string().optional().transform((v) => v === "true"),
 
+  // ── Engine sync-protocol self-test (temporary, manual — see
+  // src/engine-sync-selftest.ts). Same exact-string-match gate.
+  RUN_ENGINE_SYNC_SELFTEST: z.string().optional().transform((v) => v === "true"),
+
   // ── ARIAE1 entitlement signing (optional — gates real entitlement
   // issuance; without it, pairing still works but returns no entitlement
   // token). A DIFFERENT keypair from ARIA_LICENSE_PRIVATE_D/PUBLIC_X above

@@ -340,6 +340,40 @@ async function main() {
   });
   check("/api/engine/sync with malformed body → 400", rSyncBadBody.status === 400);
 
+  // ── Sync protocol payload kinds (blocker #3) — schema-level, no DB needed:
+  // the Zod discriminated union runs BEFORE the DATABASE_URL check, so a
+  // malformed new-kind payload correctly 400s even without Postgres in CI,
+  // and a WELL-FORMED one gets past schema validation to the (still-503,
+  // no-DB) stage — proving the union actually accepts the new kinds.
+  const syncRequest = (payload: unknown) => app.request("/api/engine/sync", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clientId: "00000000-0000-0000-0000-000000000000", sequence: 1, timestamp: nowSec, payload, signature: "x".repeat(20) }),
+  });
+
+  const rSnapshotWrongKind = await syncRequest({ kind: "snapshot_typo", snapshot: {} }); // not a real discriminated-union member at all
+  check("/api/engine/sync an unrecognized payload.kind → 400", rSnapshotWrongKind.status === 400);
+  const rSnapshotOmittedField = await syncRequest({ kind: "snapshot" }); // "snapshot" is z.unknown(), which accepts an omitted key same as undefined — intentionally loose, snapshot content is engine-defined opaque data
+  check("/api/engine/sync a snapshot payload with the 'snapshot' key omitted is still schema-valid (z.unknown() accepts absence, same as explicit undefined)", rSnapshotOmittedField.status === 503);
+  const rSnapshotValid = await syncRequest({ kind: "snapshot", snapshot: { openPositionCount: 1 } });
+  check("/api/engine/sync a well-formed snapshot payload passes schema validation (reaches the no-DB 503, not a 400)", rSnapshotValid.status === 503);
+
+  const rEventBatchBadShape = await syncRequest({ kind: "event_batch", events: [{ eventType: "x" }] }); // missing occurredAt
+  check("/api/engine/sync event_batch with a malformed event (missing occurredAt) → 400", rEventBatchBadShape.status === 400);
+  const rEventBatchValid = await syncRequest({ kind: "event_batch", events: [{ eventType: "paper-position-opened", occurredAt: new Date().toISOString(), payload: {} }] });
+  check("/api/engine/sync a well-formed event_batch payload passes schema validation", rEventBatchValid.status === 503);
+  const rEventBatchEmpty = await syncRequest({ kind: "event_batch", events: [] });
+  check("/api/engine/sync an EMPTY event_batch is still schema-valid (recordEventBatch itself no-ops on empty, but the envelope isn't malformed)", rEventBatchEmpty.status === 503);
+
+  const rCommandAckBadStatus = await syncRequest({ kind: "command_ack", commandId: "00000000-0000-0000-0000-000000000001", status: "pending" }); // "pending" is not a valid ack status
+  check("/api/engine/sync command_ack with status:'pending' (not a real ack outcome) → 400", rCommandAckBadStatus.status === 400);
+  const rCommandAckValid = await syncRequest({ kind: "command_ack", commandId: "00000000-0000-0000-0000-000000000001", status: "completed" });
+  check("/api/engine/sync a well-formed command_ack payload passes schema validation", rCommandAckValid.status === 503);
+
+  const rDiagnosticBadMode = await syncRequest({ kind: "diagnostic_status", ready: true, version: "0.7.0", executionMode: "live" }); // "live" must never be a valid executionMode, anywhere
+  check("/api/engine/sync diagnostic_status with executionMode:'live' is rejected at the schema layer — HARD STOP reaches even this validator", rDiagnosticBadMode.status === 400);
+  const rDiagnosticValid = await syncRequest({ kind: "diagnostic_status", ready: true, version: "0.7.0-beta.1", executionMode: "paper" });
+  check("/api/engine/sync a well-formed diagnostic_status payload passes schema validation", rDiagnosticValid.status === 503);
+
   // ── ARIAE1 entitlement issuance (Task 8) — real signing, real cross-repo verification ──
   const { issueReal1BetaEntitlementToken, REAL1_BETA_DURATION_SECONDS } = await import("../src/engine-entitlement-signer.js");
 

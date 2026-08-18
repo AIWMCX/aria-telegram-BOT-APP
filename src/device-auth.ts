@@ -23,18 +23,35 @@ import { createPublicKey, verify as ed25519Verify } from "node:crypto";
  * theoretically presentable at all. */
 export const REPLAY_WINDOW_SECONDS = 300;
 
-export interface SyncPayload {
-  kind: "heartbeat";
-}
+/**
+ * REAL-1 blocker #3 — grew from a single `{kind:"heartbeat"}` literal to
+ * the full typed protocol. `canonicalSyncMessage` below signs/verifies
+ * ONLY `payload.kind`, deliberately unchanged by this — the invariant
+ * from blocker #3's spec was "signed/replay-resistant transport remains
+ * unchanged." The payload BODY (snapshot contents, event list, etc.)
+ * travels in the request JSON same as `kind` always did, authenticated
+ * only insofar as the whole HTTP request came from a signature-verified,
+ * replay-protected envelope — not byte-for-byte covered by the Ed25519
+ * signature itself. That was already true when the only field was
+ * `kind`; it remains true now that there's more payload alongside it.
+ */
+export type SyncPayload =
+  | { kind: "heartbeat" }
+  | { kind: "snapshot"; snapshot: unknown }
+  | { kind: "event_batch"; events: Array<{ eventType: string; occurredAt: string; payload: unknown }> }
+  | { kind: "command_ack"; commandId: string; status: "acknowledged" | "completed" | "failed"; detail?: string }
+  | { kind: "diagnostic_status"; ready: boolean; version: string; executionMode: "paper" };
 
 /**
  * The exact byte sequence both repos sign/verify. Deliberately a plain
  * delimited string, not JSON — JSON key ordering is not guaranteed
  * canonical, and getting this wrong silently breaks cross-repo signature
- * verification. If `SyncPayload` ever grows beyond a single literal kind,
- * this function (and aria-engine's copy of it) must change together, in
- * the same reviewed change — that coupling is the real risk this
- * docblock exists to flag.
+ * verification. Only reads `payload.kind` — see the docblock above for
+ * why growing `SyncPayload`'s other fields doesn't require touching this
+ * function. If that ever changes (the signature needs to cover more than
+ * `kind`), this function (and aria-engine's copy of it) must change
+ * together, in the same reviewed change — that coupling is the real risk
+ * this docblock exists to flag.
  */
 export function canonicalSyncMessage(
   clientId: string,

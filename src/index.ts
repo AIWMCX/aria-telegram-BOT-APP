@@ -7,6 +7,7 @@ import { runPgMigrations } from "./migrate.js";
 import { runLedgerSelfTest } from "./ledger-selftest.js";
 import { runEngineControlSelfTest } from "./engine-control-selftest.js";
 import { runEngineAuthSelfTest } from "./engine-auth-selftest.js";
+import { runEngineSyncSelfTest } from "./engine-sync-selftest.js";
 
 async function main(): Promise<void> {
   logger.info(
@@ -48,6 +49,14 @@ async function main(): Promise<void> {
       await runEngineAuthSelfTest();
     } catch (err) {
       logger.error({ err }, "engine auth selftest crashed outside its own try/catch — this itself is a finding");
+    }
+  }
+
+  if (CONFIG.RUN_ENGINE_SYNC_SELFTEST) {
+    try {
+      await runEngineSyncSelfTest();
+    } catch (err) {
+      logger.error({ err }, "engine sync selftest crashed outside its own try/catch — this itself is a finding");
     }
   }
 

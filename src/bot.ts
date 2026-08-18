@@ -6,6 +6,7 @@ import { getActiveLicenseForLead } from "./licenses.js";
 import { revokeLicense } from "./licenses.js";
 import { upsertUserFromTelegram } from "./users.js";
 import { createPairingCode } from "./engine-pairing.js";
+import { setEntitlementStatus } from "./engine-entitlements.js";
 import type { Lead } from "./leads.js";
 import type { IssuedLicense } from "./licenses.js";
 
@@ -138,6 +139,29 @@ bot.command("revoke", async (ctx) => {
   if (!licenseId) { await ctx.reply("Usage: /revoke lic_xxxxxx"); return; }
   revokeLicense(licenseId, "admin_manual");
   await ctx.reply(`Revoked ${licenseId}`);
+});
+
+/**
+ * REAL-1 blocker #3 — the actual trigger for the entitlement-revocation
+ * propagation this task built. A DIFFERENT product from /revoke above
+ * (that revokes the legacy license product's SQLite-backed license; this
+ * revokes an ARIA engine entitlement, engine_entitlements in Postgres).
+ * Propagation itself is automatic from here — the next time the paired
+ * engine syncs (even a bare heartbeat), /api/engine/sync's response
+ * reflects the new status live; no separate command needs to be enqueued
+ * for this specific effect.
+ */
+bot.command("revokeengine", async (ctx) => {
+  if (!isAdmin(ctx.from?.id)) return;
+  const entitlementId = ctx.match?.toString().trim();
+  if (!entitlementId) { await ctx.reply("Usage: /revokeengine <entitlement-uuid>"); return; }
+  try {
+    await setEntitlementStatus(entitlementId, "revoked");
+    await ctx.reply(`Revoked engine entitlement ${entitlementId}. Takes effect on the device's next sync.`);
+  } catch (err) {
+    logger.error({ err, entitlementId }, "revokeengine command failed");
+    await ctx.reply("Failed to revoke — check logs.");
+  }
 });
 
 bot.on("message", async (ctx) => {
