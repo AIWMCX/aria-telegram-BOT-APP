@@ -11,6 +11,9 @@ import { notifyAdminOfLicense, notifyCustomerLicenseIssued } from "./bot.js";
 import { issueLicense, getActiveLicenseForLead } from "./licenses.js";
 import { createCheckoutSession, handleStripeWebhook } from "./stripe.js";
 import { upsertUserFromTelegram } from "./users.js";
+import { createPairingCode, consumePairingCode } from "./engine-pairing.js";
+import { registerClient, getClientById, atomicAdvanceSequence } from "./engine-clients.js";
+import { canonicalSyncMessage, verifyDeviceSignature, isTimestampWithinReplayWindow, type SyncPayload } from "./device-auth.js";
 
 export const app = new Hono();
 
@@ -117,6 +120,152 @@ app.post("/api/auth/telegram", async (c) => {
   } catch (err: any) {
     logger.error({ err }, "auth/telegram failed — Postgres users domain unavailable");
     return c.json({ ok: false, error: "Account service temporarily unavailable." }, 503);
+  }
+});
+
+/**
+ * REAL-1 Task 4 — issues a pairing code for the caller's own account.
+ * Telegram-authenticated: the code is a bearer credential, but who it's
+ * ISSUED to is never in question, because identity here comes from
+ * verified initData, never from client input. Returns the raw code
+ * exactly once — it is never persisted or logged in plaintext.
+ */
+app.post("/api/engine/pairing-code", async (c) => {
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ ok: false, error: "invalid JSON" }, 400); }
+
+  const parsed = z.object({ initData: z.string().min(10) }).safeParse(body);
+  if (!parsed.success) {
+    return c.json({ ok: false, error: parsed.error.issues[0]?.message ?? "invalid input" }, 400);
+  }
+
+  const verified = verifyInitData(parsed.data.initData);
+  if (!verified) {
+    return c.json({ ok: false, error: "Telegram verification failed. Open via the bot, not directly." }, 401);
+  }
+
+  if (!USERS_DOMAIN_ENABLED) {
+    return c.json({ ok: false, error: "Account service not yet available." }, 503);
+  }
+
+  try {
+    const user = await upsertUserFromTelegram({
+      id: verified.user.id,
+      username: verified.user.username,
+      first_name: verified.user.first_name,
+      last_name: verified.user.last_name,
+    });
+    const { code, expiresAt } = await createPairingCode(user.id);
+    return c.json({ ok: true, code, expiresAt });
+  } catch (err: any) {
+    logger.error({ err }, "pairing-code issuance failed");
+    return c.json({ ok: false, error: "Pairing service temporarily unavailable." }, 503);
+  }
+});
+
+/**
+ * REAL-1 Task 4 — consumes a pairing code and registers a device. No
+ * signature required here: the device has no server-known public key
+ * yet (this call is what establishes it), and the pairing code itself —
+ * single-use, short-lived, tied to one user — is the authorization,
+ * exactly the trust-on-first-use model SSH/GitHub device flows use.
+ * `devicePublicKey` is a public key. This endpoint has no code path that
+ * accepts, stores, or could accept a private key.
+ */
+app.post("/api/engine/pair", async (c) => {
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ ok: false, error: "invalid JSON" }, 400); }
+
+  const parsed = z.object({
+    code: z.string().min(10),
+    devicePublicKey: z.string().min(32),
+    deviceName: z.string().max(100).optional(),
+    platform: z.string().max(50).optional(),
+    engineVersion: z.string().max(50).optional(),
+  }).safeParse(body);
+  if (!parsed.success) {
+    return c.json({ ok: false, error: parsed.error.issues[0]?.message ?? "invalid input" }, 400);
+  }
+
+  if (!USERS_DOMAIN_ENABLED) {
+    return c.json({ ok: false, error: "Pairing service not yet available." }, 503);
+  }
+
+  try {
+    const consumed = await consumePairingCode(parsed.data.code);
+    if (!consumed.ok) {
+      return c.json({ ok: false, error: "Pairing code invalid, expired, or already used." }, 401);
+    }
+
+    const client = await registerClient({
+      userId: consumed.userId,
+      devicePublicKey: parsed.data.devicePublicKey,
+      deviceName: parsed.data.deviceName,
+      platform: parsed.data.platform,
+      engineVersion: parsed.data.engineVersion,
+    });
+    return c.json({ ok: true, clientId: client.id, pairedAt: client.paired_at });
+  } catch (err: any) {
+    // A duplicate device_public_key (unique constraint) surfaces here as a
+    // generic DB error — treated as a conflict, not a 500, since it's a
+    // legitimate client-input case (re-pairing with an already-known key).
+    logger.error({ err }, "device pairing failed");
+    return c.json({ ok: false, error: "Pairing failed — this device key may already be registered." }, 409);
+  }
+});
+
+/**
+ * REAL-1 Task 4 — the minimal authenticated, replay-resistant envelope.
+ * No meaningful payload semantics exist yet (that's Task 7/8's sync
+ * protocol, per the design doc's engine_snapshots/engine_events/
+ * engine_commands) — this endpoint exists to prove the auth+replay
+ * mechanism itself works end-to-end before anything is built on top of it.
+ */
+app.post("/api/engine/sync", async (c) => {
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ ok: false, error: "invalid JSON" }, 400); }
+
+  const parsed = z.object({
+    clientId: z.string().uuid(),
+    sequence: z.number().int().positive(),
+    timestamp: z.number().int().positive(),
+    payload: z.object({ kind: z.literal("heartbeat") }),
+    signature: z.string().min(20),
+  }).safeParse(body);
+  if (!parsed.success) {
+    return c.json({ ok: false, error: parsed.error.issues[0]?.message ?? "invalid input" }, 400);
+  }
+  const { clientId, sequence, timestamp, payload, signature } = parsed.data;
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (!isTimestampWithinReplayWindow(timestamp, nowSeconds)) {
+    return c.json({ ok: false, error: "Request timestamp outside the acceptable window." }, 401);
+  }
+
+  if (!USERS_DOMAIN_ENABLED) {
+    return c.json({ ok: false, error: "Sync service not yet available." }, 503);
+  }
+
+  try {
+    const client = await getClientById(clientId);
+    if (!client || client.status !== "active") {
+      return c.json({ ok: false, error: "Unknown or revoked device." }, 401);
+    }
+
+    const message = canonicalSyncMessage(clientId, sequence, timestamp, payload as SyncPayload);
+    if (!verifyDeviceSignature(client.device_public_key, message, signature)) {
+      return c.json({ ok: false, error: "Invalid signature." }, 401);
+    }
+
+    const advanced = await atomicAdvanceSequence(clientId, BigInt(sequence));
+    if (!advanced) {
+      return c.json({ ok: false, error: "Sequence not strictly increasing — stale or replayed request." }, 409);
+    }
+
+    return c.json({ ok: true });
+  } catch (err: any) {
+    logger.error({ err }, "engine sync failed");
+    return c.json({ ok: false, error: "Sync service temporarily unavailable." }, 503);
   }
 });
 

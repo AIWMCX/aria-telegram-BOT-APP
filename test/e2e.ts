@@ -252,6 +252,88 @@ async function main() {
     check("a journal entry with fewer than 2 postings is rejected", true);
   }
 
+  // ── Device auth — pure logic, no Postgres needed, runs in CI (Task 4) ────
+  const { canonicalSyncMessage, verifyDeviceSignature, isTimestampWithinReplayWindow, REPLAY_WINDOW_SECONDS } =
+    await import("../src/device-auth.js");
+
+  const { generateKeyPairSync: genEd25519, sign: signEd25519 } = await import("node:crypto");
+  const { publicKey: devicePub, privateKey: devicePriv } = genEd25519("ed25519");
+  const devicePubJwk = devicePub.export({ format: "jwk" }) as { x: string };
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const msg = canonicalSyncMessage("client-abc", 1, nowSec, { kind: "heartbeat" });
+  check("canonicalSyncMessage is deterministic for identical inputs",
+    msg === canonicalSyncMessage("client-abc", 1, nowSec, { kind: "heartbeat" }));
+  check("canonicalSyncMessage differs when sequence differs",
+    msg !== canonicalSyncMessage("client-abc", 2, nowSec, { kind: "heartbeat" }));
+
+  const realSig = signEd25519(null, Buffer.from(msg, "utf8"), devicePriv).toString("base64url");
+  check("a genuine Ed25519 signature over the canonical message verifies",
+    verifyDeviceSignature(devicePubJwk.x, msg, realSig));
+  const { publicKey: otherDevicePub } = genEd25519("ed25519");
+  const otherDevicePubJwk = otherDevicePub.export({ format: "jwk" }) as { x: string };
+  check("a signature verified against the WRONG public key is rejected",
+    !verifyDeviceSignature(otherDevicePubJwk.x, msg, realSig));
+  check("a signature over a DIFFERENT message (tampered sequence) is rejected",
+    !verifyDeviceSignature(devicePubJwk.x, canonicalSyncMessage("client-abc", 2, nowSec, { kind: "heartbeat" }), realSig));
+  check("garbage input never throws — verifyDeviceSignature fails closed", verifyDeviceSignature("not-a-real-key", msg, "not-a-real-sig") === false);
+
+  check("a timestamp exactly at the boundary of the replay window is accepted",
+    isTimestampWithinReplayWindow(nowSec - REPLAY_WINDOW_SECONDS, nowSec));
+  check("a timestamp one second past the replay window is rejected",
+    !isTimestampWithinReplayWindow(nowSec - REPLAY_WINDOW_SECONDS - 1, nowSec));
+
+  // ── Engine pairing/sync endpoints — auth and validation paths that don't
+  // require Postgres (matches CI, which has no DATABASE_URL) ───────────────
+
+  const rPairingCodeNoDb = await app.request("/api/engine/pairing-code", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ initData: validInitData }),
+  });
+  check("/api/engine/pairing-code with no DATABASE_URL → 503, not a crash", rPairingCodeNoDb.status === 503);
+
+  const rPairingCodeForged = await app.request("/api/engine/pairing-code", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ initData: forged }),
+  });
+  check("/api/engine/pairing-code with forged initData → 401 (checked before DB)", rPairingCodeForged.status === 401);
+
+  const rPairNoDb = await app.request("/api/engine/pair", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: "x".repeat(20), devicePublicKey: devicePubJwk.x }),
+  });
+  check("/api/engine/pair with no DATABASE_URL → 503, not a crash", rPairNoDb.status === 503);
+
+  const rPairBadBody = await app.request("/api/engine/pair", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: "short" }),
+  });
+  check("/api/engine/pair with a too-short code and missing devicePublicKey → 400", rPairBadBody.status === 400);
+
+  const rSyncNoDb = await app.request("/api/engine/sync", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      clientId: "00000000-0000-0000-0000-000000000000", sequence: 1, timestamp: nowSec,
+      payload: { kind: "heartbeat" }, signature: "x".repeat(20),
+    }),
+  });
+  check("/api/engine/sync with no DATABASE_URL → 503, not a crash", rSyncNoDb.status === 503);
+
+  const rSyncStaleTimestamp = await app.request("/api/engine/sync", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      clientId: "00000000-0000-0000-0000-000000000000", sequence: 1, timestamp: nowSec - REPLAY_WINDOW_SECONDS - 100,
+      payload: { kind: "heartbeat" }, signature: "x".repeat(20),
+    }),
+  });
+  check("/api/engine/sync with a timestamp outside the replay window → 401 (checked before DB)", rSyncStaleTimestamp.status === 401);
+
+  const rSyncBadBody = await app.request("/api/engine/sync", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clientId: "not-a-uuid", sequence: -1 }),
+  });
+  check("/api/engine/sync with malformed body → 400", rSyncBadBody.status === 400);
+
   console.log(`\n${failures === 0 ? "✅ ALL TESTS PASSED" : `❌ ${failures} TEST(S) FAILED`} — ${totalLeads()} leads in throwaway test DB`);
 
   // Close the handle before deleting — node:sqlite (unlike better-sqlite3)

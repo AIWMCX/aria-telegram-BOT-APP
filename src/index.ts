@@ -6,6 +6,7 @@ import { startServer } from "./server.js";
 import { runPgMigrations } from "./migrate.js";
 import { runLedgerSelfTest } from "./ledger-selftest.js";
 import { runEngineControlSelfTest } from "./engine-control-selftest.js";
+import { runEngineAuthSelfTest } from "./engine-auth-selftest.js";
 
 async function main(): Promise<void> {
   logger.info(
@@ -39,6 +40,14 @@ async function main(): Promise<void> {
       await runEngineControlSelfTest();
     } catch (err) {
       logger.error({ err }, "engine control selftest crashed outside its own try/catch — this itself is a finding");
+    }
+  }
+
+  if (CONFIG.RUN_ENGINE_AUTH_SELFTEST) {
+    try {
+      await runEngineAuthSelfTest();
+    } catch (err) {
+      logger.error({ err }, "engine auth selftest crashed outside its own try/catch — this itself is a finding");
     }
   }
 

@@ -57,6 +57,32 @@ export async function getClientByPublicKey(devicePublicKey: string): Promise<Eng
   return rows[0];
 }
 
+export async function getClientById(id: string): Promise<EngineClient | undefined> {
+  const pool = requirePool();
+  const { rows } = await pool.query<EngineClient>(`SELECT * FROM engine_clients WHERE id = $1`, [id]);
+  return rows[0];
+}
+
+/**
+ * The replay-defense primitive: advances last_sequence ONLY if the new
+ * value is strictly greater than the current one, as a single atomic
+ * UPDATE — the WHERE clause and the write happen in one statement, so
+ * under real concurrent connections racing on the same row, Postgres's
+ * row-level locking serializes them and exactly one can win for any given
+ * target sequence. Returns true if THIS call advanced it (i.e. this
+ * request is genuinely new), false if it didn't (stale/replayed/lost the
+ * race — the caller must reject the request, not retry with the same
+ * sequence).
+ */
+export async function atomicAdvanceSequence(id: string, newSequence: bigint): Promise<boolean> {
+  const pool = requirePool();
+  const { rowCount } = await pool.query(
+    `UPDATE engine_clients SET last_sequence = $2, last_seen_at = now() WHERE id = $1 AND last_sequence < $2`,
+    [id, newSequence.toString()],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 export async function listClientsForUser(userId: number): Promise<EngineClient[]> {
   const pool = requirePool();
   const { rows } = await pool.query<EngineClient>(
@@ -64,14 +90,6 @@ export async function listClientsForUser(userId: number): Promise<EngineClient[]
     [userId],
   );
   return rows;
-}
-
-export async function touchLastSeen(id: string, sequence: bigint): Promise<void> {
-  const pool = requirePool();
-  await pool.query(
-    `UPDATE engine_clients SET last_seen_at = now(), last_sequence = $2 WHERE id = $1`,
-    [id, sequence.toString()],
-  );
 }
 
 export async function revokeClient(id: string): Promise<void> {

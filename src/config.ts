@@ -52,6 +52,10 @@ const Env = z.object({
   // src/engine-control-selftest.ts). Same exact-string-match gate as above,
   // for the same reason (z.coerce.boolean's Boolean("false") === true bug).
   RUN_ENGINE_CONTROL_SELFTEST: z.string().optional().transform((v) => v === "true"),
+
+  // ── Engine auth self-test (temporary, manual — see
+  // src/engine-auth-selftest.ts). Same exact-string-match gate.
+  RUN_ENGINE_AUTH_SELFTEST: z.string().optional().transform((v) => v === "true"),
 });
 
 const parsed = Env.safeParse(process.env);
