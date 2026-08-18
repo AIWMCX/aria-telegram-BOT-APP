@@ -5,6 +5,7 @@ import { bot } from "./bot.js";
 import { startServer } from "./server.js";
 import { runPgMigrations } from "./migrate.js";
 import { runLedgerSelfTest } from "./ledger-selftest.js";
+import { runEngineControlSelfTest } from "./engine-control-selftest.js";
 
 async function main(): Promise<void> {
   logger.info(
@@ -30,6 +31,14 @@ async function main(): Promise<void> {
       await runLedgerSelfTest();
     } catch (err) {
       logger.error({ err }, "ledger selftest crashed outside its own try/catch — this itself is a finding");
+    }
+  }
+
+  if (CONFIG.RUN_ENGINE_CONTROL_SELFTEST) {
+    try {
+      await runEngineControlSelfTest();
+    } catch (err) {
+      logger.error({ err }, "engine control selftest crashed outside its own try/catch — this itself is a finding");
     }
   }
 
