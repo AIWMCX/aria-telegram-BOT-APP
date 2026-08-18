@@ -36,7 +36,12 @@ export async function runEngineControlSelfTest(): Promise<void> {
     );
     check("engine_entitlements row created for a real user", entRows.length === 1);
 
+    // A failed statement aborts the whole enclosing Postgres transaction —
+    // subsequent statements fail with "current transaction is aborted"
+    // until a rollback, not just the one that errored. A SAVEPOINT scopes
+    // that abort to just this deliberate-failure check.
     let duplicateEntitlementRejected = false;
+    await client.query("SAVEPOINT before_dup_entitlement");
     try {
       await client.query(
         `INSERT INTO engine_entitlements (user_id, product, status) VALUES ($1, 'real-1', 'trial')`,
@@ -44,6 +49,7 @@ export async function runEngineControlSelfTest(): Promise<void> {
       );
     } catch {
       duplicateEntitlementRejected = true;
+      await client.query("ROLLBACK TO SAVEPOINT before_dup_entitlement");
     }
     check("a second entitlement for the same (user, product) is rejected by the DB constraint", duplicateEntitlementRejected);
 
@@ -65,6 +71,7 @@ export async function runEngineControlSelfTest(): Promise<void> {
       client1Rows.length === 1 && client2Rows.length === 1);
 
     let duplicatePubkeyRejected = false;
+    await client.query("SAVEPOINT before_dup_pubkey");
     try {
       await client.query(
         `INSERT INTO engine_clients (user_id, device_public_key) VALUES ($1, $2)`,
@@ -72,6 +79,7 @@ export async function runEngineControlSelfTest(): Promise<void> {
       );
     } catch {
       duplicatePubkeyRejected = true;
+      await client.query("ROLLBACK TO SAVEPOINT before_dup_pubkey");
     }
     check("a duplicate device_public_key is rejected by the DB constraint", duplicatePubkeyRejected);
 
