@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard } from "grammy";
+import { Bot, InlineKeyboard, type Context, type CommandContext } from "grammy";
 import { CONFIG, USERS_DOMAIN_ENABLED } from "./config.js";
 import { logger } from "./logger.js";
 import { totalLeads, getLatestLeadByTgUser } from "./leads.js";
@@ -28,6 +28,12 @@ function tierLabel(tier: string): string {
   return tier === "trial" ? "FREE" : tier.toUpperCase();
 }
 
+/** Never show a full wallet address in a normal chat reply — masked the same way the Mini App's existing masked/reveal-gated key field treats sensitive values. */
+function maskWallet(wallet: string): string {
+  if (wallet.length <= 8) return wallet;
+  return `${wallet.slice(0, 4)}...${wallet.slice(-4)}`;
+}
+
 bot.command("start", async (ctx) => {
   const firstName = ctx.from?.first_name ?? "trader";
   const keyboard = new InlineKeyboard().webApp("🟢 OPEN TERMINAL", TERMINAL_URL);
@@ -42,46 +48,79 @@ bot.command("start", async (ctx) => {
   );
 });
 
-bot.command("license", async (ctx) => {
+/**
+ * A normal Telegram customer has no `.env` file and no interface to paste
+ * a key into — dumping the raw bearer token into plain chat text here was
+ * developer workflow leaking into the customer product (a real user-
+ * reported defect: they had nowhere to "type that in"). /license is now a
+ * STATUS view: activation is automatic (Telegram account = ARIA account),
+ * nothing to copy, nothing to configure. The Mini App's existing
+ * "existing-license-panel" (public/index.html) already does the masked/
+ * reveal-gated key display correctly for anyone who needs the actual key
+ * — this command no longer needs to duplicate that, badly, in plaintext.
+ * Raw-token retrieval for the small audience that genuinely needs it
+ * (self-hosting the separate sniper client) moves to /licensekey below,
+ * explicitly labeled as an advanced/developer action.
+ */
+async function replyWithLicenseStatus(ctx: CommandContext<Context>): Promise<void> {
   const tgId = ctx.from?.id;
   if (!tgId) return;
   const lead = getLatestLeadByTgUser(tgId);
+  const keyboard = new InlineKeyboard().webApp("🟢 OPEN TERMINAL", TERMINAL_URL);
   if (!lead?.id) {
-    const keyboard = new InlineKeyboard().webApp("REQUEST ACCESS", TERMINAL_URL);
-    await ctx.reply("You don't have a license yet. Tap below to request one.", { reply_markup: keyboard });
+    await ctx.reply(
+      [`*ARIA License*`, ``, `Status: _Not activated_`, ``, `Tap below — activation is automatic, no key entry required.`].join("\n"),
+      { parse_mode: "Markdown", reply_markup: new InlineKeyboard().webApp("ACTIVATE FREE ACCESS", TERMINAL_URL) },
+    );
     return;
   }
   const license = getActiveLicenseForLead(lead.id);
   if (!license) {
-    await ctx.reply("No active license found. Your last request may have expired — request a new one.");
+    await ctx.reply(
+      [`*ARIA License*`, ``, `Status: _Expired_`, ``, `Tap below to reactivate.`].join("\n"),
+      { parse_mode: "Markdown", reply_markup: new InlineKeyboard().webApp("RENEW / REACTIVATE", TERMINAL_URL) },
+    );
     return;
   }
+  const daysLeft = Math.max(0, Math.ceil((new Date(license.expiresAt).getTime() - Date.now()) / 86_400_000));
   await ctx.reply(
     [
-      `Your active license:`, ``,
-      `\`${license.token}\``, ``,
-      `Tier: *${tierLabel(license.tier)}*`,
-      `Expires: ${license.expiresAt.slice(0, 10)}`,
-      `Wallet: \`${lead.wallet}\``, ``,
-      `Paste into your \`.env\` as \`ARIA_LICENSE=...\``,
+      `*ARIA License*`, ``,
+      `Status: *Active*`,
+      `Plan: *${tierLabel(license.tier)}*`,
+      `Expires: ${license.expiresAt.slice(0, 10)} (${daysLeft}d)`,
+      `Wallet: \`${maskWallet(lead.wallet)}\``, ``,
+      `Your Telegram account is already connected — no license key entry is required.`,
     ].join("\n"),
-    { parse_mode: "Markdown" },
+    { parse_mode: "Markdown", reply_markup: keyboard },
   );
-});
+}
 
-bot.command("status", async (ctx) => {
+bot.command("license", replyWithLicenseStatus);
+/** Kept as a documented alias (README/CLAUDE.md both list /status as a separate customer command) — same fixed status view, not a second unmasked implementation. */
+bot.command("status", replyWithLicenseStatus);
+
+/**
+ * Advanced/developer action — the only place the raw bearer token is
+ * still delivered in chat, explicitly labeled as such. Exists for the
+ * real, legitimate case (self-hosting the separate sniper client, which
+ * genuinely needs ARIA_LICENSE=... in its own .env) — not the default
+ * customer path, which /license above now handles without ever showing
+ * this.
+ */
+bot.command("licensekey", async (ctx) => {
   const tgId = ctx.from?.id;
   if (!tgId) return;
   const lead = getLatestLeadByTgUser(tgId);
   if (!lead?.id) { await ctx.reply("No account found yet — use /start to request access."); return; }
   const license = getActiveLicenseForLead(lead.id);
-  if (!license) { await ctx.reply("No active license. Use /license to request one."); return; }
-  const daysLeft = Math.ceil((new Date(license.expiresAt).getTime() - Date.now()) / 86_400_000);
+  if (!license) { await ctx.reply("No active license found. Your last request may have expired — use /license to reactivate."); return; }
   await ctx.reply(
     [
-      `Tier: *${tierLabel(license.tier)}*`,
-      `Days remaining: ${daysLeft}`,
-      `Wallet: \`${lead.wallet}\``,
+      `*Advanced: raw license key*`, ``,
+      `Only needed if you're self-hosting the separate sniper client. The Terminal Mini App does not need this.`, ``,
+      `\`${license.token}\``, ``,
+      `Paste into that client's \`.env\` as \`ARIA_LICENSE=...\``,
     ].join("\n"),
     { parse_mode: "Markdown" },
   );

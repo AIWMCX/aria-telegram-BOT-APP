@@ -417,6 +417,66 @@ async function main() {
     console.log("  (aria-engine sibling repo not found at ../../aria-engine — skipping cross-repo interop check)");
   }
 
+  // ── Bot commands: the actual UX defect a real user hit — /license dumped
+  // the raw bearer token into plain Telegram chat with ".env" instructions
+  // a normal customer has no interface for. Proves the fix: the default
+  // /license (and its documented /status alias) never leak the token or
+  // mention .env; the raw token still exists, but only via the explicit,
+  // clearly-labeled /licensekey advanced action. ──
+  const { bot } = await import("../src/bot.js");
+  (bot as any).botInfo = { id: 1, is_bot: true, first_name: "TestBot", username: "test_bot", can_join_groups: true, can_read_all_group_messages: false, supports_inline_queries: false };
+
+  // grammy's documented mock point: api.config.use() installs a
+  // transformer in front of every raw API call. Registered ONCE; each
+  // captureReplies() call just redirects the sink array, since config.use
+  // stacks transformers rather than replacing them.
+  let currentSink: Array<{ text: string; extra: any }> = [];
+  bot.api.config.use((prev, method, payload, signal) => {
+    if (method === "sendMessage") {
+      currentSink.push({ text: (payload as any).text, extra: payload });
+      return Promise.resolve({ ok: true, result: { message_id: 1, date: 0, chat: { id: (payload as any).chat_id, type: "private" } } } as any);
+    }
+    return prev(method, payload, signal);
+  });
+  function captureReplies(): Array<{ text: string; extra: any }> {
+    const sent: Array<{ text: string; extra: any }> = [];
+    currentSink = sent;
+    return sent;
+  }
+  function makeCommandUpdate(updateId: number, tgId: number, command: string) {
+    return {
+      update_id: updateId,
+      message: {
+        message_id: updateId, date: Math.floor(Date.now() / 1000), text: command,
+        chat: { id: tgId, type: "private" as const, first_name: "Test" },
+        from: { id: tgId, is_bot: false, first_name: "Test" },
+        entities: [{ offset: 0, length: command.length, type: "bot_command" as const }],
+      },
+    };
+  }
+
+  const licenseSent = captureReplies();
+  await bot.handleUpdate(makeCommandUpdate(9001, paidLead.tg_user_id, "/license") as any);
+  check("/license reply does NOT contain the raw bearer token — this is the actual bug from the screenshot",
+    licenseSent.length > 0 && !licenseSent[0]!.text.includes(paidLicense.token));
+  check("/license reply does NOT tell the user to edit a .env file", licenseSent.length > 0 && !licenseSent[0]!.text.includes(".env"));
+  check("/license reply shows Active status for a real active license", licenseSent.length > 0 && licenseSent[0]!.text.includes("Active"));
+
+  const statusSent = captureReplies();
+  await bot.handleUpdate(makeCommandUpdate(9002, paidLead.tg_user_id, "/status") as any);
+  check("/status (the documented alias) also never leaks the raw bearer token", statusSent.length > 0 && !statusSent[0]!.text.includes(paidLicense.token));
+
+  const keySent = captureReplies();
+  await bot.handleUpdate(makeCommandUpdate(9003, paidLead.tg_user_id, "/licensekey") as any);
+  check("/licensekey (the explicit advanced action) DOES contain the raw token — the capability isn't removed, just moved out of the default path",
+    keySent.length > 0 && keySent[0]!.text.includes(paidLicense.token));
+  check("/licensekey explicitly labels itself advanced, not presented as the normal flow", keySent.length > 0 && keySent[0]!.text.toLowerCase().includes("advanced"));
+
+  const strangerSent = captureReplies();
+  await bot.handleUpdate(makeCommandUpdate(9004, 999999999, "/license") as any); // an unrelated Telegram user with no account at all
+  check("/license for an unrelated Telegram user with no account shows 'not activated' — never another user's license data (cross-user isolation)",
+    strangerSent.length > 0 && strangerSent[0]!.text.includes("Not activated"));
+
   console.log(`\n${failures === 0 ? "✅ ALL TESTS PASSED" : `❌ ${failures} TEST(S) FAILED`} — ${totalLeads()} leads in throwaway test DB`);
 
   // Close the handle before deleting — node:sqlite (unlike better-sqlite3)

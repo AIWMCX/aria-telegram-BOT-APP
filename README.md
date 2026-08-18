@@ -42,7 +42,8 @@ Full details in `CLAUDE.md` → "Deploy checklist."
 - Trial signup: form → license issued → emailed → Telegram DM to admin
 - Stripe checkout for Standard/Pro (once `STRIPE_*` vars are set)
 - License renewal on subscription billing cycle
-- `/license`, `/status` bot commands (customer-facing)
+- `/license`, `/status` bot commands (customer-facing status view — no key entry required, activation is automatic via Telegram account)
+- `/licensekey` bot command (advanced/developer — the raw bearer token, for self-hosting the separate sniper client only)
 - `/stats`, `/revoke` bot commands (admin-only)
 
 ## What's not built yet

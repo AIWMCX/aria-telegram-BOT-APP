@@ -60,7 +60,7 @@ src/
   telegram-auth.ts    initData HMAC verification — DO NOT weaken this
   stripe.ts           Checkout session creation + webhook dispatch
   email.ts            Resend — lead notification + license delivery templates
-  bot.ts              grammy bot — /start /license /status /support, admin /stats /revoke
+  bot.ts              grammy bot — /start /license /status (status view, no key entry) /licensekey (advanced, raw token) /support, admin /stats /revoke /revokeengine
   server.ts           Hono routes — this is the API surface, start here to understand data flow
   index.ts            Entrypoint — boots DB, server, bot
 scripts/
