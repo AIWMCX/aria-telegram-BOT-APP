@@ -1,9 +1,11 @@
 import { Bot, InlineKeyboard } from "grammy";
-import { CONFIG } from "./config.js";
+import { CONFIG, USERS_DOMAIN_ENABLED } from "./config.js";
 import { logger } from "./logger.js";
 import { totalLeads, getLatestLeadByTgUser } from "./leads.js";
 import { getActiveLicenseForLead } from "./licenses.js";
 import { revokeLicense } from "./licenses.js";
+import { upsertUserFromTelegram } from "./users.js";
+import { createPairingCode } from "./engine-pairing.js";
 import type { Lead } from "./leads.js";
 import type { IssuedLicense } from "./licenses.js";
 
@@ -82,6 +84,42 @@ bot.command("status", async (ctx) => {
     ].join("\n"),
     { parse_mode: "Markdown" },
   );
+});
+
+/**
+ * REAL-1 Task 7 — issues a device pairing code for the ARIA engine CLI.
+ * Identity here comes directly from grammy's ctx.from.id, which Telegram
+ * itself has already authenticated (this is a bot command, not a Mini
+ * App fetch call) — no separate initData/HMAC check is needed or done,
+ * unlike the HTTP API's /api/engine/pairing-code, which DOES need one
+ * because a browser fetch has no inherent Telegram-verified origin.
+ */
+bot.command("pair", async (ctx) => {
+  const tgId = ctx.from?.id;
+  if (!tgId) return;
+  if (!USERS_DOMAIN_ENABLED) {
+    await ctx.reply("Device pairing isn't available yet.");
+    return;
+  }
+  try {
+    const user = await upsertUserFromTelegram({
+      id: tgId, username: ctx.from?.username, first_name: ctx.from?.first_name, last_name: ctx.from?.last_name,
+    });
+    const { code, expiresAt } = await createPairingCode(user.id);
+    const expiresLabel = new Date(expiresAt).toISOString().slice(11, 16);
+    await ctx.reply(
+      [
+        `*Pair your ARIA device*`, ``,
+        `Run this on the computer running ARIA:`, ``,
+        `\`aria pair ${esc(code)}\``, ``,
+        `Expires ${expiresLabel} UTC (10 minutes) — single use. Run \`/pair\` again if it expires.`,
+      ].join("\n"),
+      { parse_mode: "Markdown" },
+    );
+  } catch (err) {
+    logger.error({ err }, "pair command failed");
+    await ctx.reply("Pairing service temporarily unavailable. Try again shortly.");
+  }
 });
 
 bot.command("support", async (ctx) => {
