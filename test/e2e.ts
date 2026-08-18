@@ -360,8 +360,15 @@ async function main() {
     // regardless of the runtime guard below. Building the specifier from a
     // non-literal expression opts it out of that static check while the
     // runtime behavior (real check locally, graceful skip in CI) is unchanged.
+    // (A `typeof import("literal/path")` type annotation would hit the same
+    // static-resolution problem, so the shape is spelled out by hand instead.)
     const ariaEngineEntitlementModule = ["..", "..", "aria-engine", "src", "entitlement.js"].join("/");
-    const { verifyEntitlement } = await import(ariaEngineEntitlementModule) as typeof import("../../aria-engine/src/entitlement.js");
+    const entitlementModule = await import(ariaEngineEntitlementModule) as {
+      verifyEntitlement: (token: string, publicKeyX: string) =>
+        | { granted: true; payload: { scope: string; sub: string } }
+        | { granted: false };
+    };
+    const { verifyEntitlement } = entitlementModule;
     const verification = verifyEntitlement(issued.token, entPubJwk.x);
     check("aria-engine's REAL entitlement verifier (unmodified, cross-repo) accepts a token issued here",
       verification.granted === true);
