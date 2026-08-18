@@ -146,13 +146,22 @@ async function main() {
   check("/api/me for a brand-new Telegram user → 200, hasAccount:false, license:null",
     rMeNew.status === 200 && bodyMeNew.ok === true && bodyMeNew.hasAccount === false && bodyMeNew.license === null);
 
-  // Bogdan (id 987654321) already has an active license from the earlier /api/submit call.
+  // Bogdan (id 987654321, lead 1) has TWO active licenses by this point: the
+  // "trial" one from the earlier /api/submit call, and the "standard" one
+  // issued a few lines up by the legacy-order-lookup regression test — the
+  // revoke-on-issue logic is scoped per tier (see licenses.ts), so issuing
+  // "standard" does not revoke the still-active "trial" license. /api/me
+  // must deterministically return the MOST RECENTLY issued active license
+  // ("standard"), not an arbitrary one — this is exactly the tie-break
+  // fixed in licenses.ts's activeForLeadStmt (issued_at alone has only
+  // second-level granularity and was a real, reproducible source of CI
+  // flakiness before that fix).
   const rMeReturning = await app.request("/api/me", { headers: { "x-init-data": validInitData } });
   const bodyMeReturning = (await rMeReturning.json()) as { ok: boolean; hasAccount: boolean; license: { id: string; token: string; tier: string } | null };
-  check("/api/me for a returning user with an active license → returns the real license, not NO LICENSE YET",
+  check("/api/me for a returning user with two active licenses → deterministically returns the most recently issued one",
     rMeReturning.status === 200 && bodyMeReturning.hasAccount === true &&
     bodyMeReturning.license !== null && bodyMeReturning.license.token.startsWith("ARIA1.") &&
-    bodyMeReturning.license.tier === "trial");
+    bodyMeReturning.license.tier === "standard");
 
   // Cross-user isolation: sign up a second, distinct user and confirm each
   // user's /api/me returns ONLY their own license, never the other's.

@@ -26,10 +26,16 @@ const revokeByTgUserTierStmt = db.prepare(`
     AND lead_id IN (SELECT id FROM leads WHERE tg_user_id = ?)
 `);
 
+// issued_at has only second-level granularity (datetime('now') has no
+// fractional seconds), so two licenses issued within the same second for
+// the same lead — e.g. a trial immediately followed by a paid upgrade —
+// tie on issued_at with no defined order. rowid (SQLite's implicit
+// insertion-order column on a normal, non-WITHOUT-ROWID table) breaks the
+// tie deterministically: whichever was actually inserted last wins.
 const activeForLeadStmt = db.prepare(`
   SELECT * FROM licenses
   WHERE lead_id = ? AND revoked = 0 AND expires_at > datetime('now')
-  ORDER BY issued_at DESC LIMIT 1
+  ORDER BY issued_at DESC, rowid DESC LIMIT 1
 `);
 
 export interface IssuedLicense {
