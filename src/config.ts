@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { z } from "zod";
+import { parseProductRealityConfig, resolveProductReality } from "./product-reality.js";
 
 const Env = z.object({
   // ── Telegram ──────────────────────────────────────────────────────────
@@ -73,6 +74,14 @@ if (CONFIG.PUBLIC_URL.endsWith("/")) {
 /** True once Stripe secrets are present — gates the paid-tier endpoints. */
 export const PAYMENTS_ENABLED = Boolean(
   CONFIG.STRIPE_SECRET_KEY && CONFIG.STRIPE_WEBHOOK_SECRET,
+);
+
+/**
+ * Backend-owned presentation truth. This never authorizes a financial action;
+ * unavailable or malformed values fail closed inside the pure resolver.
+ */
+export const PRODUCT_REALITY = resolveProductReality(
+  parseProductRealityConfig(process.env, PAYMENTS_ENABLED),
 );
 
 /** True once DATABASE_URL is present — gates the new users/wallet-accounts domain endpoints. */

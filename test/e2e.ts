@@ -109,6 +109,22 @@ async function main() {
   check("/healthz reports ok:true", health.ok === true);
   check("/healthz reports paymentsEnabled:false (no Stripe configured)", health.paymentsEnabled === false);
 
+  const realityResponse = await app.request("/api/product-reality");
+  const realityText = await realityResponse.text();
+  let realityBody: { ok?: boolean; reality?: Record<string, unknown> } = {};
+  try { realityBody = JSON.parse(realityText) as typeof realityBody; } catch { /* assertion below records the failure */ }
+  check("/api/product-reality -> 200 with the safe public contract",
+    realityResponse.status === 200 &&
+    realityBody.ok === true &&
+    realityBody.reality?.environment === "production" &&
+    realityBody.reality?.network === "offline" &&
+    realityBody.reality?.dataMode === "simulated" &&
+    realityBody.reality?.executionMode === "disabled" &&
+    realityBody.reality?.controlState === "stopped" &&
+    realityBody.reality?.paymentsEnabled === false &&
+    Object.keys(realityBody.reality ?? {}).sort().join(",") ===
+      "controlState,dataMode,environment,executionMode,network,paymentsEnabled");
+
   const rCheckout = await app.request("/api/checkout", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ initData: validInitData, name: "Test User", email: "t@example.com", wallet: TEST_WALLET, tier: "standard" }),

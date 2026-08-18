@@ -12,7 +12,10 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "keygen": "tsx scripts/generate-keys.ts",
-    "test": "tsx test/e2e.ts"
+    "test:reality": "tsx test/product-reality.ts",
+    "test:backend": "tsx test/e2e.ts",
+    "test:frontend": "tsx test/frontend-reality.ts",
+    "test": "npm run test:reality && npm run test:backend && npm run test:frontend"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",

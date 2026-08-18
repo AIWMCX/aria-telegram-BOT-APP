@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { z } from "zod";
-import { CONFIG, PAYMENTS_ENABLED, USERS_DOMAIN_ENABLED } from "./config.js";
+import { CONFIG, PAYMENTS_ENABLED, PRODUCT_REALITY, USERS_DOMAIN_ENABLED } from "./config.js";
 import { logger } from "./logger.js";
 import { verifyInitData } from "./telegram-auth.js";
 import { upsertLead, recentSubmissionsByUser, totalLeads, getLatestLeadByTgUser } from "./leads.js";
@@ -36,6 +36,11 @@ const CheckoutBody = z.object({
 
 app.get("/healthz", (c) =>
   c.json({ ok: true, uptime: process.uptime(), leads: totalLeads(), paymentsEnabled: PAYMENTS_ENABLED }),
+);
+
+/** Read-only, sanitized product truth for the shipped Mini App. */
+app.get("/api/product-reality", (c) =>
+  c.json({ ok: true, reality: PRODUCT_REALITY }),
 );
 
 /**
