@@ -29,6 +29,11 @@ process.env.LOG_LEVEL = "error";
 delete process.env.DATABASE_URL;
 
 const { app } = await import("../src/server.js");
+// Production imports this module from src/index.ts before starting the HTTP
+// listener. This contract imports the Hono app directly, so it must execute
+// the same registration side effect explicitly or it would only exercise the
+// static fallback routes, not the customer API under test.
+await import("../src/engine-customer-routes.js");
 const { CONFIG } = await import("../src/config.js");
 
 function buildInitData(user: object): string {
