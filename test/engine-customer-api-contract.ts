@@ -29,10 +29,6 @@ process.env.LOG_LEVEL = "error";
 delete process.env.DATABASE_URL;
 
 const { app } = await import("../src/server.js");
-// Production imports this module from src/index.ts before starting the HTTP
-// listener. This contract imports the Hono app directly, so it must execute
-// the same registration side effect explicitly or it would only exercise the
-// static fallback routes, not the customer API under test.
 await import("../src/engine-customer-routes.js");
 const { CONFIG } = await import("../src/config.js");
 
@@ -57,14 +53,20 @@ const forged = "user=" + encodeURIComponent(JSON.stringify({ id: 1, first_name: 
   "&auth_date=" + Math.floor(Date.now() / 1000) + "&hash=" + "0".repeat(64);
 const validInitData = buildInitData({ id: 777001, first_name: "Preview", username: "preview_user" });
 
-const missingState = await app.request("/api/engine/me");
-check("GET /api/engine/me exists and missing initData -> 400", missingState.status === 400);
+const missingState = await app.request("/api/engine/me", {
+  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+});
+check("POST /api/engine/me exists and missing initData -> 400", missingState.status === 400);
 
-const forgedState = await app.request("/api/engine/me", { headers: { "x-init-data": forged } });
-check("GET /api/engine/me rejects forged Telegram identity -> 401", forgedState.status === 401);
+const forgedState = await app.request("/api/engine/me", {
+  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ initData: forged }),
+});
+check("POST /api/engine/me rejects forged Telegram identity -> 401", forgedState.status === 401);
 
-const noDbState = await app.request("/api/engine/me", { headers: { "x-init-data": validInitData } });
-check("GET /api/engine/me fails closed without Postgres -> 503", noDbState.status === 503);
+const noDbState = await app.request("/api/engine/me", {
+  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ initData: validInitData }),
+});
+check("POST /api/engine/me fails closed without Postgres -> 503", noDbState.status === 503);
 
 const badCommand = await app.request("/api/engine/command", {
   method: "POST",
