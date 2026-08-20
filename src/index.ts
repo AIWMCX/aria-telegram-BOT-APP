@@ -3,6 +3,7 @@ import { CONFIG, PAYMENTS_ENABLED } from "./config.js";
 import { logger } from "./logger.js";
 import { bot } from "./bot.js";
 import { startServer } from "./server.js";
+import "./engine-customer-routes.js"; // registers Telegram-owned REAL-1 preview routes on the shared Hono app
 import { runPgMigrations } from "./migrate.js";
 import { runLedgerSelfTest } from "./ledger-selftest.js";
 import { runEngineControlSelfTest } from "./engine-control-selftest.js";
