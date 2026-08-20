@@ -1,0 +1,14 @@
+{
+  "name": "@aria/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.13.0" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx src/contracts.test.ts && tsx src/rpc.test.ts && tsx src/market.test.ts && tsx src/market-adapters.test.ts && tsx src/paper.test.ts && tsx src/safety.test.ts",
+    "start": "tsx src/cli.ts"
+  },
+  "dependencies": { "zod": "^3.24.1" },
+  "devDependencies": { "tsx": "^4.19.2", "typescript": "^5.7.2" }
+}
