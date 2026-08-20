@@ -10,31 +10,27 @@ import { getEntitlementForUser } from "./engine-entitlements.js";
 import { enqueueCommand, type EngineCommandType } from "./engine-commands.js";
 
 const ONLINE_WINDOW_MS = 45_000;
+const TelegramBody = z.object({ initData: z.string().min(10) });
 const CUSTOMER_COMMANDS = ["paper_pause", "paper_stop", "request_snapshot"] as const;
-const CustomerCommandBody = z.object({
-  initData: z.string().min(10),
-  command: z.enum(CUSTOMER_COMMANDS),
-});
-
-function verifyHeaderInitData(raw: string | undefined) {
-  if (!raw) return { ok: false as const, status: 400 as const, error: "missing initData" };
-  const verified = verifyInitData(raw);
-  if (!verified) return { ok: false as const, status: 401 as const, error: "Telegram verification failed. Open via the bot, not directly." };
-  return { ok: true as const, verified };
-}
+const CustomerCommandBody = TelegramBody.extend({ command: z.enum(CUSTOMER_COMMANDS) });
 
 /**
- * Customer engine dashboard. The browser never supplies a clientId: the
- * server derives Telegram identity from signed initData, resolves that
- * user's active device, then returns only that device's latest snapshot and
- * bounded event tail. This is the ownership boundary for the Mini App.
+ * Customer engine dashboard. POST is intentional in this preview: Telegram
+ * initData is carried in the JSON body and the route cannot be shadowed by
+ * the application's legacy GET * static fallback. The browser never supplies
+ * a clientId: identity -> user -> active device is resolved entirely server-side.
  */
-app.get("/api/engine/me", async (c) => {
-  const auth = verifyHeaderInitData(c.req.header("x-init-data"));
-  if (!auth.ok) return c.json({ ok: false, error: auth.error }, auth.status);
+app.post("/api/engine/me", async (c) => {
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ ok: false, error: "invalid JSON" }, 400); }
+  const parsed = TelegramBody.safeParse(body);
+  if (!parsed.success) return c.json({ ok: false, error: parsed.error.issues[0]?.message ?? "invalid input" }, 400);
+
+  const verified = verifyInitData(parsed.data.initData);
+  if (!verified) return c.json({ ok: false, error: "Telegram verification failed. Open via the bot, not directly." }, 401);
 
   try {
-    const user = await getUserByTelegramId(auth.verified.user.id);
+    const user = await getUserByTelegramId(verified.user.id);
     if (!user) {
       return c.json({ ok: true, paired: false, device: null, entitlement: null, snapshot: null, events: [] });
     }
