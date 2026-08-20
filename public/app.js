@@ -171,7 +171,7 @@
     text("engine-address", device.engineVersion || "unknown");
     text("engine-balance", timeAgo(device.lastSeenAt));
     const caps = data.capabilities || {};
-    $("engine-start-btn").disabled = true; // no local supervisor yet; never pretend cold remote start works
+    $("engine-start-btn").disabled = true;
     $("engine-pause-btn").disabled = !caps.paperPause;
     $("engine-stop-btn").disabled = !caps.paperStop;
     text("engine-pairing", caps.remoteColdStart === false
@@ -184,7 +184,11 @@
   async function refreshEngine() {
     if (!isInTelegram) { renderEngineDisconnected("open this control center inside Telegram"); return; }
     try {
-      const response = await engineRequest("/api/engine/me", { headers: { "X-Init-Data": initData } });
+      const response = await engineRequest("/api/engine/me", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ initData }),
+      });
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || "engine unavailable");
       renderEngineDashboard(data);
