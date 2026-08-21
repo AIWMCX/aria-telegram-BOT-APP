@@ -39,3 +39,6 @@ jobs:
       - name: Test engine
         working-directory: engine
         run: npm test
+      - name: Real market smoke — read only
+        working-directory: engine
+        run: npm run smoke:market
