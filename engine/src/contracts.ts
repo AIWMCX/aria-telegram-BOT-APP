@@ -37,6 +37,8 @@ export const PaperPosition = z.object({
   symbol: z.string().min(1).max(32),
   mint: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/),
   entryLamports: z.string().regex(/^[0-9]+$/),
+  /** Canonical market price used for the paper entry. Optional only for pre-bridge/legacy paper positions. */
+  entryPriceLamportsPerWholeToken: z.string().regex(/^[1-9][0-9]*$/).optional(),
   quantity: z.string().regex(/^(0|[1-9][0-9]*)$/),
   pnlLamports: z.string().regex(/^-?(0|[1-9][0-9]*)$/),
   openedAt: z.string().datetime({ offset: true }),
