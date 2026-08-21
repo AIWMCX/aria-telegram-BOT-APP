@@ -12,7 +12,7 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "keygen": "tsx scripts/generate-keys.ts",
-    "test": "tsx test/e2e.ts"
+    "test": "tsx test/e2e.ts && tsx test/engine-customer-api-contract.ts && tsx test/frontend-reality.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",

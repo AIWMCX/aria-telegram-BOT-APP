@@ -31,6 +31,7 @@ function requirePool() {
   return pgPool;
 }
 
+/** Creates a new paired client. The caller already authenticated the one-time pairing code. */
 export async function registerClient(input: {
   userId: number;
   devicePublicKey: string;
@@ -60,6 +61,23 @@ export async function getClientByPublicKey(devicePublicKey: string): Promise<Eng
 export async function getClientById(id: string): Promise<EngineClient | undefined> {
   const pool = requirePool();
   const { rows } = await pool.query<EngineClient>(`SELECT * FROM engine_clients WHERE id = $1`, [id]);
+  return rows[0];
+}
+
+/**
+ * Returns the customer's most recently active paired device. Customer-facing
+ * API routes use this instead of accepting a clientId from the browser, so
+ * ownership is always derived from verified Telegram identity.
+ */
+export async function getLatestActiveClientForUser(userId: number): Promise<EngineClient | undefined> {
+  const pool = requirePool();
+  const { rows } = await pool.query<EngineClient>(
+    `SELECT * FROM engine_clients
+     WHERE user_id = $1 AND status = 'active'
+     ORDER BY COALESCE(last_seen_at, paired_at) DESC, paired_at DESC
+     LIMIT 1`,
+    [userId],
+  );
   return rows[0];
 }
 

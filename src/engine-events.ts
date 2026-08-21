@@ -3,10 +3,7 @@ import { pgPool } from "./db-pg.js";
 /**
  * REAL-1 blocker #3 — storage for `event_batch` sync payloads. Each
  * batch item becomes its own row (never merged) so an individual paper
- * position-opened/closed/rejected event is independently queryable —
- * this is the data a future Telegram "last event: position marked 1.2s
- * ago" display would read from, though building that display is a
- * separate, later task.
+ * position-opened/closed/rejected event is independently queryable.
  */
 
 function requirePool() {
@@ -18,17 +15,23 @@ export interface InboundEngineEvent {
   eventType: string;
   occurredAt: string; // ISO, from the engine's own clock
   // Optional because Zod's z.unknown() (server.ts's SYNC_PAYLOAD_SCHEMA)
-  // infers this field as possibly-absent, not just possibly-undefined —
-  // `unknown` itself includes `undefined`. Genuinely absent is treated
-  // the same as `payload: undefined` by recordEventBatch below.
+  // infers this field as possibly-absent, not just possibly-undefined.
   payload?: unknown;
+}
+
+export interface StoredEngineEvent {
+  id: string;
+  client_id: string;
+  sequence: string;
+  event_type: string;
+  payload: unknown;
+  occurred_at: string;
+  received_at: string;
 }
 
 export async function recordEventBatch(clientId: string, sequence: number, events: readonly InboundEngineEvent[]): Promise<void> {
   if (events.length === 0) return;
   const pool = requirePool();
-  // A single multi-row INSERT, not N round trips — batches arrive as a
-  // batch specifically to avoid one HTTP call turning into N DB calls.
   const values: string[] = [];
   const params: unknown[] = [];
   events.forEach((event, i) => {
@@ -40,4 +43,15 @@ export async function recordEventBatch(clientId: string, sequence: number, event
     `INSERT INTO engine_events (client_id, sequence, event_type, payload, occurred_at) VALUES ${values.join(", ")}`,
     params,
   );
+}
+
+/** Customer preview uses a small, bounded tail of the caller's own device events. */
+export async function getRecentEvents(clientId: string, limit = 20): Promise<StoredEngineEvent[]> {
+  const pool = requirePool();
+  const boundedLimit = Math.max(1, Math.min(50, Math.trunc(limit)));
+  const { rows } = await pool.query<StoredEngineEvent>(
+    `SELECT * FROM engine_events WHERE client_id = $1 ORDER BY occurred_at DESC, received_at DESC LIMIT $2`,
+    [clientId, boundedLimit],
+  );
+  return rows;
 }

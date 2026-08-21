@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow" />
 <meta name="theme-color" content="#0a0c0d" />
 <title>ARIA · Terminal</title>
-<meta name="description" content="ARIA Solana sniper terminal — free, full-featured license, no pricing tiers. This app never executes trades or holds funds; it only issues an offline-verifiable license." />
+<meta name="description" content="ARIA Solana sniper control center. REAL-1 uses real read-only Solana market data with a paired local paper engine; no wallet secret leaves the customer's computer." />
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,17 +18,20 @@
 <div class="topbar">
   <div class="brand">
     <span>aria</span><span class="dot">·</span><span>terminal</span>
-    <span class="sub">v1.0 · SOL SNIPER</span>
+    <span class="sub">v0.7 beta · REAL-1</span>
   </div>
   <div class="center">
-    <span><span class="pulse ok"></span>LIVE</span>
-    <span><span class="pulse ok"></span>RPC</span>
+    <span><span class="pulse"></span><span id="data-mode">UNAVAILABLE</span></span>
+    <span><span class="pulse"></span><span id="network-mode">OFFLINE</span></span>
   </div>
   <div class="right">
     <span class="clock" id="clock" aria-label="current time">--:--:--</span>
-    <span class="chip demo">DEMO</span>
+    <span class="chip demo" id="execution-mode">PAPER EXECUTION</span>
+    <span class="chip demo" id="control-state">STOPPED</span>
   </div>
 </div>
+
+<div class="reality-banner" id="reality-banner" role="status" aria-live="polite">REAL-1 · PAPER ONLY · NO REAL ORDERS</div>
 
 <div class="license-bar" aria-label="license summary" id="license-bar">
   <div class="cell"><div class="lbl">Licensed To</div><div class="val" id="lic-sub">NO LICENSE YET</div></div>
@@ -40,147 +43,112 @@
 </div>
 
 <button type="button" class="cta-strip" id="cta-strip">
-  <span class="left">▸ GET A LICENSE</span>
-  <span class="right">scroll to pricing ↓</span>
+  <span class="left">▸ GET ACCESS / PAIR DEVICE</span>
+  <span class="right">setup ↓</span>
 </button>
 
 <main>
   <section class="panel full">
-    <div class="ph"><h2>Operations</h2><span class="meta" id="uptime">UPTIME 0s</span></div>
+    <div class="ph"><h2>Paper Operations</h2><span class="meta" id="uptime">WAITING FOR ENGINE</span></div>
     <div class="stats-grid">
-      <div class="stat"><div class="lbl">Detected</div><div class="num big blue" id="s-detected">0</div><div class="delta" id="s-detected-rate">— / hr</div></div>
-      <div class="stat"><div class="lbl">Queued · Bought</div><div class="num big" id="s-traded">0 · 0</div><div class="delta" id="s-blocked">— blocked</div></div>
-      <div class="stat"><div class="lbl">Avg Detection Latency</div><div class="num big" id="s-latency">— ms</div><div class="delta">target: &lt; 600ms</div></div>
-      <div class="stat"><div class="lbl">Demo PnL (SOL)</div><div class="num big" id="s-pnl">+0.0000</div><div class="delta" id="s-pnl-pct">—</div></div>
+      <div class="stat"><div class="lbl">Paper Opened</div><div class="num big blue" id="s-detected">—</div><div class="delta" id="s-detected-rate">engine unavailable</div></div>
+      <div class="stat"><div class="lbl">Closed · Rejected</div><div class="num big" id="s-traded">—</div><div class="delta" id="s-blocked">engine unavailable</div></div>
+      <div class="stat"><div class="lbl">Open Exposure</div><div class="num big" id="s-latency">—</div><div class="delta">paper lamports</div></div>
+      <div class="stat"><div class="lbl">Paper PnL (SOL)</div><div class="num big" id="s-pnl">—</div><div class="delta" id="s-pnl-pct">real engine snapshot</div></div>
     </div>
   </section>
 
   <section class="panel">
-    <div class="ph"><h2>Open Positions</h2><span class="meta" id="pos-count">0 / 3</span></div>
+    <div class="ph"><h2>Open Paper Positions</h2><span class="meta" id="pos-count">—</span></div>
     <table>
-      <caption class="hidden">Demo open positions</caption>
-      <thead><tr><th scope="col">Symbol</th><th scope="col">Mint</th><th scope="col">Size</th><th scope="col">PnL</th><th scope="col">Age</th></tr></thead>
-      <tbody id="pos-body"><tr class="empty"><td colspan="5">no open positions</td></tr></tbody>
+      <caption class="hidden">Paper position summary</caption>
+      <thead><tr><th scope="col">State</th><th scope="col">Source</th><th scope="col">Mode</th><th scope="col">PnL</th><th scope="col">Updated</th></tr></thead>
+      <tbody id="pos-body"><tr class="empty"><td colspan="5">pair a local ARIA engine to receive paper snapshots</td></tr></tbody>
     </table>
   </section>
 
   <section class="panel">
-    <div class="ph"><h2>Filter Funnel</h2><span class="meta">why we passed</span></div>
+    <div class="ph"><h2>Paper Accounting</h2><span class="meta">from latest engine snapshot</span></div>
     <table>
-      <caption class="hidden">Demo filter funnel counts</caption>
+      <caption class="hidden">Paper accounting counters</caption>
       <tbody>
-        <tr><td>Detected</td>          <td style="text-align:right" id="f-detected">0</td></tr>
-        <tr><td>· too old</td>          <td class="mono" style="text-align:right" id="f-tooOld">0</td></tr>
-        <tr><td>· blocked by safety</td><td class="loss" style="text-align:right" id="f-safety">0</td></tr>
-        <tr><td>· blocked by social</td><td class="loss" style="text-align:right" id="f-social">0</td></tr>
-        <tr><td><strong>Queued for buy</strong></td><td class="gain" style="text-align:right" id="f-queued">0</td></tr>
-        <tr><td><strong>Bought</strong></td>        <td class="gain" style="text-align:right" id="f-bought">0</td></tr>
-        <tr><td><strong>Sold</strong></td>          <td style="text-align:right" id="f-sold">0</td></tr>
+        <tr><td>Opened</td><td style="text-align:right" id="f-detected">—</td></tr>
+        <tr><td>Closed</td><td class="mono" style="text-align:right" id="f-tooOld">—</td></tr>
+        <tr><td>Rejected</td><td class="loss" style="text-align:right" id="f-safety">—</td></tr>
+        <tr><td>Open positions</td><td style="text-align:right" id="f-social">—</td></tr>
+        <tr><td><strong>Exposure (lamports)</strong></td><td class="gain" style="text-align:right" id="f-queued">—</td></tr>
+        <tr><td><strong>Realized PnL</strong></td><td class="gain" style="text-align:right" id="f-bought">—</td></tr>
+        <tr><td><strong>Unrealized PnL</strong></td><td style="text-align:right" id="f-sold">—</td></tr>
       </tbody>
     </table>
   </section>
 
   <section class="panel full">
-    <div class="ph"><h2>Live Event Stream</h2><span class="meta" id="feed-count">0 events</span></div>
-    <div class="feed" id="feed" role="log" aria-label="demo event stream" aria-live="off"></div>
+    <div class="ph"><h2>Paper Event Stream</h2><span class="meta" id="feed-count">0 events</span></div>
+    <div class="feed" id="feed" role="log" aria-label="paper engine event stream" aria-live="polite"></div>
   </section>
 
-  <!-- ── PRICING ─────────────────────────────────────────────────────── -->
+  <section class="panel full" id="engine-panel">
+    <div class="ph"><h2>ARIA Engine</h2><span class="meta">REAL MARKET DATA · PAPER ONLY</span></div>
+    <div class="stats-grid">
+      <div class="stat"><div class="lbl">Device</div><div class="num" id="engine-connection">DISCONNECTED</div><div class="delta" id="engine-status">pair a local engine to begin</div></div>
+      <div class="stat"><div class="lbl">Engine</div><div class="num" id="engine-network">—</div><div class="delta">outbound authenticated sync</div></div>
+      <div class="stat"><div class="lbl">Version</div><div class="num mono" id="engine-address">—</div><div class="delta">local runtime</div></div>
+      <div class="stat"><div class="lbl">Last Sync</div><div class="num" id="engine-balance">—</div><div class="delta">freshness gate: 45s</div></div>
+    </div>
+    <div class="engine-controls">
+      <button class="plan-btn primary" id="engine-pair-btn" type="button">CREATE PAIRING CODE</button>
+      <button class="plan-btn" id="engine-start-btn" type="button" disabled>START LOCALLY</button>
+      <button class="plan-btn" id="engine-pause-btn" type="button" disabled>PAUSE PAPER</button>
+      <button class="plan-btn" id="engine-stop-btn" type="button" disabled>STOP</button>
+    </div>
+    <div class="hint" id="engine-pairing">Pairing connects your Telegram account to one local ARIA device. Private wallet material is never sent to this app.</div>
+    <div class="feed" id="engine-events" role="log" aria-label="paper engine events"></div>
+  </section>
+
   <section class="panel full" id="pricing">
-    <div class="ph"><h2>Access</h2><span class="meta">free, no tiers</span></div>
+    <div class="ph"><h2>Access</h2><span class="meta">REAL-1 closed beta</span></div>
     <div class="pricing-grid">
       <div class="plan featured">
-        <div class="name">/ FREE</div>
-        <div class="price">$0<small> / forever</small></div>
+        <div class="name">/ PAPER BETA</div>
+        <div class="price">$0<small> / beta</small></div>
         <ul>
-          <li>Live mainnet execution</li>
-          <li>Safety + social filters</li>
-          <li>Tiered TP + trailing stop</li>
-          <li>Position cap: 5 · Buy cap: 0.02 SOL</li>
+          <li>Real read-only Solana market data</li>
+          <li>Local deterministic paper engine</li>
+          <li>Telegram pairing + status + pause/stop</li>
+          <li>No transaction signing or custody</li>
         </ul>
         <button class="plan-btn primary" id="btn-trial" type="button" disabled>SCROLL TO FORM ↓</button>
       </div>
       <div class="plan" aria-disabled="true">
-        <div class="name">/ STANDARD</div>
-        <div class="price">—<small> coming later</small></div>
-        <ul>
-          <li class="no">Higher caps</li>
-          <li class="no">Jito bundles</li>
-        </ul>
-        <button class="plan-btn" id="btn-standard" type="button" disabled>NOT AVAILABLE YET</button>
+        <div class="name">/ REAL-2</div>
+        <div class="price">—<small> security-gated later</small></div>
+        <ul><li class="no">Live-money execution is not enabled in REAL-1</li><li class="no">Wallet signing remains outside this release</li></ul>
+        <button class="plan-btn" id="btn-standard" type="button" disabled>NOT AVAILABLE</button>
       </div>
       <div class="plan" aria-disabled="true">
-        <div class="name">/ PRO</div>
-        <div class="price">—<small> coming later</small></div>
-        <ul>
-          <li class="no">Highest caps</li>
-          <li class="no">Priority support</li>
-        </ul>
-        <button class="plan-btn" id="btn-pro" type="button" disabled>NOT AVAILABLE YET</button>
+        <div class="name">/ COMMERCIAL GA</div>
+        <div class="price">—<small> after beta validation</small></div>
+        <ul><li class="no">Signed installers</li><li class="no">Production support + release certification</li></ul>
+        <button class="plan-btn" id="btn-pro" type="button" disabled>NOT AVAILABLE</button>
       </div>
     </div>
-    <p class="ph" style="border:none;margin:14px 0 0;padding:0;font-size:10px;color:var(--ink-mute);">
-      ARIA is free — no license fees, no pricing tiers, no card required. Fill the form below to get your
-      license instantly. Higher-cap plans may be introduced later; this app never asks for your private
-      key or seed phrase, and never executes trades or holds funds itself.
-    </p>
   </section>
 
-  <!-- ── REQUEST FORM ────────────────────────────────────────────────── -->
   <section class="panel full" id="request-form">
-    <div class="ph"><h2>▸ Get Your Free License</h2><span class="meta">issued instantly</span></div>
-
+    <div class="ph"><h2>▸ Get REAL-1 Beta Access</h2><span class="meta">Telegram-bound access</span></div>
     <div id="status" class="status-msg" role="status" aria-live="polite"></div>
-
     <form class="form-wrap" id="form-fields" novalidate>
-      <div class="field" id="field-name">
-        <label for="i-name">Name</label>
-        <input id="i-name" name="name" type="text" autocomplete="name" placeholder="Your name or handle" maxlength="100" required />
-        <div class="hint">Used so we know who to reply to.</div>
-        <div class="err">Please enter your name (min 2 chars).</div>
-      </div>
-
-      <div class="field" id="field-email">
-        <label for="i-email">Email</label>
-        <input id="i-email" name="email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" required />
-        <div class="hint">Your license key and setup instructions go here.</div>
-        <div class="err">Please enter a valid email.</div>
-      </div>
-
-      <div class="field" id="field-wallet">
-        <label for="i-wallet">Solana Wallet Address</label>
-        <input id="i-wallet" name="wallet" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="e.g. 7xKXt…ZqGw" maxlength="44" required />
-        <div class="hint">Public address only, burner wallet recommended. Never enter a private key or seed phrase — we will never ask for one.</div>
-        <div class="err">Must be a valid Solana address (base58, 32–44 chars).</div>
-      </div>
-
-      <div class="field" id="field-interest">
-        <label for="i-interest">Tell us about your setup (optional)</label>
-        <textarea id="i-interest" name="interest" rows="3" maxlength="500" placeholder="Capital range, experience level, what you want from ARIA…"></textarea>
-        <div class="hint">Helps us tailor your setup.</div>
-      </div>
-
-      <!-- Honeypot field: hidden from real users, bots that autofill everything will trip this -->
-      <div class="hidden" aria-hidden="true">
-        <label for="i-website">Website</label>
-        <input id="i-website" name="website" type="text" tabindex="-1" autocomplete="off" />
-      </div>
-
-      <button class="submit-btn" id="submit-btn" type="button" disabled>SUBMIT — GET FREE LICENSE</button>
+      <div class="field" id="field-name"><label for="i-name">Name</label><input id="i-name" name="name" type="text" autocomplete="name" placeholder="Your name or handle" maxlength="100" required /><div class="hint">Used so we know who to reply to.</div><div class="err">Please enter your name (min 2 chars).</div></div>
+      <div class="field" id="field-email"><label for="i-email">Email</label><input id="i-email" name="email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" required /><div class="hint">Release and setup information.</div><div class="err">Please enter a valid email.</div></div>
+      <div class="field" id="field-wallet"><label for="i-wallet">Public Solana Wallet Address</label><input id="i-wallet" name="wallet" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="e.g. 7xKXt…ZqGw" maxlength="44" required /><div class="hint">Public address only. Never enter a private key or seed phrase.</div><div class="err">Must be a valid Solana address (base58, 32–44 chars).</div></div>
+      <div class="field" id="field-interest"><label for="i-interest">Your setup (optional)</label><textarea id="i-interest" name="interest" rows="3" maxlength="500" placeholder="OS, experience, what you want to test…"></textarea><div class="hint">Helps us support the beta.</div></div>
+      <div class="hidden" aria-hidden="true"><label for="i-website">Website</label><input id="i-website" name="website" type="text" tabindex="-1" autocomplete="off" /></div>
+      <button class="submit-btn" id="submit-btn" type="button" disabled>SUBMIT — GET BETA ACCESS</button>
     </form>
-
-    <!-- Shown instead of the form for a returning user with an active license.
-         Recovering the key here means license delivery never depends on
-         email actually arriving. -->
     <div class="form-wrap hidden" id="existing-license-panel">
-      <div class="status-msg ok" style="display:block;">
-        Welcome back — your <strong id="el-tier">FREE</strong> license is active. No need to sign up again.
-      </div>
-      <div class="field">
-        <label for="el-token">Your license key</label>
-        <textarea id="el-token" rows="3" readonly style="font-family:'JetBrains Mono',monospace;font-size:11px;filter:blur(4px);user-select:none;" aria-label="license key, hidden until revealed"></textarea>
-        <div class="hint">Expires: <span id="el-expires"></span> · Paste into your sniper's <code>.env</code> as <code>ARIA_LICENSE=...</code></div>
-      </div>
+      <div class="status-msg ok" style="display:block;">Welcome back — your <strong id="el-tier">FREE</strong> access is active.</div>
+      <div class="field"><label for="el-token">Advanced raw license key</label><textarea id="el-token" rows="3" readonly style="font-family:'JetBrains Mono',monospace;font-size:11px;filter:blur(4px);user-select:none;" aria-label="license key, hidden until revealed"></textarea><div class="hint">Expires: <span id="el-expires"></span> · Most users do not need to copy this.</div></div>
       <button class="plan-btn" id="el-reveal-btn" type="button">SHOW KEY</button>
       <button class="plan-btn primary hidden" id="el-copy-btn" type="button">COPY KEY</button>
     </div>
@@ -188,13 +156,7 @@
 </main>
 
 <footer>
-  <strong>RISK NOTICE</strong> &nbsp; ARIA is software, not financial advice. This Mini App issues a
-  license only — it does not execute trades and never takes custody of funds; live execution happens in a
-  separate client you run yourself, gated by the license this app issues. Automated crypto trading carries
-  high risk and most newly launched tokens lose all value. You are responsible for your own wallet, funds,
-  and decisions, and for complying with applicable laws in your jurisdiction. ARIA never asks for your
-  private key or seed phrase, in this app or in the bot. All numbers shown above are <strong>simulated</strong>
-  for demonstration and are not real trading results.
+  <strong>RISK NOTICE</strong> &nbsp; ARIA REAL-1 is software, not financial advice. It consumes real read-only Solana market data but executes only deterministic paper trades in a separate local client. The Mini App never signs or broadcasts transactions and never takes custody of funds. When a paired engine is online, operational counters and PnL shown here come from that engine's real paper snapshot; when it is offline, values remain unavailable rather than being fabricated. Crypto markets are high risk. ARIA never asks for your private key or seed phrase.
 </footer>
 
 <script src="app.js"></script>
