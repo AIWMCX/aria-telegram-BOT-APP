@@ -26,12 +26,13 @@ jobs:
       - name: Test control plane
         run: npm test
 
-      # The customer engine is a separate package under /engine. It is part of
-      # REAL-1 release scope, so PR CI must verify it explicitly rather than
-      # relying on developer-local evidence.
+      # The customer engine is a separate package under /engine and currently
+      # has no committed package-lock.json. Use npm install here so CI actually
+      # exercises the package; once a lockfile is committed this should move to
+      # npm ci for exact dependency reproducibility.
       - name: Install engine
         working-directory: engine
-        run: npm ci
+        run: npm install --no-audit --no-fund
       - name: Typecheck engine
         working-directory: engine
         run: npm run typecheck
