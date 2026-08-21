@@ -4,6 +4,8 @@ import { rejectOpportunity, type Opportunity } from "./strategy.js";
 import { SafetyLatch, type StopReason } from "./safety.js";
 
 const LAMPORTS_PER_SOL = 1_000_000_000n;
+const PAPER_TOKEN_SCALE = 1_000_000_000n;
+const POSITIVE_INTEGER_RE = /^[1-9][0-9]*$/;
 export type LicenseCheck = () => "valid" | "expired" | "invalid";
 export type CommandResult = { accepted: boolean; reason?: string };
 
@@ -31,9 +33,31 @@ export class PaperEngine {
     if (this.status !== "paper_running" || this.latch.isTripped()) return [rejectOpportunity(opportunity, "paper engine stopped")];
     if (this.positions.length >= this.strategy.maxPositions) return [rejectOpportunity(opportunity, "position limit reached")];
     const entryLamports = BigInt(Math.round(this.strategy.buyAmountSol * Number(LAMPORTS_PER_SOL)));
-    const position: PaperPosition = { id: randomUUID(), symbol: opportunity.symbol, mint: opportunity.mint, entryLamports: entryLamports.toString(), quantity: "1", pnlLamports: "0", openedAt: this.now().toISOString() };
+
+    let quantity = "1";
+    let entryPriceLamportsPerWholeToken: string | undefined;
+    if (opportunity.quoteLamportsPerWholeToken !== undefined) {
+      if (!POSITIVE_INTEGER_RE.test(opportunity.quoteLamportsPerWholeToken)) return [rejectOpportunity(opportunity, "canonical quote invalid")];
+      const price = BigInt(opportunity.quoteLamportsPerWholeToken);
+      const quantityRaw = (entryLamports * PAPER_TOKEN_SCALE) / price;
+      if (quantityRaw <= 0n) return [rejectOpportunity(opportunity, "canonical quote produces zero paper quantity")];
+      quantity = quantityRaw.toString();
+      entryPriceLamportsPerWholeToken = price.toString();
+    }
+
+    const position: PaperPosition = {
+      id: randomUUID(),
+      symbol: opportunity.symbol,
+      mint: opportunity.mint,
+      entryLamports: entryLamports.toString(),
+      ...(entryPriceLamportsPerWholeToken ? { entryPriceLamportsPerWholeToken } : {}),
+      quantity,
+      pnlLamports: "0",
+      openedAt: this.now().toISOString(),
+    };
     this.positions = [...this.positions, position];
-    return [{ id: randomUUID(), kind: "paper_filled", occurredAt: this.now().toISOString(), message: `PAPER fill ${opportunity.symbol}; NO REAL ORDERS`, symbol: opportunity.symbol, mint: opportunity.mint, paperOnly: true }];
+    const quoteAudit = entryPriceLamportsPerWholeToken ? ` @ ${entryPriceLamportsPerWholeToken} lamports/token` : "";
+    return [{ id: randomUUID(), kind: "paper_filled", occurredAt: this.now().toISOString(), message: `PAPER fill ${opportunity.symbol}${quoteAudit}; NO REAL ORDERS`, symbol: opportunity.symbol, mint: opportunity.mint, paperOnly: true }];
   }
   snapshot(): Pick<EngineState, "status" | "licenseStatus" | "strategy" | "paper"> {
     return { status: this.status, licenseStatus: this.license(), strategy: this.strategy, paper: { positions: this.positions, pnlLamports: this.pnlLamports.toString() } };

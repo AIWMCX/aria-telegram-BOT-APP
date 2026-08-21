@@ -39,8 +39,8 @@ bot.command("start", async (ctx) => {
   const keyboard = new InlineKeyboard().webApp("🟢 OPEN TERMINAL", TERMINAL_URL);
   await ctx.reply(
     [
-      `*ARIA · Solana Sniper Terminal*`, ``,
-      `Hi ${esc(firstName)} — tap below to open the live terminal. Full access is free — no license fees, no tiers.`, ``,
+      `*ARIA REAL-1 Terminal*`, ``,
+      `Hi ${esc(firstName)} — Solana mainnet market data · Paper execution · No real orders · No custody.`, ``,
       `Fill the form inside: name, email, Solana wallet. You'll get your license instantly.`, ``,
       `_Burner wallets only. We never ask for your private key._`,
     ].join("\n"),

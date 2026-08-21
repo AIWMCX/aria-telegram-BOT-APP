@@ -92,7 +92,7 @@ async function main() {
     check("license Ed25519 signature verifies offline", valid === true);
     check("license wallet binding matches submission", payload.wallet === TEST_WALLET);
     check("license tier defaults to trial", payload.tier === "trial");
-    check("free tier includes live trading (not paper-locked)", payload.features.includes("live"));
+    check("free tier is paper-only and excludes live execution capability", payload.features.includes("paper") && !payload.features.includes("live") && !payload.features.includes("jito_bundles"));
     check("free tier caps are the generous free-tier values, not the old 7-day-trial values", payload.limits.maxBuySol === 0.02 && payload.limits.maxPositions === 5);
     check("free tier duration is effectively permanent (~10y), not 7 days", (payload.exp - payload.iat) > 365 * 86400);
   } else {

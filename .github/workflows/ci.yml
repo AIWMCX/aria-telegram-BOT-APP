@@ -15,13 +15,30 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           # Matches production: Dockerfile builds FROM node:22-slim, which
-          # floats to the latest 22.x patch. node:sqlite requires >=22.13.0
-          # (flag dropped there, see package.json "engines") — pinning the
-          # exact string "22.5" here previously resolved to literal v22.5.0,
-          # which predates that and broke CI while production stayed fine.
+          # floats to the latest 22.x patch. node:sqlite requires >=22.13.0.
           node-version: "22"
           cache: npm
 
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
+      - name: Install control plane
+        run: npm ci
+      - name: Typecheck control plane
+        run: npm run typecheck
+      - name: Test control plane
+        run: npm test
+
+      # The customer engine is a separate package under /engine and currently
+      # has no committed package-lock.json. Use npm install here so CI actually
+      # exercises the package; once a lockfile is committed this should move to
+      # npm ci for exact dependency reproducibility.
+      - name: Install engine
+        working-directory: engine
+        run: npm install --no-audit --no-fund
+      - name: Typecheck engine
+        working-directory: engine
+        run: npm run typecheck
+      - name: Test engine
+        working-directory: engine
+        run: npm test
+      - name: Real market smoke — read only
+        working-directory: engine
+        run: npm run smoke:market
