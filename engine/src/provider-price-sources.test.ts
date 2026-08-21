@@ -49,7 +49,8 @@ function response(body: unknown, status = 200): Response {
   const quote = await source.read(MINT);
   assert.equal(source.source, "raydium-price");
   assert.equal(quote.usdPrice, "0.00001235");
-  assert.equal(quote.solUsdPrice, "123.40");
+  // Canonical adapter representation removes non-significant trailing zeroes.
+  assert.equal(quote.solUsdPrice, "123.4");
   assert.equal(quote.observedAtSlot, 124);
   assert.equal(calls.length, 1);
   assert.equal(calls[0]!.method, "GET");
