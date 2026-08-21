@@ -78,6 +78,7 @@ async function getJson(fetchImpl: PriceFetch, url: string, timeoutMs: number): P
 
 abstract class BaseReadOnlyPriceSource implements ReadOnlyPriceSource {
   abstract readonly source: AuthorizedQuoteSource;
+  abstract read(mint: string): Promise<SourceQuote>;
   protected readonly fetchImpl: PriceFetch;
   protected readonly nowMs: () => number;
   protected readonly slot: number;
