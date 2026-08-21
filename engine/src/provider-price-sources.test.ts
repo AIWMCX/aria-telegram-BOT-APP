@@ -5,7 +5,9 @@ import {
   WRAPPED_SOL_MINT,
 } from "./provider-price-sources.js";
 
-const MINT = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6ZDLuai77F1pPB263";
+// Solana mainnet USDC mint; used only as a syntactically valid deterministic
+// fixture because provider responses are mocked in this unit test.
+const MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const NOW = 1_000_000;
 
 function response(body: unknown, status = 200): Response {
