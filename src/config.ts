@@ -114,14 +114,14 @@ export const TIER_LIMITS = {
     priceId: null as string | null,
     amountUsd: 0,
     durationDays: 3650,
-    features: ["paper", "live", "tiered_tp", "trailing_stop", "webhook_alerts"],
+    features: ["paper", "tiered_tp", "trailing_stop", "webhook_alerts"],
     limits: { maxBuySol: 0.02, maxPositions: 5, maxTotalSol: 0.1 },
   },
   standard: {
     priceId: CONFIG.STRIPE_STANDARD_PRICE_ID ?? null,
     amountUsd: 149,
     durationDays: 30,
-    features: ["paper", "live", "tiered_tp", "trailing_stop", "webhook_alerts"],
+    features: ["paper", "tiered_tp", "trailing_stop", "webhook_alerts"],
     limits: { maxBuySol: 0.01, maxPositions: 5, maxTotalSol: 0.05 },
   },
   pro: {
@@ -129,8 +129,8 @@ export const TIER_LIMITS = {
     amountUsd: 449,
     durationDays: 30,
     features: [
-      "paper", "live", "tiered_tp", "trailing_stop", "webhook_alerts",
-      "jito_bundles", "custom_strategy", "audit_export",
+      "paper", "tiered_tp", "trailing_stop", "webhook_alerts",
+      "custom_strategy", "audit_export",
     ],
     limits: { maxBuySol: 0.05, maxPositions: 10, maxTotalSol: 0.5 },
   },
