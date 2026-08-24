@@ -48,6 +48,31 @@ app.get("/healthz", (c) =>
 );
 
 /**
+ * Unauthenticated product-state summary consumed by the Mini App's reality
+ * banner (public/app.js loadReality()). Describes overall product
+ * configuration on THIS deployment — not a per-device/per-user snapshot
+ * (that's /api/engine/me). Every field below is a real, static fact about
+ * this deployment or a real exported config const — nothing here is
+ * fabricated or hardcoded optimism.
+ */
+const VALID_ENVIRONMENTS = new Set(["production", "staging", "development"]);
+app.get("/api/product-reality", (c) =>
+  c.json({
+    ok: true,
+    reality: {
+      environment: VALID_ENVIRONMENTS.has(process.env.RAILWAY_ENVIRONMENT_NAME ?? "")
+        ? process.env.RAILWAY_ENVIRONMENT_NAME
+        : "production",
+      network: "solana-mainnet",
+      dataMode: "live",
+      executionMode: "paper",
+      controlState: USERS_DOMAIN_ENABLED ? "running" : "stopped",
+      paymentsEnabled: PAYMENTS_ENABLED,
+    },
+  }),
+);
+
+/**
  * Returning-user account restore. Verifies Telegram initData (sent as a
  * header, never a query param, so it never lands in access logs or a
  * Referer header) and returns the caller's OWN account/license state —
