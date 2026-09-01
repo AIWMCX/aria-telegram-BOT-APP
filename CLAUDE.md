@@ -56,9 +56,10 @@ src/
   engine-entitlements.ts        Postgres storage for engine entitlements (trial/active/expired/revoked) —
                        storage only, never signs anything itself
   orders.ts           Stripe order tracking (pending → paid → refunded)
-  subscriptions.ts    Stripe subscription state mirror
+  subscriptions.ts    Stripe subscription state mirror (getSubscriptionByCustomerId maps a Stripe customer -> lead, used for refund auto-revocation on ANY charge, not just the first)
   telegram-auth.ts    initData HMAC verification — DO NOT weaken this
-  stripe.ts           Checkout session creation + webhook dispatch
+  stripe.ts           Checkout session creation + webhook dispatch (charge.refunded now auto-revokes)
+  expiry-warnings.ts  7d/1d license-expiry DM scheduler, started from index.ts
   email.ts            Resend — lead notification + license delivery templates
   bot.ts              grammy bot — /start /license /status (status view, no key entry) /licensekey (advanced, raw token) /support, admin /stats /revoke /revokeengine
   server.ts           Hono routes — this is the API surface, start here to understand data flow
@@ -73,7 +74,8 @@ public/
 
 - [x] Trial signup end-to-end: form → initData verify → lead saved → license issued → email + Telegram DM
 - [x] Stripe checkout session creation for Standard/Pro
-- [x] Stripe webhook handling: `checkout.session.completed`, `invoice.paid` (renewal), `customer.subscription.deleted`
+- [x] Stripe webhook handling: `checkout.session.completed`, `invoice.paid` (renewal), `customer.subscription.deleted`, `charge.refunded` (auto-revokes the active license — commit `a74d79a`, keyed off `customer` id via `getSubscriptionByCustomerId()` so it correctly handles a refund on a renewal charge too, not just the first payment; the `orders.status` field itself is NOT updated on refund — renewals never get an `orders` row to update, and matching the wrong order via a heuristic would be worse than leaving it as a known, disclosed limitation)
+- [x] 7-day / 1-day license-expiry warning DMs (`expiry-warnings.ts`, started from `index.ts`, commit `a74d79a`) — `warned_7d`/`warned_1d` columns added via a defensive `ALTER TABLE` in `db.ts` (no migration framework exists; this guards against re-running on an already-deployed DB missing the columns)
 - [x] License system: Ed25519 signing via Node's native `crypto` (no external dep), wallet-bound, offline-verifiable
 - [x] Rate limiting (3 submissions/hour/Telegram user)
 - [x] Audit log on every mutation
@@ -106,17 +108,8 @@ but the full pipeline has not yet been exercised end-to-end since reconstruction
 
 ## What's NOT done — known gaps, pick these up next
 
-- [ ] **`charge.refunded` webhook doesn't auto-revoke the license.** It only
-      logs a warning (see `stripe.ts`). We don't yet map a Stripe charge
-      back to our `orders` table cleanly (charges don't carry
-      `client_reference_id`, only checkout sessions do). Fix: store
-      `payment_intent` on the order when the session completes, then match
-      on that in the refund handler. Then call `revokeLicense()`.
-- [ ] **No automated expiry warnings.** Spec calls for a DM at 7 days and 1
-      day before a license expires. Needs a cron-like interval in
-      `index.ts` (e.g. `setInterval` checking `licenses` where
-      `expires_at` is in the next 24h/7d and no warning sent yet — add a
-      `warned_7d`/`warned_1d` column).
+- [x] ~~`charge.refunded` webhook doesn't auto-revoke the license~~ — **closed, commit `a74d79a`.** See "What's DONE" above. Real, remaining limitation: `orders.status` itself isn't updated to `refunded` (only the license is revoked), since a renewal refund has no `orders` row to update at all and there's no reliable way to pick the "right" order for a refund on the initial purchase either without adding payment_intent tracking the current schema doesn't have.
+- [x] ~~No automated expiry warnings~~ — **closed, commit `a74d79a`.** See "What's DONE" above.
 - [ ] **No crypto (SOL/USDC) payment path.** Spec section 5.2 describes a
       memo-based on-chain verification flow. Not built. Only Stripe exists
       right now.
