@@ -9,6 +9,7 @@ import { runLedgerSelfTest } from "./ledger-selftest.js";
 import { runEngineControlSelfTest } from "./engine-control-selftest.js";
 import { runEngineAuthSelfTest } from "./engine-auth-selftest.js";
 import { runEngineSyncSelfTest } from "./engine-sync-selftest.js";
+import { startExpiryWarningScheduler } from "./expiry-warnings.js";
 
 async function main(): Promise<void> {
   logger.info(
@@ -62,6 +63,15 @@ async function main(): Promise<void> {
   }
 
   startServer();
+
+  // License-expiry warning DMs (7 days / 1 day out) — a real ongoing
+  // product feature, not a one-shot selftest, so it always runs (no
+  // RUN_*_SELFTEST-style opt-in flag) once the server itself is up.
+  try {
+    startExpiryWarningScheduler();
+  } catch (err) {
+    logger.error({ err }, "expiry warning scheduler failed to start — license issuance/checkout unaffected");
+  }
 
   // Bot polling failure (bad token, transient Telegram API issue, rate limit)
   // must not take down the HTTP server — license issuance, health checks,

@@ -2,11 +2,11 @@ import Stripe from "stripe";
 import { CONFIG, TIER_LIMITS, PAYMENTS_ENABLED, type Tier } from "./config.js";
 import { logger } from "./logger.js";
 import { createOrder, attachExternalRef, markOrderPaid } from "./orders.js";
-import { upsertSubscription, updateSubscriptionStatus, cancelSubscription, getSubscriptionByStripeId } from "./subscriptions.js";
+import { upsertSubscription, updateSubscriptionStatus, cancelSubscription, getSubscriptionByStripeId, getSubscriptionByCustomerId } from "./subscriptions.js";
 import { getLeadById } from "./leads.js";
-import { issueLicense } from "./licenses.js";
+import { issueLicense, revokeLicense, getActiveLicenseForLead } from "./licenses.js";
 import { sendLicenseEmail } from "./email.js";
-import { notifyAdminOfLicense, notifyCustomerLicenseIssued } from "./bot.js";
+import { notifyAdminOfLicense, notifyCustomerLicenseIssued, notifyCustomerOfRefundRevocation, notifyAdminOfRefundRevocation } from "./bot.js";
 
 export const stripe = PAYMENTS_ENABLED ? new Stripe(CONFIG.STRIPE_SECRET_KEY!) : null;
 
@@ -113,12 +113,37 @@ export async function handleStripeWebhook(rawBody: string, signature: string): P
 
     case "charge.refunded": {
       const charge = event.data.object as Stripe.Charge;
-      const paymentIntent = charge.payment_intent as string | null;
-      if (!paymentIntent) return "skipped: no payment intent";
-      // Find order by session id isn't direct from charge; log for manual reconciliation.
-      // For MVP, admin revokes manually via /revoke command using the license id from the email.
-      logger.warn({ chargeId: charge.id, paymentIntent }, "refund received — revoke license manually via /revoke");
-      return `refund logged: ${charge.id}`;
+      // Keyed off `customer`, not `payment_intent`/checkout-session id: every
+      // charge for a lead (the initial one AND every renewal) shares the
+      // same Stripe customer, but only the FIRST payment's checkout session
+      // ever gets recorded on our `orders` table. Matching on customer id
+      // is what makes this handler correctly auto-revoke a refund on a
+      // RENEWAL charge too, not just the first purchase.
+      const customerId = typeof charge.customer === "string" ? charge.customer : charge.customer?.id;
+      if (!customerId) {
+        logger.warn({ chargeId: charge.id }, "charge.refunded has no customer id — cannot map to a license, revoke manually via /revoke");
+        return "skipped: no customer id on charge";
+      }
+
+      const sub = getSubscriptionByCustomerId(customerId);
+      if (!sub) {
+        logger.warn({ chargeId: charge.id, customerId }, "charge.refunded — no local subscription found for this Stripe customer, revoke manually via /revoke");
+        return "skipped: unknown Stripe customer";
+      }
+
+      const license = getActiveLicenseForLead(sub.lead_id);
+      if (!license) {
+        logger.info({ chargeId: charge.id, leadId: sub.lead_id }, "charge.refunded — no active license to revoke (already revoked or expired)");
+        return `refund processed: no active license for lead ${sub.lead_id}`;
+      }
+
+      revokeLicense(license.id, "refunded");
+      const lead = getLeadById(sub.lead_id);
+      if (lead?.id) {
+        await notifyCustomerOfRefundRevocation(lead as any, license);
+        await notifyAdminOfRefundRevocation(lead as any, license, charge.id);
+      }
+      return `revoked license ${license.id} for refunded charge ${charge.id}`;
     }
 
     default:

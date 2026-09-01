@@ -262,3 +262,46 @@ export async function notifyCustomerLicenseIssued(lead: Lead, license: IssuedLic
     logger.warn({ err }, "rypto redirect DM failed (non-fatal)");
   }
 }
+
+/** DM the customer that their license was revoked because Stripe reported a refund on their payment. Fired from the charge.refunded webhook handler — see stripe.ts. */
+export async function notifyCustomerOfRefundRevocation(lead: Lead, license: { id: string; tier: string }): Promise<void> {
+  const text = [
+    `Your ARIA *${tierLabel(license.tier)}* license was revoked following a refund on your payment.`, ``,
+    `If this wasn't expected, reply here or use /support.`,
+  ].join("\n");
+  try {
+    await bot.api.sendMessage(lead.tg_user_id, text, { parse_mode: "Markdown" });
+  } catch (err) {
+    logger.warn({ err }, "refund-revocation DM failed (non-fatal) — they may not have started the bot chat");
+  }
+}
+
+/** DM the admin whenever a refund triggers an automatic license revocation — the one billing event that removes paid access, worth a real-time heads-up rather than only being discoverable via audit_log. */
+export async function notifyAdminOfRefundRevocation(lead: Lead, license: { id: string; tier: string }, chargeId: string): Promise<void> {
+  if (!CONFIG.ADMIN_TELEGRAM_CHAT_ID) return;
+  const text = [
+    `↩️ Refund → auto-revoked · \`${tierLabel(license.tier)}\` · lic \`${license.id}\``, ``,
+    `Name: ${esc(lead.name)}`,
+    `Email: \`${esc(lead.email)}\``,
+    `Stripe charge: \`${esc(chargeId)}\``,
+  ].join("\n");
+  try {
+    await bot.api.sendMessage(CONFIG.ADMIN_TELEGRAM_CHAT_ID, text, { parse_mode: "Markdown" });
+  } catch (err) {
+    logger.warn({ err }, "admin refund-revocation DM failed (non-fatal)");
+  }
+}
+
+/** DM the customer that their license expires soon (7 days or 1 day out — see expiry-warnings.ts). Sent at most once per warning tier per license (warned_7d/warned_1d gate this at the caller). */
+export async function notifyCustomerOfExpiryWarning(lead: Lead, license: { id: string; tier: string; expiresAt: string }, daysRemaining: 7 | 1): Promise<void> {
+  const when = daysRemaining === 1 ? "tomorrow" : `in ${daysRemaining} days`;
+  const text = [
+    `Your ARIA *${tierLabel(license.tier)}* license expires ${when} (${license.expiresAt.slice(0, 10)}).`, ``,
+    `Use /license here to check your current status, or renew before it lapses to avoid a gap in access.`,
+  ].join("\n");
+  try {
+    await bot.api.sendMessage(lead.tg_user_id, text, { parse_mode: "Markdown" });
+  } catch (err) {
+    logger.warn({ err }, "expiry-warning DM failed (non-fatal) — they may not have started the bot chat");
+  }
+}

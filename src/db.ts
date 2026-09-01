@@ -61,7 +61,9 @@ db.exec(`
     expires_at      TEXT NOT NULL,
     revoked         INTEGER NOT NULL DEFAULT 0,
     revoked_at      TEXT,
-    revoked_reason  TEXT
+    revoked_reason  TEXT,
+    warned_7d       INTEGER NOT NULL DEFAULT 0,
+    warned_1d       INTEGER NOT NULL DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS idx_licenses_lead ON licenses(lead_id);
   CREATE INDEX IF NOT EXISTS idx_licenses_wallet ON licenses(wallet);
@@ -92,5 +94,23 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts DESC);
 `);
+
+// `CREATE TABLE IF NOT EXISTS` above only defines the shape for a BRAND NEW
+// database file — it does nothing to an already-deployed licenses table
+// (e.g. Railway's persisted volume) that predates warned_7d/warned_1d.
+// There is no migration framework for SQLite in this repo (unlike
+// migrate.ts's Postgres migrations for the funded-account domain), so this
+// is a defensive, idempotent ADD COLUMN guarded by an explicit existence
+// check rather than relying on SQLite version support for
+// `ADD COLUMN IF NOT EXISTS` (added in 3.35.0, but not worth depending on).
+function ensureColumn(table: string, column: string, columnDdl: string): void {
+  const existing = db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as Array<{ name: string }>;
+  if (!existing.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${columnDdl}`);
+    logger.info({ table, column }, "schema migration: added column");
+  }
+}
+ensureColumn("licenses", "warned_7d", "warned_7d INTEGER NOT NULL DEFAULT 0");
+ensureColumn("licenses", "warned_1d", "warned_1d INTEGER NOT NULL DEFAULT 0");
 
 logger.info({ path: CONFIG.DB_PATH }, "database ready — 5 tables (leads, orders, licenses, subscriptions, audit_log)");

@@ -34,6 +34,14 @@ const findByStripeIdStmt = db.prepare(`SELECT * FROM subscriptions WHERE stripe_
 const findActiveByLeadStmt = db.prepare(
   `SELECT * FROM subscriptions WHERE lead_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1`,
 );
+// Every Stripe charge (the initial one AND every renewal) shares the same
+// `customer` id — unlike a checkout session id, which only ever exists for
+// the very first payment. This is the reliable way to map a `charge.refunded`
+// event (which carries `customer` but not a checkout session id) back to a
+// lead for a refund on ANY charge, not just the first one.
+const findByCustomerIdStmt = db.prepare(
+  `SELECT * FROM subscriptions WHERE stripe_customer_id = ? ORDER BY created_at DESC LIMIT 1`,
+);
 
 export function upsertSubscription(input: {
   leadId: number;
@@ -71,4 +79,8 @@ export function getSubscriptionByStripeId(stripeSubId: string): Subscription | u
 
 export function getActiveSubscriptionForLead(leadId: number): Subscription | undefined {
   return findActiveByLeadStmt.get(leadId) as Subscription | undefined;
+}
+
+export function getSubscriptionByCustomerId(stripeCustomerId: string): Subscription | undefined {
+  return findByCustomerIdStmt.get(stripeCustomerId) as Subscription | undefined;
 }
