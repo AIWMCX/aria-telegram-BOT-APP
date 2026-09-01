@@ -1,7 +1,7 @@
 {
-  "version": "0.7.0-beta.1",
-  "filename": "aria-engine-0.7.0-beta.1.tgz",
-  "sha256": "55e320debc85454039a55ba16cec3d405fa6d9bf6e11fc57b87edc3c8475a9f5",
-  "ariaEngineCommitSha": "1b9ecfb2ac85d6202192fb0d11ac0ad15c76bcda",
-  "publishedAt": "2026-08-28T23:11:00Z"
+  "version": "0.7.0-beta.2",
+  "filename": "aria-engine-0.7.0-beta.2.tgz",
+  "sha256": "c4ef2a3b2243795b9f0821b30b29b149407fc07520442b1ed956780505321ab7",
+  "ariaEngineCommitSha": "e9c65ec8f38311c0379e93955a56d595b82465d8",
+  "publishedAt": "2026-09-01T18:03:00Z"
 }
