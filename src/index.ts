@@ -9,6 +9,7 @@ import { runLedgerSelfTest } from "./ledger-selftest.js";
 import { runEngineControlSelfTest } from "./engine-control-selftest.js";
 import { runEngineAuthSelfTest } from "./engine-auth-selftest.js";
 import { runEngineSyncSelfTest } from "./engine-sync-selftest.js";
+import { runSyncDesyncRepro } from "./engine-sync-desync-repro.js";
 import { startExpiryWarningScheduler } from "./expiry-warnings.js";
 
 async function main(): Promise<void> {
@@ -59,6 +60,14 @@ async function main(): Promise<void> {
       await runEngineSyncSelfTest();
     } catch (err) {
       logger.error({ err }, "engine sync selftest crashed outside its own try/catch — this itself is a finding");
+    }
+  }
+
+  if (CONFIG.RUN_SYNC_DESYNC_REPRO) {
+    try {
+      await runSyncDesyncRepro();
+    } catch (err) {
+      logger.error({ err }, "sync-desync-repro crashed outside its own try/catch — this itself is a finding");
     }
   }
 

@@ -320,7 +320,23 @@ app.post("/api/engine/sync", async (c) => {
       return c.json({ ok: false, error: "Invalid signature." }, 401);
     }
 
+    // SYNC_DESYNC_INVESTIGATION: safe diagnostic tuple only — clientId,
+    // truncated public-key fingerprint, incoming/stored sequence, payload
+    // kind. Never a signature, private key, or entitlement token. This is
+    // the server side of the local-vs-server sequence comparison needed to
+    // root-cause the sequence-desync bug (see docs/ARIA_PRODUCT_SCALE_STATE.md).
     const advanced = await atomicAdvanceSequence(clientId, BigInt(sequence));
+    logger.info(
+      {
+        clientId,
+        devicePublicKeyFingerprint: client.device_public_key.slice(0, 12),
+        incomingSequence: sequence,
+        serverLastSequenceBeforeThisRequest: client.last_sequence,
+        payloadKind: payload.kind,
+        advanced,
+      },
+      "sync sequence check",
+    );
     if (!advanced) {
       // currentSequence lets a desynced client self-heal (see pairing-state.ts's
       // resyncSequence) instead of retrying the same rejected number forever —
