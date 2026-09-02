@@ -42,7 +42,8 @@ process.env.ARIA_ENTITLEMENT_PUBLIC_X = entPubJwk.x;
 const { stripe, handleStripeWebhook } = await import("../src/stripe.js");
 const { upsertLead } = await import("../src/leads.js");
 const { issueLicense, getActiveLicenseForLead } = await import("../src/licenses.js");
-const { upsertSubscription } = await import("../src/subscriptions.js");
+const { upsertSubscription, getSubscriptionByStripeId, getActiveSubscriptionForLead } = await import("../src/subscriptions.js");
+const { createOrder, getOrderById } = await import("../src/orders.js");
 const { db } = await import("../src/db.js");
 const { checkAndSendExpiryWarnings } = await import("../src/expiry-warnings.js");
 
@@ -180,6 +181,104 @@ function signedWebhookRequest(eventPayload: object): { rawBody: string; signatur
   const row = db.prepare(`SELECT warned_7d FROM licenses WHERE id = ?`).get(license.id) as { warned_7d: number };
   check("a revoked license inside the 7d window is never warned — there's nothing to renew", row.warned_7d === 0);
   void sent7d;
+}
+
+// ── checkout.session.completed: real purchase issues a license and creates the subscription record ──
+// stripe.subscriptions.retrieve() is a real Stripe API call the fake test key can't make — monkey-patched
+// for exactly this call, restored immediately after, same try/finally discipline as globalThis.fetch above.
+{
+  const leadId = upsertLead({ tg_user_id: 888, name: "Checkout Test", email: "checkout@example.com", wallet: "So11111111111111111111111111111111111111119" });
+  const orderId = createOrder(leadId, "standard", 149);
+
+  const originalRetrieve = stripe!.subscriptions.retrieve.bind(stripe!.subscriptions);
+  (stripe as any).subscriptions.retrieve = async (_id: string) => ({
+    id: "sub_checkout_test", status: "active", current_period_end: Math.floor(Date.now() / 1000) + 30 * 86400,
+  });
+  try {
+    const { rawBody, signature } = signedWebhookRequest({
+      id: "evt_checkout_1", type: "checkout.session.completed",
+      data: { object: { id: "cs_checkout_1", client_reference_id: orderId, customer: "cus_checkout_test", subscription: "sub_checkout_test", metadata: { tier: "standard", leadId: String(leadId) } } },
+    });
+    const result = await handleStripeWebhook(rawBody, signature);
+    check("handleStripeWebhook reports a license was issued for the real order", result.includes("issued license") && result.includes(orderId));
+    check("the order is marked paid", getOrderById(orderId)?.status === "paid");
+    check("a real license is now active for this lead", getActiveLicenseForLead(leadId) !== undefined);
+    check("a subscription record was created tying this lead to the real Stripe customer/subscription ids", getSubscriptionByStripeId("sub_checkout_test")?.lead_id === leadId);
+  } finally {
+    (stripe as any).subscriptions.retrieve = originalRetrieve;
+  }
+}
+
+// ── checkout.session.completed with missing metadata degrades safely, never throws ──
+{
+  const { rawBody, signature } = signedWebhookRequest({
+    id: "evt_checkout_bad", type: "checkout.session.completed",
+    data: { object: { id: "cs_checkout_bad", client_reference_id: null, customer: "cus_bad", metadata: {} } },
+  });
+  const result = await handleStripeWebhook(rawBody, signature);
+  check("a checkout.session.completed with missing order/tier/lead metadata is reported, not thrown", result.includes("skipped") && result.includes("missing metadata"));
+}
+
+// ── invoice.paid (subscription_cycle): a real renewal re-issues a license ──
+{
+  const leadId = upsertLead({ tg_user_id: 999, name: "Renewal Test", email: "renewaltest@example.com", wallet: "So1111111111111111111111111111111111111120" });
+  upsertSubscription({ leadId, tier: "standard", stripeSubId: "sub_renewal_cycle_test", stripeCustomerId: "cus_renewal_cycle_test", status: "active", currentPeriodEnd: new Date(Date.now() + 30 * 86400_000).toISOString() });
+  const licenseBefore = issueLicense({ id: leadId, tg_user_id: 999, name: "Renewal Test", email: "renewaltest@example.com", wallet: "So1111111111111111111111111111111111111120" } as any, "standard");
+
+  const originalRetrieve = stripe!.subscriptions.retrieve.bind(stripe!.subscriptions);
+  (stripe as any).subscriptions.retrieve = async (_id: string) => ({
+    status: "active", current_period_end: Math.floor(Date.now() / 1000) + 60 * 86400,
+  });
+  try {
+    const { rawBody, signature } = signedWebhookRequest({
+      id: "evt_renewal_1", type: "invoice.paid",
+      data: { object: { id: "in_renewal_1", subscription: "sub_renewal_cycle_test", billing_reason: "subscription_cycle" } },
+    });
+    const result = await handleStripeWebhook(rawBody, signature);
+    check("handleStripeWebhook reports the subscription was renewed", result.includes("renewed subscription sub_renewal_cycle_test"));
+    const licenseAfter = getActiveLicenseForLead(leadId);
+    check("a NEW license was issued on renewal (a real second license, not the same one carried forward)", licenseAfter !== undefined && licenseAfter!.id !== licenseBefore.id);
+  } finally {
+    (stripe as any).subscriptions.retrieve = originalRetrieve;
+  }
+}
+
+// ── invoice.paid for the VERY FIRST invoice (billing_reason !== subscription_cycle) does NOT re-issue ──
+// (that license was already issued by checkout.session.completed — this proves no double-issuance on day one)
+{
+  const leadId = upsertLead({ tg_user_id: 1000, name: "First Invoice Test", email: "firstinvoice@example.com", wallet: "So1111111111111111111111111111111111111121" });
+  upsertSubscription({ leadId, tier: "standard", stripeSubId: "sub_first_invoice_test", stripeCustomerId: "cus_first_invoice_test", status: "active", currentPeriodEnd: new Date(Date.now() + 30 * 86400_000).toISOString() });
+  const licenseBefore = issueLicense({ id: leadId, tg_user_id: 1000, name: "First Invoice Test", email: "firstinvoice@example.com", wallet: "So1111111111111111111111111111111111111121" } as any, "standard");
+
+  const originalRetrieve = stripe!.subscriptions.retrieve.bind(stripe!.subscriptions);
+  (stripe as any).subscriptions.retrieve = async (_id: string) => ({ status: "active", current_period_end: Math.floor(Date.now() / 1000) + 30 * 86400 });
+  try {
+    const { rawBody, signature } = signedWebhookRequest({
+      id: "evt_first_invoice", type: "invoice.paid",
+      data: { object: { id: "in_first", subscription: "sub_first_invoice_test", billing_reason: "subscription_create" } },
+    });
+    await handleStripeWebhook(rawBody, signature);
+    const licenseAfter = getActiveLicenseForLead(leadId);
+    check("the FIRST invoice (subscription_create) does not re-issue a second license", licenseAfter?.id === licenseBefore.id);
+  } finally {
+    (stripe as any).subscriptions.retrieve = originalRetrieve;
+  }
+}
+
+// ── customer.subscription.deleted: cancellation marks the subscription cancelled ──
+{
+  const leadId = upsertLead({ tg_user_id: 1001, name: "Cancel Test", email: "canceltest@example.com", wallet: "So1111111111111111111111111111111111111122" });
+  upsertSubscription({ leadId, tier: "pro", stripeSubId: "sub_cancel_test", stripeCustomerId: "cus_cancel_test", status: "active", currentPeriodEnd: new Date(Date.now() + 30 * 86400_000).toISOString() });
+  check("setup: the subscription is active before cancellation", getActiveSubscriptionForLead(leadId)?.stripe_sub_id === "sub_cancel_test");
+
+  const { rawBody, signature } = signedWebhookRequest({
+    id: "evt_cancel_1", type: "customer.subscription.deleted",
+    data: { object: { id: "sub_cancel_test" } },
+  });
+  const result = await handleStripeWebhook(rawBody, signature);
+  check("handleStripeWebhook reports the subscription was cancelled", result.includes("cancelled subscription sub_cancel_test"));
+  check("the subscription is no longer active for this lead", getActiveSubscriptionForLead(leadId) === undefined);
+  check("the subscription row itself is marked cancelled, not deleted (audit trail preserved)", getSubscriptionByStripeId("sub_cancel_test")?.status === "canceled");
 }
 
 console.log(`\n${failures === 0 ? "✅ ALL TESTS PASSED" : `❌ ${failures} TEST(S) FAILED`}`);
