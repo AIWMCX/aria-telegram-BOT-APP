@@ -13,7 +13,7 @@ would itself violate this document's own rule.
 
 ## CURRENT DATE
 
-2026-09-02.
+2026-09-02 (updated same day, post-real-acceptance-test).
 
 ## CURRENT SHAS
 
@@ -25,17 +25,29 @@ would itself violate this document's own rule.
 
 ## CURRENT USERS / ACTIVE ENGINES
 
-**Zero.** No real external Telegram user has completed onboarding yet.
-The full install→doctor→pair→PAPER-start→journal→replay→stop→restart
-flow has been verified up to the pairing step (which needs a real
-human on Telegram to generate a code) — see GAP_MATRIX.md /
-REAL2_EXECUTION_STATE.md in `aria-engine` for the engine-side evidence.
+**One real user, fully verified end-to-end, same day.** A real Telegram
+user generated a real single-use pairing code, ran `aria pair`, `aria
+doctor`, `aria paper start`, and `aria journal` against the real published
+`0.7.0-beta.3` build on their own machine. Real evidence, not assumption:
+  - `aria journal` after real synthetic trading: `DETECTED 41, TRADED 3,
+    REJECTED 38, OPEN 1, CLOSED 2, WINS 2, LOSSES 0, REALIZED PNL 8418210
+    lamports`.
+  - **Restart-recovery gate passed**: `aria paper stop` → `aria paper
+    start` → `aria journal` showed the exact same `OPEN 1 / CLOSED 2 /
+    WINS 2 / PNL 8418210` after restart, with `DETECTED`/`REJECTED`
+    climbing further from new post-restart activity (41→50, 38→47) — state
+    genuinely persisted across a process restart, not reset.
+  - The full install→doctor→pair→PAPER-start→journal→replay→stop→restart
+    flow is now closed with real evidence, not just code-level readiness.
 
 ## RELEASE VERSION
 
-`0.7.0-beta.3`. Release label: `PAPER_READY` (not yet `CLOSED_BETA_READY`
-— real Telegram pairing and Mini App mobile/desktop visual check are
-still open, both needing a human, not more code).
+`0.7.0-beta.3`. Release label: `CLOSED_BETA_READY` as of this entry — the
+fresh-user pairing/onboarding/restart-recovery gate that was the last
+open item is now closed with real evidence (see above). Mini App
+mobile/desktop visual check is still open (the user's own screenshots
+show it rendering correctly on Telegram desktop; a mobile check hasn't
+been explicitly done).
 
 ## TOP USER FRICTION (found this session, real, not hypothetical)
 
@@ -50,14 +62,31 @@ still open, both needing a human, not more code).
    runs. Self-recovers within one retry every time observed so far, but
    this is a real, disclosed reliability ceiling until a dedicated RPC
    is configured (`BLOCKED_EXTERNAL`, no credentials available).
+4. Real, found during the first real user's live acceptance test: the
+   control plane's replay-defense sequence counter could desync between
+   a device's local state and the server's stored counter (exact trigger
+   not fully pinned — restart timing is the leading hypothesis), and once
+   desynced, cloud sync (`snapshot`/`event_batch`) was rejected forever
+   with no recovery path, silently starving the Mini App of state while
+   local PAPER trading kept working fine underneath (local journal writes
+   never depended on sync succeeding). **Fixed same day**: the 409 now
+   returns the server's authoritative `currentSequence`
+   (`aria-telegram-BOT-APP` commit `84ad2d4`), and the client self-heals
+   by adopting it and retrying once (`aria-engine` commit `75f0750`).
+   Not yet re-verified against a live desynced device — the original
+   desync was resolved by a stop/restart before this fix was written, so
+   the self-heal path itself has unit/typecheck coverage but no real-world
+   confirmation yet.
 
 ## CURRENT INCIDENTS
 
-None active. (A real, severe one was found and fixed this session:
-`PollingRpcTransport` was awaiting `getTransaction` sequentially with no
-concurrency cap, causing single polls to stall 15–64 minutes under real
-backlog. Fixed in `aria-engine` PR #7, merged as `62cd09b`, verified via
-a real wall-clock test and a second live soak showing zero recurrence.)
+None active. Two real, severe ones were found and fixed this session:
+- `PollingRpcTransport` was awaiting `getTransaction` sequentially with no
+  concurrency cap, causing single polls to stall 15–64 minutes under real
+  backlog. Fixed in `aria-engine` PR #7, merged as `62cd09b`, verified via
+  a real wall-clock test and a second live soak showing zero recurrence.
+- Cloud-sync sequence desync (see friction item 4 above) — fixed, not yet
+  re-verified live.
 
 ## CURRENT P0
 
@@ -106,7 +135,23 @@ SLO, and should not be conflated with either.
 
 ## NEXT TASK
 
-Continue the in-flight PAPER beta certification (soak checkpoints,
-pairing, Mini App check) rather than starting scale/analytics/growth
-work this document also describes — that work has a real, correct
-trigger condition (measured user demand) that hasn't occurred yet.
+Fresh-user PAPER beta certification is now closed with real evidence.
+`0.7.0-beta.4` is built, verified (clean-checkout npm ci/typecheck/full
+suite/guardrail/CLI smoke test), and published to
+`public/downloads/latest.json` — carries the sync self-heal fix. Remaining
+before wider announcement:
+1. **Push these commits to GitHub and deploy the control plane** — all of
+   today's fix/release commits (`aria-engine` up to `010ffb9`,
+   `aria-telegram-BOT-APP` up to `a09da97`) exist locally only as of this
+   entry; nothing has been pushed. This is the actual remaining blocker —
+   until deployed, the live server still runs the pre-fix code, so a real
+   desynced device would still need a manual re-pair, not the self-heal
+   path (the LOCAL journal/PAPER-trading path is unaffected either way).
+2. Re-verify the self-heal fix against a real live desync once deployed —
+   it has unit/typecheck coverage and a clean install/CLI smoke test, but
+   no real-world confirmation yet.
+3. Mini App mobile visual check (desktop confirmed via real screenshots).
+4. THEN: announcement/distribution — still gated on the same demand
+   trigger this document has said all along (§41/§47): there is exactly
+   one real user right now, so "growth work" still means "get the next
+   handful of real users," not scale infrastructure.
