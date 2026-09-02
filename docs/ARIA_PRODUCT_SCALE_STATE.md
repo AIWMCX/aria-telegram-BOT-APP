@@ -17,11 +17,16 @@ would itself violate this document's own rule.
 
 ## CURRENT SHAS
 
-- `aria-engine` main: `6ac72d5863c90c94435e3ebb02b63eb94ff7b958`
-- `aria-telegram-BOT-APP` main: `bfc519d...` (fix(bot): /support 404 + /help)
-- Published release: `aria-engine-0.7.0-beta.3.tgz`, sha256
-  `2c1ae0592cf01bd360b94316e7b95702064d1f5d4f18563a2a9acacd5aefe28b`,
-  live at `public/downloads/latest.json`, confirmed served in production.
+- `aria-engine` main: `010ffb9e5a56cb1fe524e665190c4efa7bfb633b`
+- `aria-telegram-BOT-APP` main: `db3e2df80fbeb2e0d180e29cc717380358f31e87`
+- Both pushed and deployed 2026-09-02: GitHub CI green on `aria-engine`;
+  Railway deployment `5d9dd4cc` status SUCCESS for `aria-telegram-BOT-APP`
+  (project `bubbly-prosperity`, service `aria-telegram-BOT-APP`).
+- Published release: `aria-engine-0.7.0-beta.4.tgz`, sha256
+  `ecaa009307c83ce846e6d181f2dcf1f5ada9ed6ef64cdcf95f0f578d43140619`, live
+  at `https://aria-telegram-bot-app-production.up.railway.app/downloads/latest.json`
+  — verified by downloading the production file directly and re-hashing it
+  (matched exactly), not just trusting the deploy succeeded.
 
 ## CURRENT USERS / ACTIVE ENGINES
 
@@ -42,12 +47,69 @@ doctor`, `aria paper start`, and `aria journal` against the real published
 
 ## RELEASE VERSION
 
-`0.7.0-beta.3`. Release label: `CLOSED_BETA_READY` as of this entry — the
-fresh-user pairing/onboarding/restart-recovery gate that was the last
-open item is now closed with real evidence (see above). Mini App
-mobile/desktop visual check is still open (the user's own screenshots
-show it rendering correctly on Telegram desktop; a mobile check hasn't
-been explicitly done).
+`0.7.0-beta.4`, deployed and verified live in production 2026-09-02.
+
+Release label: **`PAPER_READY`, not `CLOSED_BETA_READY` yet.** Two gates
+from the same acceptance test, tracked separately — do not conflate them:
+
+```
+RESTART RECOVERY
+PASS
+
+Evidence:
+paper stop -> paper start retained:
+  OPEN 1
+  CLOSED 2
+  WINS 2
+  LOSSES 0
+  REALIZED PNL 8,418,210 lamports
+
+Post-restart discovery continued:
+  DETECTED 41 -> 50
+  REJECTED 38 -> 47
+
+SYNC (engine <-> control plane)
+INVESTIGATING
+ROOT CAUSE: NOT YET PROVEN
+
+Observed:
+  server rejected every sequence-advance attempt for one real device
+  across a live acceptance test (~40+ consecutive 409s, 01:58-02:18).
+
+Ruled out by static inspection:
+  - nullable/default-zero schema issue (last_sequence is bigint NOT NULL
+    default 0)
+  - silent duplicate-device UPSERT (registerClient does a plain INSERT;
+    a reused device_public_key throws a unique-constraint 409 from
+    /api/engine/pair, not a silent row reuse)
+  - pairing state saved on a failed pair (pairing-client.ts only calls
+    savePairingState after a successful response)
+  - same-process doSync overlap (cli.ts's sync loop is fully sequential
+    -- each doSync is awaited before the next runs; nextSequence() has no
+    internal await, so two calls in one process cannot interleave)
+
+Mitigation deployed (0.7.0-beta.4), NOT a fix:
+  server returns currentSequence on a 409; client adopts it and retries
+  once. Does not appear to weaken replay defense (the retry requires a
+  fresh signature from the device's real private key, and
+  currentSequence comes only from the server's own stored counter, never
+  client input) -- but this masks the symptom, it does not explain the
+  divergence, and that claim itself is unverified until proven.
+
+Required before closing:
+  reproduce cases A-D (this repo's `src/engine-sync-desync-repro.ts`,
+  guarded by RUN_SYNC_DESYNC_REPRO; case B needs a real client restart —
+  see the "sync diag" log lines in aria-engine's cli.ts and this repo's
+  server.ts) and
+  capture, at the FIRST rejection, the exact pair of values: local
+  pairing-state.json lastSequence (pre-increment) vs production
+  engine_clients.last_sequence for the same clientId. Until that pair is
+  captured, root cause is speculation.
+```
+
+Mini App mobile/desktop visual check is still open (the user's own
+screenshots show it rendering correctly on Telegram desktop; a mobile
+check hasn't been explicitly done).
 
 ## TOP USER FRICTION (found this session, real, not hypothetical)
 
@@ -63,30 +125,32 @@ been explicitly done).
    this is a real, disclosed reliability ceiling until a dedicated RPC
    is configured (`BLOCKED_EXTERNAL`, no credentials available).
 4. Real, found during the first real user's live acceptance test: the
-   control plane's replay-defense sequence counter could desync between
-   a device's local state and the server's stored counter (exact trigger
-   not fully pinned — restart timing is the leading hypothesis), and once
+   control plane's replay-defense sequence counter desynced between a
+   device's local state and the server's stored counter, and once
    desynced, cloud sync (`snapshot`/`event_batch`) was rejected forever
-   with no recovery path, silently starving the Mini App of state while
+   with no recovery path — silently starving the Mini App of state while
    local PAPER trading kept working fine underneath (local journal writes
-   never depended on sync succeeding). **Fixed same day**: the 409 now
-   returns the server's authoritative `currentSequence`
-   (`aria-telegram-BOT-APP` commit `84ad2d4`), and the client self-heals
-   by adopting it and retrying once (`aria-engine` commit `75f0750`).
-   Not yet re-verified against a live desynced device — the original
-   desync was resolved by a stop/restart before this fix was written, so
-   the self-heal path itself has unit/typecheck coverage but no real-world
-   confirmation yet.
+   never depended on sync succeeding). **A mitigation is deployed**: the
+   409 now returns the server's authoritative `currentSequence`
+   (`aria-telegram-BOT-APP` `84ad2d4`), and the client self-heals by
+   adopting it and retrying once (`aria-engine` `75f0750`, shipped in
+   `0.7.0-beta.4`). **The root cause is NOT yet proven** — static code
+   review ruled out several obvious explanations (see SYNC below) but did
+   not identify the actual divergence mechanism. Do not treat this as
+   closed; the mitigation is deployed as a safety net while the real
+   cause is instrumented and reproduced.
 
 ## CURRENT INCIDENTS
 
-None active. Two real, severe ones were found and fixed this session:
+None active. One real, severe one was found and fully fixed+verified this
+session:
 - `PollingRpcTransport` was awaiting `getTransaction` sequentially with no
   concurrency cap, causing single polls to stall 15–64 minutes under real
   backlog. Fixed in `aria-engine` PR #7, merged as `62cd09b`, verified via
   a real wall-clock test and a second live soak showing zero recurrence.
-- Cloud-sync sequence desync (see friction item 4 above) — fixed, not yet
-  re-verified live.
+
+One is still open, investigation in progress (see SYNC below):
+- Cloud-sync sequence desync — mitigation deployed, root cause unproven.
 
 ## CURRENT P0
 
@@ -135,23 +199,31 @@ SLO, and should not be conflated with either.
 
 ## NEXT TASK
 
-Fresh-user PAPER beta certification is now closed with real evidence.
-`0.7.0-beta.4` is built, verified (clean-checkout npm ci/typecheck/full
-suite/guardrail/CLI smoke test), and published to
-`public/downloads/latest.json` — carries the sync self-heal fix. Remaining
-before wider announcement:
-1. **Push these commits to GitHub and deploy the control plane** — all of
-   today's fix/release commits (`aria-engine` up to `010ffb9`,
-   `aria-telegram-BOT-APP` up to `a09da97`) exist locally only as of this
-   entry; nothing has been pushed. This is the actual remaining blocker —
-   until deployed, the live server still runs the pre-fix code, so a real
-   desynced device would still need a manual re-pair, not the self-heal
-   path (the LOCAL journal/PAPER-trading path is unaffected either way).
-2. Re-verify the self-heal fix against a real live desync once deployed —
-   it has unit/typecheck coverage and a clean install/CLI smoke test, but
-   no real-world confirmation yet.
-3. Mini App mobile visual check (desktop confirmed via real screenshots).
-4. THEN: announcement/distribution — still gated on the same demand
+Restart-recovery gate: closed, real evidence, PASS. Sync gate:
+INVESTIGATING — do not announce beyond the current single real user until
+this closes. In order:
+1. **Done**: instrumented both boundaries (client `doSync` in
+   aria-engine's `cli.ts`, server `/api/engine/sync` in this repo's
+   `server.ts`) with a safe diagnostic tuple — no secrets, signatures, or
+   key material — on every sync attempt. Also **done**: a real-Postgres,
+   real-HTTP reproduction harness (`src/engine-sync-desync-repro.ts`,
+   `RUN_SYNC_DESYNC_REPRO`) covering cases A/C/D.
+2. Reproduce cases A (fresh identity+pair), B (same identity, normal
+   restart), C (re-pair with an existing identity), D (process killed
+   after local persist, before HTTP response) and capture the local-vs-
+   server sequence pair at the first rejection for each.
+3. Root-cause the actual divergence from that evidence, then decide the
+   real fix — an explicit authenticated resync path tied to device
+   identity if recovery semantics are genuinely needed, not just today's
+   silent-adopt mitigation left in place indefinitely.
+4. Write the required regression tests (fresh/monotonic/skipped/
+   duplicate/lower sequence, restart, failed-network-request replay
+   safety, re-pair behavior, same-identity-two-processes).
+5. Full suite, typecheck, CI, then a real production sync succeeding
+   repeatedly after restart — that's what actually closes this, not the
+   mitigation shipping.
+6. Mini App mobile visual check (desktop confirmed via real screenshots).
+7. THEN: announcement/distribution — still gated on the same demand
    trigger this document has said all along (§41/§47): there is exactly
    one real user right now, so "growth work" still means "get the next
    handful of real users," not scale infrastructure.
