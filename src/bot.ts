@@ -163,7 +163,26 @@ bot.command("pair", async (ctx) => {
 });
 
 bot.command("support", async (ctx) => {
-  await ctx.reply("Support: reply here and we'll get back within 24h.\nDocs: " + CONFIG.PUBLIC_URL + "/docs");
+  // Was pointing at PUBLIC_URL + "/docs", a route that has never existed —
+  // every tap 404'd. Points at the real Terms/Privacy/Risk/Refund/Support
+  // section actually on the Mini App page (public/index.html's #legal).
+  await ctx.reply("Support: reply here and we'll get back within 24h.\nTerms, privacy, risk disclosure & support info: " + CONFIG.PUBLIC_URL + "/#legal");
+});
+
+bot.command("help", async (ctx) => {
+  const keyboard = new InlineKeyboard().webApp("🟢 OPEN TERMINAL", TERMINAL_URL);
+  await ctx.reply(
+    [
+      `*ARIA — commands*`, ``,
+      `/start — open the terminal, get access`,
+      `/license (or /status) — your current plan and expiry`,
+      `/pair — get a code to connect your local ARIA engine`,
+      `/support — contact us, terms & risk disclosure`,
+      `/help — this message`, ``,
+      `Everything else — pairing, PAPER trading, journal, replay — happens inside the terminal.`,
+    ].join("\n"),
+    { parse_mode: "Markdown", reply_markup: keyboard },
+  );
 });
 
 // ── Admin-only ────────────────────────────────────────────────────────────
