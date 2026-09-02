@@ -322,7 +322,11 @@ app.post("/api/engine/sync", async (c) => {
 
     const advanced = await atomicAdvanceSequence(clientId, BigInt(sequence));
     if (!advanced) {
-      return c.json({ ok: false, error: "Sequence not strictly increasing — stale or replayed request." }, 409);
+      // currentSequence lets a desynced client self-heal (see pairing-state.ts's
+      // resyncSequence) instead of retrying the same rejected number forever —
+      // client.last_sequence was read moments ago in this same request, so it's
+      // the authoritative value the failed advance was compared against.
+      return c.json({ ok: false, error: "Sequence not strictly increasing — stale or replayed request.", currentSequence: client.last_sequence }, 409);
     }
 
     // Every payload kind reaches this point already authenticated and
