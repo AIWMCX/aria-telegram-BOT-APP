@@ -83,30 +83,66 @@ async function main(): Promise<void> {
     logger.error({ err }, "expiry warning scheduler failed to start — license issuance/checkout unaffected");
   }
 
-  // Bot polling failure (bad token, transient Telegram API issue, rate limit)
-  // must not take down the HTTP server — license issuance, health checks,
-  // and Stripe webhooks are independent of whether the bot is connected.
-  // Retry with backoff instead of exiting the whole process.
-  // DIAGNOSTIC (2026-09-03, single deploy, revert after the test — see
-  // docs/ARIA_PRODUCT_SCALE_STATE.md "TELEGRAM BOT CONFLICT INCIDENT"):
-  // isolating whether the persistent 409 conflict is a second external
-  // poller, or this process's own retry loop starting bot.start() again
-  // without an explicit awaited bot.stop() first, possibly racing grammY's
-  // own in-flight polling state from the previous attempt. Starts the bot
-  // EXACTLY ONCE — no retry — and tags every lifecycle log with a random
-  // per-process ID so overlapping conflicts can be attributed to either
-  // one process (self-conflict) or two+ distinct processes (external).
+  // Bot polling failure (bad token, transient Telegram API issue, rate limit,
+  // a second poller elsewhere on this token) must not take down the HTTP
+  // server — license issuance, health checks, and Stripe webhooks are
+  // independent of whether the bot is connected. Retry with backoff instead
+  // of exiting the whole process.
+  //
+  // 2026-09-03 incident: the previous version of this loop called
+  // bot.start() again after a rejection without an explicit awaited
+  // bot.stop() first. A single-attempt, no-retry diagnostic build (tagging
+  // every lifecycle log with a random botProcessId) proved the 409 conflict
+  // is NOT self-inflicted — a single process, first-ever attempt, still hit
+  // a 409 ~8s after connecting, with no local retry involved. Root cause is
+  // a genuine second poller elsewhere holding this token — still
+  // unidentified as of this commit (ruled out: this repo's other Railway
+  // services, every other Railway service on the account, this dev
+  // machine, GitHub Actions). This lifecycle fix stands regardless of that
+  // unresolved external cause: only one STARTING transition may be in
+  // flight at a time, and every retry explicitly awaits bot.stop() before
+  // calling bot.start() again, so this process can never race itself.
   const botProcessId = randomUUID();
   logger.info({ botProcessId, pid: process.pid, startedAt: new Date().toISOString() }, "BOT_BOOT");
-  logger.info({ botProcessId, attempt: 1 }, "BOT_POLL_START");
-  bot.start({
-    onStart: (info) => {
-      logger.info({ botProcessId, username: info.username, id: info.id }, "telegram bot online");
-      logger.info(`👉 https://t.me/${info.username}`);
-    },
-  }).catch((err) => {
-    logger.error({ botProcessId, attempt: 1, errorCode: err?.error_code ?? err?.code, err }, "BOT_POLL_FAILED — diagnostic mode, NOT retrying in this process");
-  });
+
+  type BotLifecycleState = "STOPPED" | "STARTING" | "RUNNING" | "STOPPING" | "FAILED";
+  let botState: BotLifecycleState = "STOPPED";
+  let botRetryDelayMs = 5000;
+  let attempt = 0;
+
+  const startBot = async (): Promise<void> => {
+    if (botState === "STARTING" || botState === "RUNNING") return; // guard: only one STARTING transition at a time
+    attempt++;
+    botState = "STARTING";
+    logger.info({ botProcessId, attempt }, "BOT_POLL_START");
+    try {
+      await bot.start({
+        onStart: (info) => {
+          botState = "RUNNING";
+          botRetryDelayMs = 5000;
+          logger.info({ botProcessId, attempt, username: info.username, id: info.id }, "telegram bot online");
+          logger.info(`👉 https://t.me/${info.username}`);
+        },
+      });
+      // bot.start()'s promise only resolves once polling has been
+      // explicitly stopped (e.g. via shutdown's bot.stop()) — reaching here
+      // means a clean stop, not a failure, so no retry is scheduled.
+      botState = "STOPPED";
+    } catch (err: any) {
+      botState = "FAILED";
+      logger.error({ botProcessId, attempt, errorCode: err?.error_code ?? err?.code, retryInMs: botRetryDelayMs, err }, "BOT_POLL_FAILED");
+      botState = "STOPPING";
+      try {
+        await bot.stop(); // explicit, awaited — never call start() again without this completing first
+      } catch (stopErr) {
+        logger.warn({ botProcessId, stopErr }, "bot.stop() during failure recovery itself threw — continuing to retry anyway");
+      }
+      botState = "STOPPED";
+      setTimeout(() => void startBot(), botRetryDelayMs);
+      botRetryDelayMs = Math.min(botRetryDelayMs * 2, 5 * 60 * 1000);
+    }
+  };
+  void startBot();
 
   const shutdown = async (sig: string) => {
     logger.info({ sig }, "shutting down");
