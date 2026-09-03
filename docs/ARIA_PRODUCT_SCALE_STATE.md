@@ -19,15 +19,74 @@ would itself violate this document's own rule.
 
 ## CURRENT DATE
 
-2026-09-02 (updated same day, post-real-acceptance-test).
+2026-09-03 (updated same day — TELEGRAM BOT CONFLICT INCIDENT, see below).
+
+## TELEGRAM BOT CONFLICT INCIDENT (2026-09-03)
+
+**Status: MITIGATED, ROOT CAUSE UNRESOLVED.** Do not re-close this without
+re-reading it.
+
+Timeline:
+1. Discovered while investigating the P0-1 sync repro: production logs
+   showed a continuous `409: Conflict: terminated by other getUpdates
+   request` cycle — something else was long-polling Telegram with the same
+   `TELEGRAM_BOT_TOKEN`.
+2. Ruled out, with direct evidence, not assumption: `aria-real1-preview`
+   (its startCommand only runs migrations + `server.ts`, confirmed via
+   `get-service-config` twice), every other Railway service/project on the
+   account (full sweep), this local dev machine (no matching process), and
+   GitHub Actions (only workflow is `CI`, tests only, never references
+   `TELEGRAM_BOT_TOKEN`).
+3. Bot token was rotated via BotFather. The first attempt to save the new
+   token in Railway was pasted wrapped in `${{ }}` (Railway's variable-
+   reference syntax) — that corrupted the value badly enough it crashed
+   the whole process at boot (healthcheck failure, full production outage,
+   confirmed via a timed-out `/healthz` request). Fixed by setting the
+   literal value directly via the Railway API. Production HTTP recovered
+   immediately (`/healthz` → 200).
+4. The 409 conflict continued on the NEW token, within seconds, surviving
+   a full clean container restart. This ruled out a stale/zombie Railway
+   container (confirmed `numReplicas: 1`).
+5. **Decisive diagnostic** (commit `d170985`): shipped a build that calls
+   `bot.start()` exactly once, no retry, tagging every lifecycle log with
+   a random `botProcessId`. Result: a single process, first-ever attempt,
+   connected successfully (`telegram bot online`) then hit a 409 ~8 seconds
+   later — same `botProcessId`, no local retry involved. **This proves the
+   conflict is a genuine external second poller, not this process's own
+   retry lifecycle racing itself.**
+6. Fixed the lifecycle regardless (commit `9b15930`): explicit
+   STOPPED/STARTING/RUNNING/STOPPING/FAILED state machine, only one
+   STARTING transition at a time, every retry explicitly `await`s
+   `bot.stop()` before calling `bot.start()` again. This is correct
+   production hygiene independent of the external cause, but **does not
+   and cannot fix the external poller** — expect continued intermittent
+   409 flapping (bot works for a few seconds out of every ~10) until that
+   second poller is found and stopped.
+
+**What's still unknown**: WHAT the second poller is. Exhausted from this
+session's side: this Railway account (all projects/services), this dev
+machine, GitHub Actions. It picked up the newly-rotated token within
+seconds, which means it reads the token from somewhere both a human and
+it can reach live — most plausibly another person's machine running this
+bot locally (`.env` + `npm run dev`/`tsx src/index.ts`), or a forgotten
+deployment on a different host from before Railway (Heroku/Render/Fly/a
+VPS). Only the project owner can check either of those.
+
+**Next session**: before anything else, ask whether anyone else has this
+repo's `.env` and might be running it locally, and check for any other
+hosting account predating Railway. Do NOT re-rotate the token again until
+the second poller is identified — rotating without finding it just repeats
+this whole incident.
 
 ## CURRENT SHAS
 
 - `aria-engine` main: `010ffb9e5a56cb1fe524e665190c4efa7bfb633b`
-- `aria-telegram-BOT-APP` main: `db3e2df80fbeb2e0d180e29cc717380358f31e87`
-- Both pushed and deployed 2026-09-02: GitHub CI green on `aria-engine`;
-  Railway deployment `5d9dd4cc` status SUCCESS for `aria-telegram-BOT-APP`
+- `aria-telegram-BOT-APP` main: `9b159304ff6ea45fcbeec25a658d942ba500e709`
+- Both pushed and deployed 2026-09-02/03: GitHub CI green on `aria-engine`;
+  Railway deployment SUCCESS for `aria-telegram-BOT-APP`
   (project `bubbly-prosperity`, service `aria-telegram-BOT-APP`).
+- `TELEGRAM_BOT_TOKEN` was rotated 2026-09-03 — the value in `.env.example`
+  or any local `.env` predating this date is stale.
 - Published release: `aria-engine-0.7.0-beta.4.tgz`, sha256
   `ecaa009307c83ce846e6d181f2dcf1f5ada9ed6ef64cdcf95f0f578d43140619`, live
   at `https://aria-telegram-bot-app-production.up.railway.app/downloads/latest.json`
