@@ -3,6 +3,12 @@
 Durable memory file per the product/scale master prompt. Read this
 before re-deriving product/scale priorities from scratch.
 
+**Starting a new session on 2026-09-03 or later? Read
+[`SESSION_HANDOFF_2026-09-02.md`](./SESSION_HANDOFF_2026-09-02.md) next —
+it has the exact P0-1 through P0-9 execution order for the sync-desync
+investigation and beta acceptance. Don't reconstruct the plan from chat
+history.**
+
 **Read this file's own discipline before adding to it**: the source
 prompt's own §41/§47 say not to build scale infrastructure before
 measurements justify it, and never to certify a scale stage without
