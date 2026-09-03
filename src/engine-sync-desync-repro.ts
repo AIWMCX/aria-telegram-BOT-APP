@@ -48,6 +48,33 @@ export async function runSyncDesyncRepro(): Promise<void> {
   let userId: number | undefined;
   let clientId: string | undefined;
 
+  // Self-healing: a prior run of this script (2026-09-03, production) left an
+  // orphaned user+client+entitlement behind because the original cleanup
+  // below deleted engine_clients but not engine_entitlements, which also
+  // RESTRICTs deletion of `users` — the DELETE FROM users threw and the rest
+  // of cleanup never ran. Sweep any leftover 'SyncDesyncRepro'-tagged rows
+  // before creating new ones, in the correct FK order, so this is idempotent
+  // even if a future run crashes the same way.
+  try {
+    const { rows: stale } = await pool.query<{ id: number }>(
+      `SELECT id FROM users WHERE first_name = 'SyncDesyncRepro'`,
+    );
+    for (const { id } of stale) {
+      await pool.query(`DELETE FROM engine_entitlements WHERE user_id = $1`, [id]);
+      const { rows: staleClients } = await pool.query<{ id: string }>(`SELECT id FROM engine_clients WHERE user_id = $1`, [id]);
+      for (const c of staleClients) {
+        await pool.query(`DELETE FROM engine_snapshots WHERE client_id = $1`, [c.id]);
+        await pool.query(`DELETE FROM engine_events WHERE client_id = $1`, [c.id]);
+        await pool.query(`DELETE FROM engine_commands WHERE client_id = $1`, [c.id]);
+        await pool.query(`DELETE FROM engine_clients WHERE id = $1`, [c.id]);
+      }
+      await pool.query(`DELETE FROM users WHERE id = $1`, [id]);
+    }
+    if (stale.length > 0) record(`swept ${stale.length} leftover row(s) from a prior crashed run before starting`);
+  } catch (err) {
+    logger.error({ src: "sync-desync-repro", err }, "pre-sweep of stale repro rows failed — continuing anyway");
+  }
+
   try {
     const { rows: userRows } = await pool.query<{ id: number }>(
       `INSERT INTO users (telegram_user_id, first_name) VALUES ($1, 'SyncDesyncRepro') RETURNING id`,
@@ -114,6 +141,12 @@ export async function runSyncDesyncRepro(): Promise<void> {
   } catch (err) {
     logger.error({ src: "sync-desync-repro", err }, "sync-desync-repro threw");
   } finally {
+    // engine_entitlements also RESTRICTs deletion of `users` — must be
+    // deleted before the users row, same as engine_clients. Missing this
+    // the first time this script ran in production left an orphaned
+    // user+client+entitlement behind (this DELETE threw, so nothing after
+    // it ran) — see the pre-sweep above, which cleans that up on next run.
+    if (userId) await pool.query(`DELETE FROM engine_entitlements WHERE user_id = $1`, [userId]);
     if (clientId) {
       await pool.query(`DELETE FROM engine_snapshots WHERE client_id = $1`, [clientId]);
       await pool.query(`DELETE FROM engine_events WHERE client_id = $1`, [clientId]);
