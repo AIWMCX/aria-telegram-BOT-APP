@@ -61,6 +61,7 @@ export async function runSyncDesyncRepro(): Promise<void> {
     );
     for (const { id } of stale) {
       await pool.query(`DELETE FROM engine_entitlements WHERE user_id = $1`, [id]);
+      await pool.query(`DELETE FROM engine_pairing_codes WHERE user_id = $1`, [id]);
       const { rows: staleClients } = await pool.query<{ id: string }>(`SELECT id FROM engine_clients WHERE user_id = $1`, [id]);
       for (const c of staleClients) {
         await pool.query(`DELETE FROM engine_snapshots WHERE client_id = $1`, [c.id]);
@@ -146,7 +147,14 @@ export async function runSyncDesyncRepro(): Promise<void> {
     // the first time this script ran in production left an orphaned
     // user+client+entitlement behind (this DELETE threw, so nothing after
     // it ran) — see the pre-sweep above, which cleans that up on next run.
-    if (userId) await pool.query(`DELETE FROM engine_entitlements WHERE user_id = $1`, [userId]);
+    // Every table in this codebase that FK-references `users` with RESTRICT
+    // as of this fix: wallet_accounts, ledger, chain_events_deposits (none
+    // of which this script ever writes to), engine_entitlements,
+    // engine_clients, engine_pairing_codes (all three of which it does).
+    if (userId) {
+      await pool.query(`DELETE FROM engine_entitlements WHERE user_id = $1`, [userId]);
+      await pool.query(`DELETE FROM engine_pairing_codes WHERE user_id = $1`, [userId]);
+    }
     if (clientId) {
       await pool.query(`DELETE FROM engine_snapshots WHERE client_id = $1`, [clientId]);
       await pool.query(`DELETE FROM engine_events WHERE client_id = $1`, [clientId]);
