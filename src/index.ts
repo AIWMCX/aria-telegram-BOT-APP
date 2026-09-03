@@ -11,6 +11,7 @@ import { runEngineAuthSelfTest } from "./engine-auth-selftest.js";
 import { runEngineSyncSelfTest } from "./engine-sync-selftest.js";
 import { runSyncDesyncRepro } from "./engine-sync-desync-repro.js";
 import { startExpiryWarningScheduler } from "./expiry-warnings.js";
+import { randomUUID } from "node:crypto";
 
 async function main(): Promise<void> {
   logger.info(
@@ -86,21 +87,26 @@ async function main(): Promise<void> {
   // must not take down the HTTP server — license issuance, health checks,
   // and Stripe webhooks are independent of whether the bot is connected.
   // Retry with backoff instead of exiting the whole process.
-  let botRetryDelayMs = 5000;
-  const startBot = () => {
-    bot.start({
-      onStart: (info) => {
-        botRetryDelayMs = 5000;
-        logger.info({ username: info.username, id: info.id }, "telegram bot online");
-        logger.info(`👉 https://t.me/${info.username}`);
-      },
-    }).catch((err) => {
-      logger.error({ err, retryInMs: botRetryDelayMs }, "telegram bot failed to start — HTTP server stays up, retrying");
-      setTimeout(startBot, botRetryDelayMs);
-      botRetryDelayMs = Math.min(botRetryDelayMs * 2, 5 * 60 * 1000);
-    });
-  };
-  startBot();
+  // DIAGNOSTIC (2026-09-03, single deploy, revert after the test — see
+  // docs/ARIA_PRODUCT_SCALE_STATE.md "TELEGRAM BOT CONFLICT INCIDENT"):
+  // isolating whether the persistent 409 conflict is a second external
+  // poller, or this process's own retry loop starting bot.start() again
+  // without an explicit awaited bot.stop() first, possibly racing grammY's
+  // own in-flight polling state from the previous attempt. Starts the bot
+  // EXACTLY ONCE — no retry — and tags every lifecycle log with a random
+  // per-process ID so overlapping conflicts can be attributed to either
+  // one process (self-conflict) or two+ distinct processes (external).
+  const botProcessId = randomUUID();
+  logger.info({ botProcessId, pid: process.pid, startedAt: new Date().toISOString() }, "BOT_BOOT");
+  logger.info({ botProcessId, attempt: 1 }, "BOT_POLL_START");
+  bot.start({
+    onStart: (info) => {
+      logger.info({ botProcessId, username: info.username, id: info.id }, "telegram bot online");
+      logger.info(`👉 https://t.me/${info.username}`);
+    },
+  }).catch((err) => {
+    logger.error({ botProcessId, attempt: 1, errorCode: err?.error_code ?? err?.code, err }, "BOT_POLL_FAILED — diagnostic mode, NOT retrying in this process");
+  });
 
   const shutdown = async (sig: string) => {
     logger.info({ sig }, "shutting down");
