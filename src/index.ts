@@ -157,55 +157,70 @@ async function main(): Promise<void> {
 }
 
 /**
- * 2026-09-04, escalated same day the webhook was first registered: manual
- * testing proved something external clears the webhook registration within
- * a couple of seconds of it being set — reproduced twice, back-to-back,
- * via the Railway console (`set` -> immediate `info` showed url: "" both
- * times). GrammY's bot.start() unconditionally calls deleteWebhook() as
- * its first step, so this is consistent with the same still-unidentified
- * external process (see "TELEGRAM BOT CONFLICT INCIDENT" in
- * docs/ARIA_PRODUCT_SCALE_STATE.md) retrying bot.start() on its own short
- * cycle, now against the webhook registration instead of a getUpdates
- * poller.
+ * 2026-09-04, escalated TWICE same day the webhook was first registered.
  *
- * The original design here only verified and alerted, deliberately NOT
- * auto-healing, on the theory that a wrong webhook needs deliberate human
- * re-registration, not a silent self-heal masking real misconfiguration.
- * That reasoning assumed drift is rare and slow. It isn't — it's active
- * and fast. Since the actual interfering process can't be reached or
- * stopped, this now re-claims the webhook the moment it notices it's
- * gone, on a tight loop, logging every single time it has to — loud,
- * frequent correction instead of a quiet 10-minute check. Every
- * reassertion is still real signal (evidence of ongoing interference),
- * never swallowed silently.
+ * Escalation 1: manual testing proved something external clears the
+ * webhook registration within a couple of seconds of it being set —
+ * reproduced twice, back-to-back, via the Railway console. GrammY's
+ * bot.start() unconditionally calls deleteWebhook() as its first step,
+ * consistent with the same still-unidentified external process (see
+ * "TELEGRAM BOT CONFLICT INCIDENT" in docs/ARIA_PRODUCT_SCALE_STATE.md)
+ * retrying bot.start() on its own short cycle. First fix: check-then-fix
+ * every 15s. That went live and was measured: 33 consecutive checks over
+ * 8 minutes, EVERY one found a mismatch, zero clean holds — the
+ * interference is continuous and faster than our 15s reactive cycle, not
+ * intermittent. Only ~31% of real commands sent in that window arrived —
+ * worse than plain polling's ~57%.
+ *
+ * Escalation 2 (this version): a check-then-fix loop has two round trips
+ * of latency (getWebhookInfo, then conditionally setWebhook) before
+ * recovery even starts. Switched to unconditional reassertion — just
+ * call setWebhook every cycle, no detection step first — and tightened
+ * the interval. This can't out-identify the interference, but it can
+ * out-persist it: whichever side calls the Telegram API last wins, so
+ * winning more often is a real, measurable mitigation even without ever
+ * finding the other process. getWebhookInfo is still polled separately,
+ * on its own slower cadence, purely for visibility/logging — it is not
+ * gating the reassertion itself anymore.
  */
 async function verifyWebhookOnBoot(): Promise<void> {
   const expectedUrl = `${CONFIG.PUBLIC_URL}${TELEGRAM_WEBHOOK_PATH}`;
-  let consecutiveReassertions = 0;
+  let consecutiveMismatches = 0;
+
+  const reassert = async () => {
+    try {
+      await bot.api.setWebhook(expectedUrl, { secret_token: CONFIG.TELEGRAM_WEBHOOK_SECRET });
+    } catch (err) {
+      logger.error({ err }, "TELEGRAM_WEBHOOK_REASSERT_FAILED");
+    }
+  };
+
   const check = async () => {
     try {
       const info = await bot.api.getWebhookInfo();
       if (info.url === expectedUrl) {
-        if (consecutiveReassertions > 0) {
-          logger.info({ url: info.url, consecutiveReassertions }, "TELEGRAM_WEBHOOK_HELD — reclaimed and holding after prior interference");
+        if (consecutiveMismatches > 0) {
+          logger.info({ url: info.url, consecutiveMismatches }, "TELEGRAM_WEBHOOK_HELD — reclaimed and holding after prior interference");
         } else {
           logger.info({ url: info.url, pendingUpdateCount: info.pending_update_count }, "TELEGRAM_WEBHOOK_OK");
         }
-        consecutiveReassertions = 0;
+        consecutiveMismatches = 0;
       } else {
-        consecutiveReassertions++;
+        consecutiveMismatches++;
         logger.error(
-          { expectedUrl, actualUrl: info.url, lastErrorMessage: info.last_error_message, consecutiveReassertions },
-          "TELEGRAM_WEBHOOK_MISMATCH — reclaiming now (evidence of active external interference, not a one-off)",
+          { expectedUrl, actualUrl: info.url, lastErrorMessage: info.last_error_message, consecutiveMismatches },
+          "TELEGRAM_WEBHOOK_MISMATCH — evidence of active external interference, not a one-off",
         );
-        await bot.api.setWebhook(expectedUrl, { secret_token: CONFIG.TELEGRAM_WEBHOOK_SECRET });
       }
     } catch (err) {
-      logger.error({ err }, "webhook verify/reassert check failed");
+      logger.error({ err }, "webhook status check failed");
     }
   };
+
+  await reassert();
   await check();
-  setInterval(() => void check(), 15 * 1000).unref();
+  setInterval(() => void reassert(), 3 * 1000).unref(); // unconditional — no detection round-trip first
+  setInterval(() => void check(), 30 * 1000).unref(); // visibility only, doesn't gate reassertion
 }
 
 main().catch((err) => {
