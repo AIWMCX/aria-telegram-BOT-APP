@@ -17,6 +17,21 @@ external user yet — every "scale" section below is honestly marked
 `NOT_APPLICABLE (0 users)`, not `MISSING`, because building it now
 would itself violate this document's own rule.
 
+## P0-B CLOSED: INVITE/WHITELIST GATE SHIPPED (2026-09-04T01:33 UTC)
+
+Real gap from the first-10 audit above is closed. `invites` table live in
+production (migration `1757000000000_create-invites` ran clean, verified
+in deploy logs). `/invite [note]` (admin) issues a code + deep link;
+`/start <code>` redeems it; `POST /api/engine/pairing-code` — the actual
+engine-access grant — now requires an approved invite. `/api/engine/pair`
+success advances `activated` -> `paired` automatically. Deploy verified
+healthy (`/healthz` 200, fresh uptime). Not yet exercised with a real
+invite end-to-end — do that before inviting user #2.
+
+P0-A (Telegram bot conflict) is UNCHANGED — still flapping, still an
+external cause outside this session's visibility. Do not invite new users
+until that's resolved even though the invite gate itself is ready.
+
 ## CURRENT DATE
 
 2026-09-03 (updated same day — TELEGRAM BOT CONFLICT INCIDENT, see below).
