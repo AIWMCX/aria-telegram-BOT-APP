@@ -20,6 +20,7 @@ import { canonicalSyncMessage, verifyDeviceSignature, isTimestampWithinReplayWin
 import { recordSnapshot } from "./engine-snapshots.js";
 import { recordEventBatch } from "./engine-events.js";
 import { getPendingCommands, ackCommand } from "./engine-commands.js";
+import { isUserApproved, markInvitePaired } from "./invites.js";
 
 export const app = new Hono();
 
@@ -186,6 +187,14 @@ app.post("/api/engine/pairing-code", async (c) => {
       first_name: verified.user.first_name,
       last_name: verified.user.last_name,
     });
+
+    // First-10 beta control: engine access (a real pairing code, which lets
+    // `aria pair` register a device) is invite-only right now. Everything
+    // else in the Mini App remains open — this is the one real gate.
+    if (!(await isUserApproved(user.id))) {
+      return c.json({ ok: false, error: "ARIA is in a controlled first-beta right now — ask the person who told you about it for an invite link." }, 403);
+    }
+
     const { code, expiresAt } = await createPairingCode(user.id);
     return c.json({ ok: true, code, expiresAt });
   } catch (err: any) {
@@ -235,6 +244,16 @@ app.post("/api/engine/pair", async (c) => {
       platform: parsed.data.platform,
       engineVersion: parsed.data.engineVersion,
     });
+
+    // First-10 beta control: this is the funnel's real "paired" milestone —
+    // a device pairing code could only have been minted for an approved
+    // (activated) invite, so this call is a no-op unless that's true.
+    // Never fails pairing itself if it errors.
+    try {
+      await markInvitePaired(consumed.userId);
+    } catch (err: any) {
+      logger.warn({ err }, "markInvitePaired failed — device is still paired");
+    }
 
     // REAL-1 Task 8 — issue the device's initial signed ARIAE1 entitlement
     // in the same call, so a paired device can immediately verify it has

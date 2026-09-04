@@ -7,6 +7,7 @@ import { revokeLicense } from "./licenses.js";
 import { upsertUserFromTelegram } from "./users.js";
 import { createPairingCode } from "./engine-pairing.js";
 import { setEntitlementStatus } from "./engine-entitlements.js";
+import { createInvite, listInvites, redeemInvite } from "./invites.js";
 import type { Lead } from "./leads.js";
 import type { IssuedLicense } from "./licenses.js";
 
@@ -37,6 +38,35 @@ function maskWallet(wallet: string): string {
 bot.command("start", async (ctx) => {
   const firstName = ctx.from?.first_name ?? "trader";
   const keyboard = new InlineKeyboard().webApp("🟢 OPEN TERMINAL", TERMINAL_URL);
+
+  // First-10 beta control: `/start <code>` (typed, or via a
+  // t.me/<bot>?start=<code> deep link) redeems an invite. Silent no-op for
+  // a bare /start — this never blocks the normal welcome message, since
+  // the real access gate is engine pairing (server.ts), not chat itself.
+  const payload = ctx.match?.trim();
+  if (payload && USERS_DOMAIN_ENABLED && ctx.from) {
+    try {
+      const user = await upsertUserFromTelegram({
+        id: ctx.from.id,
+        username: ctx.from.username,
+        first_name: ctx.from.first_name,
+        last_name: ctx.from.last_name,
+      });
+      const result = await redeemInvite(payload, user.id);
+      if (result.ok) {
+        await ctx.reply(result.alreadyRedeemed ? "Invite already active on this account." : "✅ Invite activated — you have free PAPER access.");
+      } else if (result.reason === "user-already-has-invite") {
+        await ctx.reply("This Telegram account already has an invite active.");
+      } else if (result.reason === "already-claimed-by-another-user") {
+        await ctx.reply("That invite link was already used by someone else.");
+      } else {
+        await ctx.reply("That invite link isn't valid or has expired.");
+      }
+    } catch (err: any) {
+      logger.error({ err }, "invite redemption failed");
+    }
+  }
+
   await ctx.reply(
     [
       `*ARIA REAL-1 Terminal*`, ``,
@@ -189,6 +219,26 @@ bot.command("help", async (ctx) => {
 bot.command("stats", async (ctx) => {
   if (!isAdmin(ctx.from?.id)) return;
   await ctx.reply(`📊 Total leads: *${totalLeads()}*`, { parse_mode: "Markdown" });
+});
+
+/** First-10 beta control — issues a new invite and returns a ready-to-forward deep link. `note` is for the owner's own bookkeeping only (e.g. a name), never shown to the invitee. */
+bot.command("invite", async (ctx) => {
+  if (!isAdmin(ctx.from?.id)) return;
+  const note = ctx.match?.toString().trim() || undefined;
+  const { code } = await createInvite(note);
+  const link = `https://t.me/${ctx.me.username}?start=${code}`;
+  await ctx.reply(
+    [`✅ Invite created${note ? ` (${esc(note)})` : ""}`, ``, `Send this link:`, link].join("\n"),
+    { parse_mode: "Markdown" },
+  );
+});
+
+bot.command("invites", async (ctx) => {
+  if (!isAdmin(ctx.from?.id)) return;
+  const invites = await listInvites();
+  if (invites.length === 0) { await ctx.reply("No invites yet."); return; }
+  const lines = invites.map((i) => `${i.status.padEnd(10)} ${i.note ?? "(no note)"} ${i.user_id ? `— user ${i.user_id}` : ""}`);
+  await ctx.reply(["*Invites (newest first)*", "```", ...lines, "```"].join("\n"), { parse_mode: "Markdown" });
 });
 
 bot.command("revoke", async (ctx) => {
