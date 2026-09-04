@@ -1,4 +1,5 @@
 import { Bot, InlineKeyboard, type Context, type CommandContext } from "grammy";
+import { randomUUID } from "node:crypto";
 import { CONFIG, USERS_DOMAIN_ENABLED } from "./config.js";
 import { logger } from "./logger.js";
 import { totalLeads, getLatestLeadByTgUser } from "./leads.js";
@@ -14,18 +15,31 @@ import type { IssuedLicense } from "./licenses.js";
 export const bot = new Bot(CONFIG.TELEGRAM_BOT_TOKEN);
 const TERMINAL_URL = `${CONFIG.PUBLIC_URL}/`;
 
+// One ID per process boot — correlates every TELEGRAM_UPDATE_RECEIVED line
+// in this process's lifetime, same purpose as index.ts's separate
+// botProcessId for the polling-lifecycle logs (kept independent rather
+// than threaded across modules, since both are stable for the whole
+// process and either alone is enough to tell processes apart).
+const processBootId = randomUUID();
+
 /**
  * 2026-09-04 — added after a real debugging dead-end: the owner saw no
  * reply to /invite and couldn't tell whether the update never reached
  * this process (Telegram polling incident) or reached it and was
  * silently rejected (isAdmin() returning false, or any other reason).
- * This one line answers that question definitively from logs alone —
- * a Telegram user ID is not a secret (it's about as sensitive as a
- * username), safe to log.
+ * Logs EVERY update (not just commands) with Telegram's own update_id —
+ * lets a P0-A delivery test compare what Telegram sent against what
+ * this process actually saw, and spot gaps/duplicates in update_id
+ * sequence, not just count missing replies. A Telegram user ID is not a
+ * secret (about as sensitive as a username) — safe to log; no message
+ * text beyond the command name is captured.
  */
 bot.use(async (ctx, next) => {
   const command = ctx.message?.text?.startsWith("/") ? ctx.message.text.split(/[\s@]/)[0] : undefined;
-  if (command) logger.info({ telegramUserId: ctx.from?.id, command }, "COMMAND_RECEIVED");
+  logger.info(
+    { updateId: ctx.update.update_id, command, telegramUserId: ctx.from?.id, processBootId, receivedAt: new Date().toISOString() },
+    "TELEGRAM_UPDATE_RECEIVED",
+  );
   await next();
 });
 
