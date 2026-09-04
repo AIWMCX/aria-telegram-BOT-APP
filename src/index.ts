@@ -157,32 +157,55 @@ async function main(): Promise<void> {
 }
 
 /**
- * Startup + periodic (every 10 min) confirmation that Telegram's webhook
- * registration still points at this exact deployment — never resets it
- * automatically (a webhook that's wrong needs a deliberate re-registration
- * via scripts/telegram-webhook.ts, not a silent self-heal that could mask
- * a real misconfiguration). Logs HIGH severity on mismatch rather than
- * ignoring it, per the incident runbook.
+ * 2026-09-04, escalated same day the webhook was first registered: manual
+ * testing proved something external clears the webhook registration within
+ * a couple of seconds of it being set — reproduced twice, back-to-back,
+ * via the Railway console (`set` -> immediate `info` showed url: "" both
+ * times). GrammY's bot.start() unconditionally calls deleteWebhook() as
+ * its first step, so this is consistent with the same still-unidentified
+ * external process (see "TELEGRAM BOT CONFLICT INCIDENT" in
+ * docs/ARIA_PRODUCT_SCALE_STATE.md) retrying bot.start() on its own short
+ * cycle, now against the webhook registration instead of a getUpdates
+ * poller.
+ *
+ * The original design here only verified and alerted, deliberately NOT
+ * auto-healing, on the theory that a wrong webhook needs deliberate human
+ * re-registration, not a silent self-heal masking real misconfiguration.
+ * That reasoning assumed drift is rare and slow. It isn't — it's active
+ * and fast. Since the actual interfering process can't be reached or
+ * stopped, this now re-claims the webhook the moment it notices it's
+ * gone, on a tight loop, logging every single time it has to — loud,
+ * frequent correction instead of a quiet 10-minute check. Every
+ * reassertion is still real signal (evidence of ongoing interference),
+ * never swallowed silently.
  */
 async function verifyWebhookOnBoot(): Promise<void> {
   const expectedUrl = `${CONFIG.PUBLIC_URL}${TELEGRAM_WEBHOOK_PATH}`;
+  let consecutiveReassertions = 0;
   const check = async () => {
     try {
       const info = await bot.api.getWebhookInfo();
       if (info.url === expectedUrl) {
-        logger.info({ url: info.url, pendingUpdateCount: info.pending_update_count }, "TELEGRAM_WEBHOOK_OK");
+        if (consecutiveReassertions > 0) {
+          logger.info({ url: info.url, consecutiveReassertions }, "TELEGRAM_WEBHOOK_HELD — reclaimed and holding after prior interference");
+        } else {
+          logger.info({ url: info.url, pendingUpdateCount: info.pending_update_count }, "TELEGRAM_WEBHOOK_OK");
+        }
+        consecutiveReassertions = 0;
       } else {
+        consecutiveReassertions++;
         logger.error(
-          { expectedUrl, actualUrl: info.url, lastErrorMessage: info.last_error_message },
-          "TELEGRAM_WEBHOOK_MISMATCH — production is not the registered webhook destination",
+          { expectedUrl, actualUrl: info.url, lastErrorMessage: info.last_error_message, consecutiveReassertions },
+          "TELEGRAM_WEBHOOK_MISMATCH — reclaiming now (evidence of active external interference, not a one-off)",
         );
+        await bot.api.setWebhook(expectedUrl, { secret_token: CONFIG.TELEGRAM_WEBHOOK_SECRET });
       }
     } catch (err) {
-      logger.error({ err }, "getWebhookInfo check failed");
+      logger.error({ err }, "webhook verify/reassert check failed");
     }
   };
   await check();
-  setInterval(() => void check(), 10 * 60 * 1000).unref();
+  setInterval(() => void check(), 15 * 1000).unref();
 }
 
 main().catch((err) => {
