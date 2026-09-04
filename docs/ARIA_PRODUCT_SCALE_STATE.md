@@ -262,6 +262,32 @@ SLO, and should not be conflated with either.
 - Real Telegram pairing-code generation and Mini App mobile/desktop
   visual check — need a human on a real Telegram client.
 
+## FIRST-10 PRODUCTION AUDIT (2026-09-04T00:37 UTC)
+
+Full weighted-evidence audit run against a 42-section production-readiness
+prompt. Full detail in session transcript; summary:
+
+- OVERALL READINESS: 72/100 (PAPER product 30/35, Telegram/UX 9/20,
+  production/ops 11/15, security/trust 13/15, commercial 9/15)
+- FIRST-10 READINESS: 1 of 10 real users onboarded. Real count, not
+  estimated.
+- LIVE BETA READINESS: 0% — no LIVE code exists anywhere in aria-engine
+  (grep-verified: zero PRIVATE_KEY/SEED/MNEMONIC/Keypair/sendTransaction/
+  sendRawTransaction references outside tests and one file whose only
+  match is a comment documenting the absence). Correctly unbuilt, not a
+  gap to close.
+- GO/NO-GO: FREE PAPER (existing user) GO. FREE PAPER (new-user
+  onboarding) NO-GO — blocked by the Telegram bot conflict incident
+  above. OWNER LIVE / TESTER LIVE: NO-GO (no LIVE code exists). PAID
+  TIER: DEFER (1 user, zero payment signal).
+- Third repo `AIWMCX/aria-terminal-telegram` exists but is STALE (last
+  commit 2026-07-10) — a separate abandoned Vercel prototype, not part
+  of current production. Do not confuse with `public/index.html` in
+  this repo, which is the real, live Mini App.
+- No invite/whitelist mechanism exists in code yet — the locked
+  Free-Paper/Owner-Live/Approved-Tester user model is a policy, not yet
+  an enforced gate. Real gap for "first 10" discipline.
+
 ## NEXT TASK
 
 Restart-recovery gate: closed, real evidence, PASS. Sync gate:
