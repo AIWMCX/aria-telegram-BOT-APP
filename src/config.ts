@@ -7,6 +7,19 @@ const Env = z.object({
   ADMIN_TELEGRAM_CHAT_ID: z.string().optional().default(""),
   PUBLIC_URL: z.string().url("PUBLIC_URL must be a full https:// URL"),
 
+  // ── Telegram transport (2026-09-04 incident: a persistent, unidentified
+  // second getUpdates poller made long polling unreliable in production —
+  // ~57% command delivery in a measured test. Webhook mode gives Telegram
+  // exactly one registered destination per bot token; there is no "second
+  // webhook" failure mode the way there's a "second poller" one.
+  // Defaults to "polling" so a bare local `npm run dev` still works with
+  // zero extra setup — production sets this to "webhook" explicitly. ──
+  TELEGRAM_TRANSPORT: z.enum(["webhook", "polling"]).default("polling"),
+  // Compared against Telegram's X-Telegram-Bot-Api-Secret-Token header on
+  // every webhook POST — required whenever transport=webhook, checked
+  // below (zod can't easily cross-validate two fields inline here).
+  TELEGRAM_WEBHOOK_SECRET: z.string().min(16).optional(),
+
   // ── Email ─────────────────────────────────────────────────────────────
   RESEND_API_KEY: z.string().min(10, "RESEND_API_KEY required (get from resend.com)"),
   ADMIN_EMAIL: z.string().email("ADMIN_EMAIL must be a valid email"),
@@ -94,6 +107,16 @@ export const CONFIG = parsed.data;
 if (CONFIG.PUBLIC_URL.endsWith("/")) {
   (CONFIG as any).PUBLIC_URL = CONFIG.PUBLIC_URL.replace(/\/+$/, "");
 }
+
+// Fail closed, not silently degrade: webhook mode without a secret would
+// accept unauthenticated POSTs claiming to be Telegram — refuse to boot
+// rather than run half-configured.
+if (CONFIG.TELEGRAM_TRANSPORT === "webhook" && !CONFIG.TELEGRAM_WEBHOOK_SECRET) {
+  console.error("❌ TELEGRAM_TRANSPORT=webhook requires TELEGRAM_WEBHOOK_SECRET to be set.");
+  process.exit(1);
+}
+
+export const TELEGRAM_WEBHOOK_PATH = "/api/telegram/webhook";
 
 /** True once Stripe secrets are present — gates the paid-tier endpoints. */
 export const PAYMENTS_ENABLED = Boolean(

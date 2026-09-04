@@ -12,6 +12,7 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "keygen": "tsx scripts/generate-keys.ts",
+    "telegram-webhook": "tsx scripts/telegram-webhook.ts",
     "test": "tsx test/e2e.ts && tsx test/engine-customer-api-contract.ts && tsx test/frontend-reality.ts && tsx test/real1-truthfulness.ts && tsx test/billing-lifecycle.ts"
   },
   "dependencies": {

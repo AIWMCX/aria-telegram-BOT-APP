@@ -1,14 +1,16 @@
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { CONFIG, PAYMENTS_ENABLED, USERS_DOMAIN_ENABLED, ENTITLEMENT_ISSUANCE_ENABLED } from "./config.js";
+import { webhookCallback } from "grammy";
+import { CONFIG, PAYMENTS_ENABLED, USERS_DOMAIN_ENABLED, ENTITLEMENT_ISSUANCE_ENABLED, TELEGRAM_WEBHOOK_PATH } from "./config.js";
 import { logger } from "./logger.js";
 import { verifyInitData } from "./telegram-auth.js";
 import { upsertLead, recentSubmissionsByUser, totalLeads, getLatestLeadByTgUser } from "./leads.js";
 import { sendAdminLeadNotification, sendLicenseEmail } from "./email.js";
-import { notifyAdminOfLicense, notifyCustomerLicenseIssued } from "./bot.js";
+import { notifyAdminOfLicense, notifyCustomerLicenseIssued, bot } from "./bot.js";
 import { issueLicense, getActiveLicenseForLead } from "./licenses.js";
 import { createCheckoutSession, handleStripeWebhook } from "./stripe.js";
 import { upsertUserFromTelegram } from "./users.js";
@@ -23,6 +25,25 @@ import { getPendingCommands, ackCommand } from "./engine-commands.js";
 import { isUserApproved, markInvitePaired } from "./invites.js";
 
 export const app = new Hono();
+
+/**
+ * 2026-09-04 — canonical Telegram update destination. Production runs
+ * TELEGRAM_TRANSPORT=webhook (config.ts fails closed if that's set without
+ * a secret); index.ts never calls bot.start() in that mode, so this is
+ * the ONLY path updates reach this process through. grammY's own
+ * webhookCallback (not hand-rolled) does the real work: constant-time
+ * secret comparison against X-Telegram-Bot-Api-Secret-Token, Update
+ * parsing, and dispatch into the exact same bot.use()/bot.command()
+ * handlers polling used — no duplicated command logic. A body-size cap
+ * guards against being used as an arbitrary POST sink.
+ */
+if (CONFIG.TELEGRAM_TRANSPORT === "webhook") {
+  app.post(
+    TELEGRAM_WEBHOOK_PATH,
+    bodyLimit({ maxSize: 1024 * 1024, onError: (c) => c.json({ ok: false, error: "payload too large" }, 413) }),
+    webhookCallback(bot, "hono", { secretToken: CONFIG.TELEGRAM_WEBHOOK_SECRET }),
+  );
+}
 
 const SolanaAddress = z.string().trim().min(32).max(44).regex(/^[1-9A-HJ-NP-Za-km-z]+$/, "invalid Solana address");
 
