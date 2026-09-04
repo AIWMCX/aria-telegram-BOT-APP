@@ -14,9 +14,32 @@ import type { IssuedLicense } from "./licenses.js";
 export const bot = new Bot(CONFIG.TELEGRAM_BOT_TOKEN);
 const TERMINAL_URL = `${CONFIG.PUBLIC_URL}/`;
 
+/**
+ * 2026-09-04 — added after a real debugging dead-end: the owner saw no
+ * reply to /invite and couldn't tell whether the update never reached
+ * this process (Telegram polling incident) or reached it and was
+ * silently rejected (isAdmin() returning false, or any other reason).
+ * This one line answers that question definitively from logs alone —
+ * a Telegram user ID is not a secret (it's about as sensitive as a
+ * username), safe to log.
+ */
+bot.use(async (ctx, next) => {
+  const command = ctx.message?.text?.startsWith("/") ? ctx.message.text.split(/[\s@]/)[0] : undefined;
+  if (command) logger.info({ telegramUserId: ctx.from?.id, command }, "COMMAND_RECEIVED");
+  await next();
+});
+
 function isAdmin(userId: number | undefined): boolean {
   if (!userId || !CONFIG.ADMIN_TELEGRAM_CHAT_ID) return false;
   return String(userId) === CONFIG.ADMIN_TELEGRAM_CHAT_ID;
+}
+
+/** Unauthorized admin-command attempts must never fail silently — a silent no-op is indistinguishable from the update never arriving at all (e.g. during the Telegram polling incident), which cost real debugging time on 2026-09-04. */
+async function requireAdmin(ctx: CommandContext<Context>, command: string): Promise<boolean> {
+  if (isAdmin(ctx.from?.id)) return true;
+  logger.warn({ telegramUserId: ctx.from?.id, command }, "unauthorized admin command attempt");
+  await ctx.reply("This command is available to the ARIA beta administrator only.");
+  return false;
 }
 
 function esc(s: string): string {
@@ -217,13 +240,13 @@ bot.command("help", async (ctx) => {
 
 // ── Admin-only ────────────────────────────────────────────────────────────
 bot.command("stats", async (ctx) => {
-  if (!isAdmin(ctx.from?.id)) return;
+  if (!(await requireAdmin(ctx, "stats"))) return;
   await ctx.reply(`📊 Total leads: *${totalLeads()}*`, { parse_mode: "Markdown" });
 });
 
 /** First-10 beta control — issues a new invite and returns a ready-to-forward deep link. `note` is for the owner's own bookkeeping only (e.g. a name), never shown to the invitee. */
 bot.command("invite", async (ctx) => {
-  if (!isAdmin(ctx.from?.id)) return;
+  if (!(await requireAdmin(ctx, "invite"))) return;
   const note = ctx.match?.toString().trim() || undefined;
   const { code } = await createInvite(note);
   const link = `https://t.me/${ctx.me.username}?start=${code}`;
@@ -234,7 +257,7 @@ bot.command("invite", async (ctx) => {
 });
 
 bot.command("invites", async (ctx) => {
-  if (!isAdmin(ctx.from?.id)) return;
+  if (!(await requireAdmin(ctx, "invites"))) return;
   const invites = await listInvites();
   if (invites.length === 0) { await ctx.reply("No invites yet."); return; }
   const lines = invites.map((i) => `${i.status.padEnd(10)} ${i.note ?? "(no note)"} ${i.user_id ? `— user ${i.user_id}` : ""}`);
@@ -242,7 +265,7 @@ bot.command("invites", async (ctx) => {
 });
 
 bot.command("revoke", async (ctx) => {
-  if (!isAdmin(ctx.from?.id)) return;
+  if (!(await requireAdmin(ctx, "revoke"))) return;
   const licenseId = ctx.match?.toString().trim();
   if (!licenseId) { await ctx.reply("Usage: /revoke lic_xxxxxx"); return; }
   revokeLicense(licenseId, "admin_manual");
@@ -260,7 +283,7 @@ bot.command("revoke", async (ctx) => {
  * for this specific effect.
  */
 bot.command("revokeengine", async (ctx) => {
-  if (!isAdmin(ctx.from?.id)) return;
+  if (!(await requireAdmin(ctx, "revokeengine"))) return;
   const entitlementId = ctx.match?.toString().trim();
   if (!entitlementId) { await ctx.reply("Usage: /revokeengine <entitlement-uuid>"); return; }
   try {
