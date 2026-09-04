@@ -17,19 +17,51 @@ external user yet — every "scale" section below is honestly marked
 `NOT_APPLICABLE (0 users)`, not `MISSING`, because building it now
 would itself violate this document's own rule.
 
-## P0-B CLOSED: INVITE/WHITELIST GATE SHIPPED (2026-09-04T01:33 UTC)
+## P0-B / P0-A STATUS (2026-09-04T03:04 UTC)
 
-Real gap from the first-10 audit above is closed. `invites` table live in
-production (migration `1757000000000_create-invites` ran clean, verified
-in deploy logs). `/invite [note]` (admin) issues a code + deep link;
-`/start <code>` redeems it; `POST /api/engine/pairing-code` — the actual
-engine-access grant — now requires an approved invite. `/api/engine/pair`
-success advances `activated` -> `paired` automatically. Deploy verified
-healthy (`/healthz` 200, fresh uptime). Not yet exercised with a real
-invite end-to-end — do that before inviting user #2.
+```
+P0-B INVITE CONTROL:
+PASS — admin can create invite records (real, in production: /invite
+       created "test user 2" and one unlabeled invite)
+PASS — /invites returns persisted records (real reply observed)
+PASS — admin identity confirmed (telegramUserId ...7597208041 passed
+       isAdmin() with zero "unauthorized" log lines)
+PENDING — second-account redemption + pairing acceptance not yet run
 
-P0-A (Telegram bot conflict) is UNCHANGED — still flapping, still an
-external cause outside this session's visibility. Do not invite new users
+P0-A TELEGRAM DELIVERY:
+FAIL / INVESTIGATING
+Evidence (2026-09-04T02:54-02:56 UTC window):
+  /start   -> COMMAND_RECEIVED logged, replied
+  /invite  -> COMMAND_RECEIVED logged, admin check passed, replied
+  /invites -> COMMAND_RECEIVED logged, replied
+  /help    -> sent by admin, ABSENT from application logs entirely
+Impact: update delivery is upstream of command handling — not a /help
+  bug, not an admin-config bug. Telegram polling conflict (still
+  externally caused, still unresolved) is dropping updates, not just
+  delaying them. Not reliable enough for user #2 onboarding yet.
+```
+
+Diagnostic logging upgraded same session: every update (not just
+commands) now logs `TELEGRAM_UPDATE_RECEIVED` with Telegram's own
+`update_id` + a per-process `processBootId` (commit `a6f91ab`, deployed,
+healthy). This is what the next real test needs — comparing update_id
+sequence against what Telegram actually sent, not just counting missing
+replies.
+
+**Next action, narrow and evidence-driven — do this before inviting user
+#2, not more invite-system work (that's done):**
+Send 20 commands at spaced intervals (5x each: `/help`, `/start`,
+`/license`, `/invites`) and pull `TELEGRAM_UPDATE_RECEIVED` +
+`BOT_POLL_FAILED` from the logs for that exact window. Compute: sent /
+received / responded / missed / median latency / max latency / delivery
+success %. Done condition: 20/20 observed server-side and responded
+correctly, zero `getUpdates` conflict during the window. Only after that
+passes: real second-account redemption -> `/pair` -> `DEVICE ONLINE` ->
+`/invites` showing `paired` state = **FIRST-10 FREE BETA ONBOARDING:
+READY FOR USER #2**.
+
+P0-A (Telegram bot conflict) root cause is UNCHANGED from earlier tonight
+— still an external cause outside this session's visibility. Do not invite new users
 until that's resolved even though the invite gate itself is ready.
 
 ## CURRENT DATE
