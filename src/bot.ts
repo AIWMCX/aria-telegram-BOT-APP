@@ -8,7 +8,7 @@ import { revokeLicense } from "./licenses.js";
 import { upsertUserFromTelegram } from "./users.js";
 import { createPairingCode } from "./engine-pairing.js";
 import { setEntitlementStatus } from "./engine-entitlements.js";
-import { createInvite, listInvites, redeemInvite } from "./invites.js";
+import { createInvite, listInvites, redeemInvite, isUserApproved } from "./invites.js";
 import type { Lead } from "./leads.js";
 import type { IssuedLicense } from "./licenses.js";
 
@@ -212,6 +212,13 @@ bot.command("pair", async (ctx) => {
     const user = await upsertUserFromTelegram({
       id: tgId, username: ctx.from?.username, first_name: ctx.from?.first_name, last_name: ctx.from?.last_name,
     });
+    // 2026-09-04: this command called createPairingCode() directly, bypassing
+    // the invite gate added to /api/engine/pairing-code (server.ts) —
+    // an uninvited user typing /pair got a real code. Same check, same path.
+    if (!(await isUserApproved(user.id))) {
+      await ctx.reply("ARIA is in a controlled first-beta right now — ask the person who told you about it for an invite link.");
+      return;
+    }
     const { code, expiresAt } = await createPairingCode(user.id);
     const expiresLabel = new Date(expiresAt).toISOString().slice(11, 16);
     await ctx.reply(
