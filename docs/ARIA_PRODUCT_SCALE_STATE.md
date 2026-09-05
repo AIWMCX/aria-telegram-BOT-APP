@@ -9,6 +9,46 @@ it has the exact P0-1 through P0-9 execution order for the sync-desync
 investigation and beta acceptance. Don't reconstruct the plan from chat
 history.**
 
+## PIVOT 2026-09-05/06: TELEGRAM COMMAND DEPENDENCY REMOVED FROM CRITICAL PATH
+
+After the 3s webhook reassertion could not be proven (20-command retest
+was never run — no human sent it), the plan changed: stop trying to make
+Telegram chat delivery perfect, remove it from the critical onboarding
+path instead. Verified, not built from scratch:
+
+- `public/app.js`'s `pairEngine()` -> `POST /api/engine/pairing-code`
+  has NEVER depended on any bot chat command — it uses Telegram's
+  `initData` directly. This is the exact path the real first user
+  already used successfully (their screenshot: "Run: aria pair
+  Y53-3cDOa5LykGyxjHCfTLn6M7g..." came from this code, not `/pair`).
+- Same endpoint already carries the invite gate (`isUserApproved`)
+  added earlier this session.
+- **Real gap found and fixed while verifying**: `bot.command("pair")`
+  called `createPairingCode()` directly, bypassing the invite gate
+  entirely — an uninvited user typing `/pair` in chat got a real
+  pairing code. Same-severity gap as the original P0-B hole. Fixed
+  with the identical `isUserApproved` check (commit `3ddae82`).
+- Added a customer-facing fallback notice next to CREATE PAIRING CODE:
+  Telegram chat may be delayed, this button works independently — no
+  technical 409/getUpdates detail exposed to users.
+
+**TELEGRAM_COMMAND_TRANSPORT remains DEGRADED and UNRESOLVED.** This
+pivot does not close P0-A — it means P0-A no longer blocks onboarding.
+Root cause of the external interference is still unknown. The 3s
+unconditional webhook reassertion is still the live production
+configuration; it was never proven or disproven with a real 20-command
+test (the last real test was the 15s version: 31% delivery, worse than
+polling's 57%). Do not resume tuning the reassertion interval — that
+path is explicitly retired per this session's own decision rule, not
+because it was tested and failed, but because the fallback made further
+tuning unnecessary for launch.
+
+**User #2/#3 acceptance via the Mini App fallback has NOT been run.**
+The infrastructure is verified correct by direct code inspection; the
+actual "second/third real human completes the flow" test still needs
+the project owner to invite two more real people — no agent can
+originate that.
+
 **Read this file's own discipline before adding to it**: the source
 prompt's own §41/§47 say not to build scale infrastructure before
 measurements justify it, and never to certify a scale stage without
