@@ -23,6 +23,7 @@ import { recordSnapshot } from "./engine-snapshots.js";
 import { recordEventBatch } from "./engine-events.js";
 import { getPendingCommands, ackCommand } from "./engine-commands.js";
 import { isUserApproved, markInvitePaired } from "./invites.js";
+import { trackEvent } from "./funnel.js";
 
 export const app = new Hono();
 
@@ -78,8 +79,13 @@ app.get("/healthz", (c) =>
  * fabricated or hardcoded optimism.
  */
 const VALID_ENVIRONMENTS = new Set(["production", "staging", "development"]);
-app.get("/api/product-reality", (c) =>
-  c.json({
+app.get("/api/product-reality", (c) => {
+  // Called once per page load (public/app.js), not polled — the cheapest
+  // accurate "Mini App opened" signal available. No initData is sent to
+  // this route (it runs before Telegram identity is even resolved), so
+  // this is an anonymous open-count, not attributable to a specific user.
+  void trackEvent("miniapp_opened");
+  return c.json({
     ok: true,
     reality: {
       environment: VALID_ENVIRONMENTS.has(process.env.RAILWAY_ENVIRONMENT_NAME ?? "")
@@ -91,8 +97,8 @@ app.get("/api/product-reality", (c) =>
       controlState: USERS_DOMAIN_ENABLED ? "running" : "stopped",
       paymentsEnabled: PAYMENTS_ENABLED,
     },
-  }),
-);
+  });
+});
 
 /**
  * Returning-user account restore. Verifies Telegram initData (sent as a
@@ -217,6 +223,7 @@ app.post("/api/engine/pairing-code", async (c) => {
     }
 
     const { code, expiresAt } = await createPairingCode(user.id);
+    void trackEvent("pairing_code_created", user.id);
     return c.json({ ok: true, code, expiresAt });
   } catch (err: any) {
     logger.error({ err }, "pairing-code issuance failed");

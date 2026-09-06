@@ -9,6 +9,7 @@ import { upsertUserFromTelegram } from "./users.js";
 import { createPairingCode } from "./engine-pairing.js";
 import { setEntitlementStatus } from "./engine-entitlements.js";
 import { createInvite, listInvites, redeemInvite, isUserApproved } from "./invites.js";
+import { trackEvent, getFunnelCounts } from "./funnel.js";
 import type { Lead } from "./leads.js";
 import type { IssuedLicense } from "./licenses.js";
 
@@ -240,6 +241,7 @@ bot.command("support", async (ctx) => {
   // Was pointing at PUBLIC_URL + "/docs", a route that has never existed —
   // every tap 404'd. Points at the real Terms/Privacy/Risk/Refund/Support
   // section actually on the Mini App page (public/index.html's #legal).
+  if (ctx.from?.id) void trackEvent("support_opened", (await upsertUserFromTelegram({ id: ctx.from.id, username: ctx.from.username, first_name: ctx.from.first_name, last_name: ctx.from.last_name })).id);
   await ctx.reply("Support: reply here and we'll get back within 24h.\nTerms, privacy, risk disclosure & support info: " + CONFIG.PUBLIC_URL + "/#legal");
 });
 
@@ -283,6 +285,36 @@ bot.command("invites", async (ctx) => {
   if (invites.length === 0) { await ctx.reply("No invites yet."); return; }
   const lines = invites.map((i) => `${i.status.padEnd(10)} ${i.note ?? "(no note)"} ${i.user_id ? `— user ${i.user_id}` : ""}`);
   await ctx.reply(["*Invites (newest first)*", "```", ...lines, "```"].join("\n"), { parse_mode: "Markdown" });
+});
+
+/**
+ * Beta operations command center — per the productization proposal's
+ * "Session B" item #20. Not a general admin dashboard: just the counts
+ * that actually matter for running a first-10 cohort by hand. Pulls
+ * from invites (per-user cohort state) and funnel_events (aggregate
+ * activation counts) — two data sources already being written to,
+ * nothing new to instrument beyond what this session already wired up.
+ */
+bot.command("beta", async (ctx) => {
+  if (!(await requireAdmin(ctx, "beta"))) return;
+  const [invites, funnel] = await Promise.all([listInvites(), getFunnelCounts()]);
+  const cohortLines = [
+    `Invited      ${invites.length}`,
+    `Activated    ${invites.filter((i) => i.status !== "invited").length}`,
+    `Paired       ${invites.filter((i) => i.status === "paired" || i.status === "active").length}`,
+  ];
+  const funnelLines = funnel.length > 0
+    ? funnel.map((f) => `${f.event.padEnd(22)} ${String(f.count).padStart(4)}  (${f.distinctUsers} users)`)
+    : ["(no funnel events recorded yet)"];
+  const userLines = invites.map((i) => `#${(i.user_id ?? "—").toString().padEnd(4)} ${i.status.padEnd(10)} ${i.note ?? "(no note)"}`);
+  await ctx.reply(
+    [
+      "*BETA*", "```", ...cohortLines, "```", "",
+      "*Funnel (all-time)*", "```", ...funnelLines, "```", "",
+      "*Users*", "```", ...(userLines.length > 0 ? userLines : ["(none yet)"]), "```",
+    ].join("\n"),
+    { parse_mode: "Markdown" },
+  );
 });
 
 bot.command("revoke", async (ctx) => {

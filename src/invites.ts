@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { pgPool } from "./db-pg.js";
+import { trackEvent } from "./funnel.js";
 
 /**
  * First-10 beta control (2026-09-04) — see migrations/1757000000000_create-invites.js.
@@ -34,6 +35,7 @@ export async function createInvite(note?: string): Promise<{ code: string; id: s
     `INSERT INTO invites (code, note) VALUES ($1, $2) RETURNING id`,
     [code, note ?? null],
   );
+  void trackEvent("invite_created", undefined, { inviteId: rows[0]!.id, note: note ?? null });
   return { code, id: rows[0]!.id };
 }
 
@@ -72,6 +74,7 @@ export async function redeemInvite(code: string, userId: number): Promise<Redeem
     `UPDATE invites SET user_id = $2, status = 'activated', activated_at = now() WHERE id = $1`,
     [invite.id, userId],
   );
+  void trackEvent("invite_redeemed", userId, { inviteId: invite.id });
   return { ok: true, alreadyRedeemed: false };
 }
 
@@ -86,10 +89,11 @@ export async function isUserApproved(userId: number): Promise<boolean> {
 /** Called from /api/engine/pair's success path — first real device pairing moves activated -> paired. */
 export async function markInvitePaired(userId: number): Promise<void> {
   const pool = requirePool();
-  await pool.query(
+  const { rowCount } = await pool.query(
     `UPDATE invites SET status = 'paired', paired_at = now() WHERE user_id = $1 AND status = 'activated'`,
     [userId],
   );
+  if ((rowCount ?? 0) > 0) void trackEvent("pairing_completed", userId);
 }
 
 export async function suspendInviteForUser(userId: number): Promise<boolean> {
