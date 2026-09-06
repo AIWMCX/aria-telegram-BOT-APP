@@ -131,6 +131,23 @@
     clearPaperSnapshot();
   }
 
+  // Real reason codes from aria-engine's evaluatePaperRisk() (src/paper/paper-risk.ts)
+  // — every candidate rejection carries one of exactly these, synced through
+  // event.data.reason. Kept in sync with that file's 8 checks; if a new
+  // reason code is ever added there, it falls back to the raw code string
+  // below rather than showing nothing.
+  const REJECTION_REASONS = {
+    "stale-observation": ["Price data too old", "The market data for this token was too old to trust safely — ARIA only trades on fresh prices."],
+    "invalid-input": ["Malformed candidate", "This candidate didn't pass basic validity checks (bad token address)."],
+    "invalid-price": ["Invalid price", "The quoted price wasn't a real, usable number."],
+    "duplicate-candidate": ["Already seen", "ARIA already evaluated this exact candidate — skipped to avoid double-counting."],
+    "position-cap": ["Position limit reached", "ARIA is already holding the maximum number of paper positions allowed."],
+    "daily-loss-limit": ["Daily loss limit hit", "Today's realized paper losses hit the configured cap — new entries pause until tomorrow (open positions still exit normally)."],
+    "mint-cooldown": ["Cooldown active", "This token was traded too recently — ARIA waits out a cooldown before re-entering the same token."],
+    "exposure-cap": ["Exposure cap reached", "Taking this position would push total paper exposure over the configured cap."],
+  };
+  const REJECTION_EVENT_TYPES = new Set(["paper-candidate-rejected", "paper-capacity-rejected", "paper-stale-data"]);
+
   function renderPaperEvents(events) {
     const feed = $("feed");
     const engineFeed = $("engine-events");
@@ -139,7 +156,12 @@
     const list = Array.isArray(events) ? events : [];
     text("feed-count", `${list.length} events`);
     for (const event of list.slice(0, 20)) {
-      const label = `${event.type || "paper-event"} · ${timeAgo(event.occurredAt)} · PAPER`;
+      const reasonCode = event.data && event.data.reason;
+      const isRejection = REJECTION_EVENT_TYPES.has(event.type) && reasonCode;
+      const known = isRejection ? REJECTION_REASONS[reasonCode] : undefined;
+      const label = isRejection
+        ? `Candidate rejected · ${known ? known[0] : reasonCode} · ${timeAgo(event.occurredAt)}`
+        : `${event.type || "paper-event"} · ${timeAgo(event.occurredAt)} · PAPER`;
       for (const target of [feed, engineFeed]) {
         const row = document.createElement("div");
         row.className = "ev";
@@ -147,6 +169,15 @@
         msg.className = "m";
         msg.textContent = label;
         row.append(msg);
+        if (isRejection) {
+          row.style.cursor = "pointer";
+          const detail = document.createElement("div");
+          detail.className = "hint";
+          detail.hidden = true;
+          detail.textContent = known ? known[1] : `Reason code: ${reasonCode} (no plain-English explanation written for this one yet).`;
+          row.addEventListener("click", () => { detail.hidden = !detail.hidden; });
+          row.append(detail);
+        }
         target.append(row);
       }
     }
