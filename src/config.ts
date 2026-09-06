@@ -130,21 +130,63 @@ export const USERS_DOMAIN_ENABLED = Boolean(CONFIG.DATABASE_URL);
 export const ENTITLEMENT_ISSUANCE_ENABLED = Boolean(CONFIG.ARIA_ENTITLEMENT_PRIVATE_D && CONFIG.ARIA_ENTITLEMENT_PUBLIC_X);
 
 /**
- * Session B item — version/update enforcement. aria-engine ships from a
- * private git checkout, not a registry with its own update channel — no
+ * Version/update enforcement. aria-engine ships from a private git
+ * checkout, not a registry with its own update channel — no
  * `npm outdated`-style mechanism exists to query "the latest version" at
- * runtime, so this control plane is the only place a minimum can live.
- * Value matches aria-engine's real current package.json version
+ * runtime, so this control plane is the only place these can live.
+ * Both values match aria-engine's real current package.json version
  * (0.7.0-beta.4, confirmed via ARIA_VERSION in its src/runtime/doctor.ts)
- * at the time this was written — bump it by hand whenever a new engine
- * release actually requires customers to update, not on every commit.
- * Deliberately exact-string comparison, not semver ordering: this beta
- * ships whole-version bumps, not patch releases where "newer is fine"
- * semantics would matter, and comparing prerelease tags like "beta.4"
- * numerically without a semver library would be more likely to be wrong
- * than an honest "doesn't match" check.
+ * at the time this was written, and are currently equal because only
+ * one version has ever shipped — bump RECOMMENDED on every real engine
+ * release; only raise MINIMUM_SUPPORTED when an old version genuinely
+ * can no longer sync safely (a breaking wire-protocol change), which is
+ * a rarer, more deliberate decision than "a new version exists."
+ *
+ * parseAriaVersion/compareAriaVersions implement a real, correct
+ * comparator for this project's OWN constrained version format
+ * (major.minor.patch[-beta.N]) — not a generic semver library standing
+ * in for one. A generic comparator risks silently mishandling prerelease
+ * tags it wasn't designed for; this one only has to be correct for the
+ * exact shape aria-engine actually produces, which is a much smaller,
+ * verifiable claim. Anything that doesn't parse is "unknown", never
+ * guessed at.
  */
-export const MIN_SUPPORTED_ENGINE_VERSION = "0.7.0-beta.4";
+export const RECOMMENDED_ENGINE_VERSION = "0.7.0-beta.4";
+export const MINIMUM_SUPPORTED_ENGINE_VERSION = "0.7.0-beta.4";
+
+export interface ParsedAriaVersion {
+  major: number;
+  minor: number;
+  patch: number;
+  beta: number | null; // null = a non-beta release, sorts AFTER any beta of the same major.minor.patch
+}
+
+const VERSION_RE = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/;
+
+export function parseAriaVersion(version: string): ParsedAriaVersion | null {
+  const m = VERSION_RE.exec(version.trim());
+  if (!m) return null;
+  return {
+    major: Number(m[1]),
+    minor: Number(m[2]),
+    patch: Number(m[3]),
+    beta: m[4] !== undefined ? Number(m[4]) : null,
+  };
+}
+
+/** Returns -1/0/1 (a<b / a==b / a>b), or null if either version doesn't parse — never guesses. */
+export function compareAriaVersions(a: string, b: string): number | null {
+  const pa = parseAriaVersion(a);
+  const pb = parseAriaVersion(b);
+  if (!pa || !pb) return null;
+  for (const key of ["major", "minor", "patch"] as const) {
+    if (pa[key] !== pb[key]) return pa[key] < pb[key] ? -1 : 1;
+  }
+  if (pa.beta === pb.beta) return 0;
+  if (pa.beta === null) return 1; // a is a non-beta release of the same major.minor.patch — newer
+  if (pb.beta === null) return -1;
+  return pa.beta < pb.beta ? -1 : 1;
+}
 
 export const TIER_LIMITS = {
   // The "trial" key is kept for backward compatibility with the DB and

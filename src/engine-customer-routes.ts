@@ -1,6 +1,24 @@
 import { z } from "zod";
 import { app } from "./server.js";
-import { MIN_SUPPORTED_ENGINE_VERSION } from "./config.js";
+import { RECOMMENDED_ENGINE_VERSION, MINIMUM_SUPPORTED_ENGINE_VERSION, compareAriaVersions } from "./config.js";
+
+/**
+ * "current" matches the recommended build exactly. "update-available" is
+ * behind recommended but still >= the minimum that can safely sync —
+ * informational, not blocking. "update-required" is below minimum — the
+ * mockup's harder warning. "unknown" covers anything that doesn't parse,
+ * including a dev build ahead of recommended (never guessed at as
+ * "outdated" just because it doesn't match).
+ */
+function computeVersionStatus(engineVersion: string | null): "current" | "update-available" | "update-required" | "unknown" {
+  if (!engineVersion) return "unknown";
+  if (engineVersion === RECOMMENDED_ENGINE_VERSION) return "current";
+  const vsMin = compareAriaVersions(engineVersion, MINIMUM_SUPPORTED_ENGINE_VERSION);
+  const vsRecommended = compareAriaVersions(engineVersion, RECOMMENDED_ENGINE_VERSION);
+  if (vsMin === null || vsRecommended === null) return "unknown";
+  if (vsRecommended > 0) return "unknown"; // ahead of recommended (a dev build) — not "outdated"
+  return vsMin < 0 ? "update-required" : "update-available";
+}
 import { logger } from "./logger.js";
 import { verifyInitData } from "./telegram-auth.js";
 import { getUserByTelegramId } from "./users.js";
@@ -68,11 +86,9 @@ app.post("/api/engine/me", async (c) => {
         engineVersion: client.engine_version,
         online,
         lastSeenAt,
-        // Exact-match, not semver ordering — see MIN_SUPPORTED_ENGINE_VERSION's
-        // docblock for why. "unknown" for older-paired devices from before
-        // engineVersion was captured at all, not silently called outdated.
-        versionStatus: !client.engine_version ? "unknown" : client.engine_version === MIN_SUPPORTED_ENGINE_VERSION ? "current" : "outdated",
-        minSupportedVersion: MIN_SUPPORTED_ENGINE_VERSION,
+        versionStatus: computeVersionStatus(client.engine_version),
+        recommendedVersion: RECOMMENDED_ENGINE_VERSION,
+        minimumSupportedVersion: MINIMUM_SUPPORTED_ENGINE_VERSION,
       },
       entitlement: entitlement ? { status: entitlement.status, expiresAt: entitlement.expires_at } : null,
       snapshot: storedSnapshot ? { data: storedSnapshot.payload, receivedAt: storedSnapshot.created_at, sequence: storedSnapshot.sequence } : null,

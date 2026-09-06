@@ -192,6 +192,7 @@
     text("engine-address", "—");
     text("engine-balance", "—");
     text("engine-version-notice", "");
+    if ($("engine-version-notice")) $("engine-version-notice").style.color = "";
     $("engine-start-btn").disabled = true;
     $("engine-pause-btn").disabled = true;
     $("engine-stop-btn").disabled = true;
@@ -414,9 +415,19 @@
     text("engine-network", device.platform ? String(device.platform).toUpperCase() : "LOCAL");
     text("engine-address", device.engineVersion || "unknown");
     text("engine-balance", timeAgo(device.lastSeenAt));
-    text("engine-version-notice", device.versionStatus === "outdated"
-      ? `Your ARIA engine (${device.engineVersion}) is behind the current beta build (${device.minSupportedVersion}). Pull the latest aria-engine code, run npm install, and re-pair if prompted.`
-      : "");
+    const versionNotice = $("engine-version-notice");
+    if (versionNotice) {
+      if (device.versionStatus === "update-required") {
+        versionNotice.textContent = `UPDATE REQUIRED — your ARIA engine (${device.engineVersion}) can no longer safely sync with this service (minimum supported: ${device.minimumSupportedVersion}). Pull the latest aria-engine code, run npm install, and re-pair.`;
+        versionNotice.style.color = "var(--red)";
+      } else if (device.versionStatus === "update-available") {
+        versionNotice.textContent = `Update available — installed ${device.engineVersion}, current ${device.recommendedVersion}. Pull the latest aria-engine code and run npm install when convenient.`;
+        versionNotice.style.color = "var(--amber)";
+      } else {
+        versionNotice.textContent = "";
+        versionNotice.style.color = "";
+      }
+    }
     text("status-device", device.online ? "ONLINE" : "OFFLINE");
     text("status-engine", device.online ? "RUNNING" : "STOPPED");
     text("status-sync", timeAgo(device.lastSeenAt));
