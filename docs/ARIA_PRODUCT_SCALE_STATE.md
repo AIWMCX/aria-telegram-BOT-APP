@@ -90,8 +90,20 @@ now read "NOTIFY ME WHEN AVAILABLE" / "I'D PAY FOR THIS", disable and
 confirm on click. Still make no false claim that either product
 exists — pure signal capture, not a waitlist or purchase flow.
 
-**Still open from Session B** (2 of 8 remaining): version/update
-enforcement, notification preferences.
+**Session B, item 7/8 — notification preferences (commit `fb3f1c3`,
+deployment `7c3a7acd`, confirmed `SUCCESS`):** audited what this bot
+actually sends unsolicited before building anything — license issuance
+and 7d/1d expiry warnings are informational about the user's own
+account state (muting expiry warnings and then silently losing access
+would make things worse, not better) and stay unconditional; the one
+genuinely promotional message is `notifyCustomerLicenseIssued()`'s
+$RYPTO$ community join prompt, already flagged in its own comment as a
+spam risk. New `notify_promotions` column on `leads` (SQLite,
+defensive `ALTER TABLE` per this file's existing pattern), default on.
+`/notifications [on|off]` toggles it; the $RYPTO$ DM now checks it.
+
+**Still open from Session B** (1 of 8 remaining): version/update
+enforcement.
 
 ## MINI APP UX — SESSION A SUBSET SHIPPED (2026-09-06T18:19 UTC)
 
