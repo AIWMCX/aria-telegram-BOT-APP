@@ -384,7 +384,6 @@
   ["name", "email", "wallet", "interest"].forEach((id) => $("i-" + id).addEventListener("input", validate));
   $("btn-trial").addEventListener("click", () => $("request-form").scrollIntoView({ behavior: "smooth" }));
   $("cta-strip").addEventListener("click", () => $("engine-panel").scrollIntoView({ behavior: "smooth" }));
-  $("btn-standard").disabled = true; $("btn-pro").disabled = true;
 
   async function restoreAccount() {
     if (!isInTelegram) return;
