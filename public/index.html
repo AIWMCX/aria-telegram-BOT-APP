@@ -33,6 +33,22 @@
 
 <div class="reality-banner" id="reality-banner" role="status" aria-live="polite">REAL-1 · PAPER ONLY · NO REAL ORDERS</div>
 
+<div class="panel full" id="paper-explainer" hidden role="dialog" aria-labelledby="paper-explainer-title">
+  <div class="ph"><h2 id="paper-explainer-title">You're in PAPER mode</h2></div>
+  <p>ARIA is observing the real Solana market right now.</p>
+  <table>
+    <tbody>
+      <tr><td>Discovery</td><td class="acid">REAL</td></tr>
+      <tr><td>Market data</td><td class="acid">REAL</td></tr>
+      <tr><td>Safety checks</td><td class="acid">REAL</td></tr>
+      <tr><td>Risk decisions</td><td class="acid">REAL</td></tr>
+      <tr><td>Trade execution</td><td>SIMULATED</td></tr>
+    </tbody>
+  </table>
+  <p><strong>No real funds are being traded.</strong> This lets you see exactly how ARIA behaves before any real money is ever involved.</p>
+  <button class="plan-btn primary" id="paper-explainer-dismiss" type="button">GOT IT</button>
+</div>
+
 <div class="license-bar" aria-label="license summary" id="license-bar">
   <div class="cell"><div class="lbl">Licensed To</div><div class="val" id="lic-sub">NO LICENSE YET</div></div>
   <div class="cell"><div class="lbl">Tier</div><div class="val" id="lic-tier">—</div></div>
@@ -101,9 +117,11 @@
       <button class="plan-btn" id="engine-start-btn" type="button" disabled>START LOCALLY</button>
       <button class="plan-btn" id="engine-pause-btn" type="button" disabled>PAUSE PAPER</button>
       <button class="plan-btn" id="engine-stop-btn" type="button" disabled>STOP</button>
+      <button class="plan-btn" id="engine-diagnostics-btn" type="button">COPY SUPPORT DIAGNOSTICS</button>
     </div>
     <div class="hint" id="engine-pairing">Pairing connects your Telegram account to one local ARIA device. Private wallet material is never sent to this app.</div>
     <div class="hint" id="engine-pairing-fallback-notice">Telegram chat commands may occasionally be delayed during beta. This button works independently — you can always pair your device directly from here.</div>
+    <div class="hint" id="engine-diagnostics-result" aria-live="polite"></div>
     <div class="feed" id="engine-events" role="log" aria-label="paper engine events"></div>
   </section>
 

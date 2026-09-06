@@ -59,6 +59,23 @@
   renderReality(SAFE_REALITY);
   void loadReality();
 
+  // One-time PAPER-mode explanation — shown once per device, never again
+  // unless the user clears site storage. localStorage is per-viewer/per-
+  // device by design here (no server round trip needed for a UI-only
+  // "have I seen this" flag).
+  (function showPaperExplainerOnce() {
+    let alreadySeen = false;
+    try { alreadySeen = localStorage.getItem("aria_paper_explained") === "1"; } catch {}
+    const panel = $("paper-explainer");
+    if (!panel) return;
+    if (!alreadySeen) panel.hidden = false;
+    const dismissBtn = $("paper-explainer-dismiss");
+    if (dismissBtn) dismissBtn.addEventListener("click", () => {
+      panel.hidden = true;
+      try { localStorage.setItem("aria_paper_explained", "1"); } catch {}
+    });
+  })();
+
   function text(id, value) { const el = $(id); if (el) el.textContent = value; }
   function lamportsToSol(value) {
     try { return (Number(BigInt(String(value || "0"))) / 1_000_000_000).toFixed(6); } catch { return "—"; }
@@ -90,7 +107,7 @@
     text("s-pnl-pct", "real engine snapshot");
     text("uptime", "WAITING FOR ENGINE");
     text("pos-count", "—");
-    setTableUnavailable("pair a local ARIA engine to receive paper snapshots");
+    setTableUnavailable("No open positions yet — connect your engine above, then ARIA will show real activity here as it happens.");
     $("feed").textContent = "";
     text("feed-count", "0 events");
   }
@@ -102,7 +119,7 @@
     return fetch(path, Object.assign({}, options, { headers, signal: controller.signal })).finally(() => clearTimeout(timer));
   }
 
-  function renderEngineDisconnected(message = "pair a local engine to begin") {
+  function renderEngineDisconnected(message = "Connect your ARIA engine — the button below generates a pairing code, no chat command needed.") {
     text("engine-connection", "DISCONNECTED");
     text("engine-status", message);
     text("engine-network", "—");
@@ -156,17 +173,19 @@
     text("pos-count", String(snapshot.openPositionCount ?? 0));
     setTableUnavailable((snapshot.openPositionCount ?? 0) > 0
       ? `${snapshot.openPositionCount} open paper position(s) · detailed position payload is intentionally not synced in REAL-1 preview yet`
-      : "no open paper positions");
+      : "No open positions — this is normal. ARIA intentionally rejects most candidates; it's waiting for one that passes the full decision pipeline.");
   }
 
   function renderEngineDashboard(data) {
     if (!data || data.ok !== true || !data.paired || !data.device) {
-      renderEngineDisconnected("no paired engine");
+      renderEngineDisconnected();
       return;
     }
     const device = data.device;
     text("engine-connection", device.online ? "CONNECTED" : "OFFLINE");
-    text("engine-status", data.entitlement ? `entitlement ${String(data.entitlement.status).toUpperCase()} · PAPER ONLY` : "entitlement unavailable");
+    text("engine-status", device.online
+      ? (data.entitlement ? `entitlement ${String(data.entitlement.status).toUpperCase()} · PAPER ONLY` : "entitlement unavailable")
+      : "Not heard from recently — your PAPER positions and journal are safe. Make sure ARIA is running, or run `aria doctor`.");
     text("engine-network", device.platform ? String(device.platform).toUpperCase() : "LOCAL");
     text("engine-address", device.engineVersion || "unknown");
     text("engine-balance", timeAgo(device.lastSeenAt));
@@ -228,6 +247,24 @@
   $("engine-start-btn").addEventListener("click", () => { text("engine-pairing", "Remote cold START is intentionally disabled until the signed local supervisor is installed. Run `aria paper start` locally for this preview."); });
   $("engine-pause-btn").addEventListener("click", () => void commandEngine("paper_pause").catch((e) => text("engine-status", e.message || "pause failed")));
   $("engine-stop-btn").addEventListener("click", () => void commandEngine("paper_stop").catch((e) => text("engine-status", e.message || "stop failed")));
+
+  // Safe diagnostic bundle for support — only values already rendered on
+  // screen, nothing pulled fresh from a secret-bearing endpoint. Never
+  // includes a wallet address, license token, or any bearer credential.
+  $("engine-diagnostics-btn").addEventListener("click", async () => {
+    const diagnosticId = "ARIA-" + Math.random().toString(36).slice(2, 7).toUpperCase();
+    const lines = [
+      "ARIA Diagnostics",
+      `Version: ${$("engine-address").textContent}`,
+      `Device: ${$("engine-connection").textContent}`,
+      `Mode: ${$("execution-mode").textContent}`,
+      `Market data: ${$("data-mode").textContent}`,
+      `Last sync: ${$("engine-balance").textContent}`,
+      `Diagnostic ID: ${diagnosticId}`,
+    ];
+    try { await navigator.clipboard.writeText(lines.join("\n")); } catch {}
+    text("engine-diagnostics-result", `Copied · ${diagnosticId} · share this with support, it contains no secrets`);
+  });
   renderEngineDisconnected();
   if (isInTelegram) { void refreshEngine(); setInterval(() => void refreshEngine(), 5000); }
 
