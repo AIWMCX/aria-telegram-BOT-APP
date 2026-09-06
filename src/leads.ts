@@ -58,3 +58,18 @@ export function recentSubmissionsByUser(tgUserId: number): number {
 export function totalLeads(): number {
   return (countAllStmt.get() as { n: number }).n;
 }
+
+const setNotifyPromotionsStmt = db.prepare(
+  `UPDATE leads SET notify_promotions = ? WHERE tg_user_id = ?`,
+);
+
+/** Toggle for the ONE promotional (non-transactional) DM this bot sends — see notifyCustomerLicenseIssued(). */
+export function setNotifyPromotions(tgUserId: number, enabled: boolean): boolean {
+  const result = setNotifyPromotionsStmt.run(enabled ? 1 : 0, tgUserId);
+  return result.changes > 0;
+}
+
+export function getNotifyPromotions(tgUserId: number): boolean {
+  const lead = getLatestLeadByTgUser(tgUserId) as (Lead & { notify_promotions?: number }) | undefined;
+  return lead?.notify_promotions !== 0; // default true — matches the column's DB default for anyone with no row yet
+}

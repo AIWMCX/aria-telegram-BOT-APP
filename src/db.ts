@@ -112,5 +112,10 @@ function ensureColumn(table: string, column: string, columnDdl: string): void {
 }
 ensureColumn("licenses", "warned_7d", "warned_7d INTEGER NOT NULL DEFAULT 0");
 ensureColumn("licenses", "warned_1d", "warned_1d INTEGER NOT NULL DEFAULT 0");
+// Session B item — notification preferences. Only the $RYPTO$ community
+// redirect DM (promotional, not transactional) is ever gated on this;
+// license issuance and expiry warnings are informational about the
+// user's own account state and stay unconditional.
+ensureColumn("leads", "notify_promotions", "notify_promotions INTEGER NOT NULL DEFAULT 1");
 
 logger.info({ path: CONFIG.DB_PATH }, "database ready — 5 tables (leads, orders, licenses, subscriptions, audit_log)");

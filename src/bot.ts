@@ -9,6 +9,7 @@ import { upsertUserFromTelegram } from "./users.js";
 import { createPairingCode } from "./engine-pairing.js";
 import { setEntitlementStatus } from "./engine-entitlements.js";
 import { createInvite, listInvites, redeemInvite, isUserApproved, getAttributionBreakdown } from "./invites.js";
+import { getNotifyPromotions, setNotifyPromotions } from "./leads.js";
 import { trackEvent, getFunnelCounts } from "./funnel.js";
 import { listRecentFeedback } from "./feedback.js";
 import type { Lead } from "./leads.js";
@@ -246,6 +247,36 @@ bot.command("support", async (ctx) => {
   await ctx.reply("Support: reply here and we'll get back within 24h.\nTerms, privacy, risk disclosure & support info: " + CONFIG.PUBLIC_URL + "/#legal");
 });
 
+/**
+ * Session B item — notification preferences. Only the $RYPTO$ community
+ * redirect DM is ever gated on this (see notifyCustomerLicenseIssued) —
+ * license issuance and expiry warnings tell you about your own account
+ * state and are never made optional.
+ */
+bot.command("notifications", async (ctx) => {
+  const tgUserId = ctx.from?.id;
+  if (!tgUserId) return;
+  const arg = ctx.match?.toString().trim().toLowerCase();
+  if (arg === "on" || arg === "off") {
+    const changed = setNotifyPromotions(tgUserId, arg === "on");
+    await ctx.reply(changed
+      ? `Community/promo messages: *${arg.toUpperCase()}*.`
+      : "No account found yet — get your free license first (/start), then this setting applies.",
+      { parse_mode: "Markdown" });
+    return;
+  }
+  const current = getNotifyPromotions(tgUserId);
+  await ctx.reply(
+    [
+      `Community/promo messages (the $RYPTO$ join prompt): *${current ? "ON" : "OFF"}*.`,
+      `/notifications on — turn on`,
+      `/notifications off — turn off`, ``,
+      `This never affects your license, expiry warnings, or support replies — those always reach you.`,
+    ].join("\n"),
+    { parse_mode: "Markdown" },
+  );
+});
+
 bot.command("help", async (ctx) => {
   const keyboard = new InlineKeyboard().webApp("🟢 OPEN TERMINAL", TERMINAL_URL);
   await ctx.reply(
@@ -255,6 +286,7 @@ bot.command("help", async (ctx) => {
       `/license (or /status) — your current plan and expiry`,
       `/pair — get a code to connect your local ARIA engine`,
       `/support — contact us, terms & risk disclosure`,
+      `/notifications — toggle community/promo messages`,
       `/help — this message`, ``,
       `Everything else — pairing, PAPER trading, journal, replay — happens inside the terminal.`,
     ].join("\n"),
@@ -419,6 +451,7 @@ export async function notifyCustomerLicenseIssued(lead: Lead, license: IssuedLic
   }
 
   if (!CONFIG.RYPTO_CHANNEL_URL) return;
+  if (!getNotifyPromotions(lead.tg_user_id)) return;
   try {
     const keyboard = new InlineKeyboard().url("JOIN $RYPTO$", CONFIG.RYPTO_CHANNEL_URL);
     await bot.api.sendMessage(
