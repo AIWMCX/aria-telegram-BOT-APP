@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { app } from "./server.js";
+import { MIN_SUPPORTED_ENGINE_VERSION } from "./config.js";
 import { logger } from "./logger.js";
 import { verifyInitData } from "./telegram-auth.js";
 import { getUserByTelegramId } from "./users.js";
@@ -67,6 +68,11 @@ app.post("/api/engine/me", async (c) => {
         engineVersion: client.engine_version,
         online,
         lastSeenAt,
+        // Exact-match, not semver ordering — see MIN_SUPPORTED_ENGINE_VERSION's
+        // docblock for why. "unknown" for older-paired devices from before
+        // engineVersion was captured at all, not silently called outdated.
+        versionStatus: !client.engine_version ? "unknown" : client.engine_version === MIN_SUPPORTED_ENGINE_VERSION ? "current" : "outdated",
+        minSupportedVersion: MIN_SUPPORTED_ENGINE_VERSION,
       },
       entitlement: entitlement ? { status: entitlement.status, expiresAt: entitlement.expires_at } : null,
       snapshot: storedSnapshot ? { data: storedSnapshot.payload, receivedAt: storedSnapshot.created_at, sequence: storedSnapshot.sequence } : null,

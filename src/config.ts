@@ -129,6 +129,23 @@ export const USERS_DOMAIN_ENABLED = Boolean(CONFIG.DATABASE_URL);
 /** True once the ARIAE1 signing keypair is configured — gates real entitlement issuance at pairing time. */
 export const ENTITLEMENT_ISSUANCE_ENABLED = Boolean(CONFIG.ARIA_ENTITLEMENT_PRIVATE_D && CONFIG.ARIA_ENTITLEMENT_PUBLIC_X);
 
+/**
+ * Session B item — version/update enforcement. aria-engine ships from a
+ * private git checkout, not a registry with its own update channel — no
+ * `npm outdated`-style mechanism exists to query "the latest version" at
+ * runtime, so this control plane is the only place a minimum can live.
+ * Value matches aria-engine's real current package.json version
+ * (0.7.0-beta.4, confirmed via ARIA_VERSION in its src/runtime/doctor.ts)
+ * at the time this was written — bump it by hand whenever a new engine
+ * release actually requires customers to update, not on every commit.
+ * Deliberately exact-string comparison, not semver ordering: this beta
+ * ships whole-version bumps, not patch releases where "newer is fine"
+ * semantics would matter, and comparing prerelease tags like "beta.4"
+ * numerically without a semver library would be more likely to be wrong
+ * than an honest "doesn't match" check.
+ */
+export const MIN_SUPPORTED_ENGINE_VERSION = "0.7.0-beta.4";
+
 export const TIER_LIMITS = {
   // The "trial" key is kept for backward compatibility with the DB and
   // existing issued licenses — it now means "free tier", not a time-limited

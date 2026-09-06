@@ -125,6 +125,7 @@
     text("engine-network", "—");
     text("engine-address", "—");
     text("engine-balance", "—");
+    text("engine-version-notice", "");
     $("engine-start-btn").disabled = true;
     $("engine-pause-btn").disabled = true;
     $("engine-stop-btn").disabled = true;
@@ -220,6 +221,9 @@
     text("engine-network", device.platform ? String(device.platform).toUpperCase() : "LOCAL");
     text("engine-address", device.engineVersion || "unknown");
     text("engine-balance", timeAgo(device.lastSeenAt));
+    text("engine-version-notice", device.versionStatus === "outdated"
+      ? `Your ARIA engine (${device.engineVersion}) is behind the current beta build (${device.minSupportedVersion}). Pull the latest aria-engine code, run npm install, and re-pair if prompted.`
+      : "");
     const caps = data.capabilities || {};
     $("engine-start-btn").disabled = true;
     $("engine-pause-btn").disabled = !caps.paperPause;
