@@ -230,6 +230,27 @@ Deliberately did NOT build toggles for the other 5 categories — a
 checkbox controlling a notification that can never fire would be worse
 than not having it.
 
+**Dual-tier version enforcement (commit `170bc91`, deployed, confirmed
+live via `/healthz` fresh-boot + curling production `/app.js`
+directly):** replaced the single-floor exact-match check with a real
+comparator for aria-engine's own constrained version format
+(major.minor.patch[-beta.N]) — sanity-checked against 8 cases including
+one a naive string comparison gets wrong (`beta.10` vs `beta.9`).
+`RECOMMENDED_ENGINE_VERSION`/`MINIMUM_SUPPORTED_ENGINE_VERSION` are
+separate constants (currently equal — only one version has ever
+shipped). `device.versionStatus` is now `current` / `update-available`
+(soft) / `update-required` (below minimum) / `unknown` (unparseable,
+or a dev build ahead of recommended). Mini App shows amber/red matched
+with real text, not color alone.
+
+**ALL 20 ITEMS OF THE RESTATED PRODUCTIZATION PROPOSAL NOW CLOSED.**
+Every item that had (or was given) a real, checkable signal was built,
+tested, deployed, and independently verified live — never by re-trusting
+a green test suite alone, per the disabled-button regression found and
+fixed mid-session. Items with no real underlying signal (RPC-degraded,
+journal-unavailable, 5 of 6 notification categories) were explicitly
+NOT built, with the reasoning recorded rather than faked.
+
 **REGRESSION FOUND AND FIXED (commit `6bbec06`, deployed, confirmed live
 by curling production `/app.js` directly — not just re-trusting a
 typecheck/test pass):** a leftover `$("btn-standard").disabled = true;
