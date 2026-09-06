@@ -202,6 +202,7 @@
     text("status-version", "—");
     renderRecovery(null);
     if ($("first-run-success")) $("first-run-success").hidden = true;
+    if ($("session-summary")) $("session-summary").hidden = true;
     onboardingState.paired = false;
     onboardingState.online = false;
     renderOnboarding();
@@ -361,6 +362,41 @@
   $("frs-dismiss-btn").addEventListener("click", dismissFirstRunSuccess);
   $("frs-view-btn").addEventListener("click", () => { dismissFirstRunSuccess(); $("engine-panel").scrollIntoView({ behavior: "smooth" }); });
 
+  // Session summary — consolidates real numbers already computed elsewhere
+  // (same snapshot fields as renderPaperSnapshot) plus two genuinely new
+  // ones: session wall-clock time (client-side only — no server-tracked
+  // session concept exists) and the most common rejection reason among the
+  // up-to-20 events actually visible right now. Deliberately labeled
+  // "recent" / "so far", not "today" or "top reason" — there's no
+  // UTC-day-scoped aggregation anywhere in this stack to back a stronger claim.
+  const sessionStartMs = Date.now();
+  function renderSessionTime() {
+    const mins = Math.floor((Date.now() - sessionStartMs) / 60000);
+    text("session-time", mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`);
+  }
+  function renderSessionSummary(data) {
+    const panel = $("session-summary");
+    if (!panel) return;
+    if (!data || !data.paired) { panel.hidden = true; return; }
+    panel.hidden = false;
+    const s = (data.snapshot && data.snapshot.data) || {};
+    text("ss-observed", String((s.openedCount ?? 0) + (s.rejectedCount ?? 0)));
+    text("ss-opened", String(s.openedCount ?? 0));
+    text("ss-open-now", String(s.openPositionCount ?? 0));
+    text("ss-closed", String(s.closedCount ?? 0));
+    text("ss-realized", `${lamportsToSol(s.realizedPnlLamports)} SOL`);
+    text("ss-unrealized", `${lamportsToSol(s.unrealizedPnlLamports)} SOL`);
+    const counts = {};
+    for (const event of Array.isArray(data.events) ? data.events : []) {
+      const reason = event.data && event.data.reason;
+      if (REJECTION_EVENT_TYPES.has(event.type) && reason) counts[reason] = (counts[reason] || 0) + 1;
+    }
+    const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+    text("ss-top-reason", top ? `${(REJECTION_REASONS[top[0]] || [top[0]])[0]} (${top[1]})` : "none in recent events");
+  }
+  setInterval(renderSessionTime, 30_000);
+  renderSessionTime();
+
   function renderEngineDashboard(data) {
     if (!data || data.ok !== true || !data.paired || !data.device) {
       renderEngineDisconnected();
@@ -374,6 +410,7 @@
     renderRecovery(device.online ? null : "offline");
     if (device.online) maybeShowFirstRunSuccess(data.snapshot && data.snapshot.data);
     else if ($("first-run-success")) $("first-run-success").hidden = true;
+    renderSessionSummary(data);
     text("engine-network", device.platform ? String(device.platform).toUpperCase() : "LOCAL");
     text("engine-address", device.engineVersion || "unknown");
     text("engine-balance", timeAgo(device.lastSeenAt));
