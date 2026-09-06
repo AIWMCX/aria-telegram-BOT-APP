@@ -44,12 +44,28 @@ to `REMOVED` once the new one reached `SUCCESS`.
 Typecheck clean, full suite green (`frontend-reality.ts` unaffected —
 `/api/product-reality`'s response shape is unchanged).
 
-**Still open from Session B** (7 of 8 remaining): version/update
-enforcement, candidate-rejection explanation drawer, feedback capture,
-notification preferences, invite attribution (likely near-free — the
-existing `note` field on `invites` already lets `/invite <note>` serve
-as campaign/source tagging; probably just needs formalizing/documenting,
-not new schema), LIVE-interest CTA, paid-interest CTA.
+**Session B, item 2/8 — invite attribution (commit `faa0eed`, deployment
+`cf890fee`, verified live via `/healthz` fresh-boot uptime):** added
+`getAttributionBreakdown()` (`invites.ts`) and `/attribution` admin
+command — groups the existing `invites.note` column into
+invited/activated/paired counts per source. No new schema; the `note`
+field already tagged sources at `/invite <note>` creation time, this
+was just the missing cross-cohort rollup query.
+
+**Session B, item 3/8 — feedback capture (commit `43c5686`, deployment
+`bc39a8e5`, verified live via `/healthz` fresh-boot uptime of 16.7s
+confirming the new migration applied without crashing boot):** new
+`feedback` table, `POST /api/feedback` (Telegram-authenticated like
+pairing-code issuance, deliberately NOT invite-gated — anyone who
+opened the Mini App can leave feedback), a Mini App panel (textarea +
+send button), `feedback_submitted` funnel event, and a `/feedback`
+admin command reading the last 20 submissions. No thread/status
+workflow — read-and-follow-up-directly, same posture as `/beta` and
+`/attribution`.
+
+**Still open from Session B** (5 of 8 remaining): version/update
+enforcement, candidate-rejection explanation drawer, notification
+preferences, LIVE-interest CTA, paid-interest CTA.
 
 ## MINI APP UX — SESSION A SUBSET SHIPPED (2026-09-06T18:19 UTC)
 
