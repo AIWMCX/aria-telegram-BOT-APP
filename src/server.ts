@@ -561,6 +561,51 @@ app.post("/api/webhook/stripe", async (c) => {
 });
 
 /**
+ * Session B item — LIVE/paid interest signal capture. The "REAL-2" and
+ * "COMMERCIAL GA" tiles are honestly disabled (no such product exists
+ * yet) but clicking either now records real demand signal instead of
+ * being fully inert — this is the actual data a build-it-or-not
+ * decision should be based on, not a guess. One click per session is
+ * NOT enforced server-side (a user re-clicking isn't a meaningful
+ * signal to suppress, and doing so needs new per-user state for
+ * uncertain value) — the Mini App disables the button after a
+ * successful click instead.
+ */
+app.post("/api/interest", async (c) => {
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ ok: false, error: "invalid JSON" }, 400); }
+
+  const parsed = z.object({
+    initData: z.string().min(10),
+    kind: z.enum(["live", "paid"]),
+  }).safeParse(body);
+  if (!parsed.success) {
+    return c.json({ ok: false, error: parsed.error.issues[0]?.message ?? "invalid input" }, 400);
+  }
+
+  const verified = verifyInitData(parsed.data.initData);
+  if (!verified) {
+    return c.json({ ok: false, error: "Telegram verification failed. Open via the bot, not directly." }, 401);
+  }
+
+  try {
+    const user = USERS_DOMAIN_ENABLED
+      ? await upsertUserFromTelegram({
+          id: verified.user.id,
+          username: verified.user.username,
+          first_name: verified.user.first_name,
+          last_name: verified.user.last_name,
+        })
+      : undefined;
+    void trackEvent(parsed.data.kind === "live" ? "live_interest_clicked" : "paid_interest_clicked", user?.id);
+    return c.json({ ok: true });
+  } catch (err: any) {
+    logger.error({ err }, "interest capture failed");
+    return c.json({ ok: false, error: "Temporarily unavailable." }, 503);
+  }
+});
+
+/**
  * Session B item — feedback capture. Telegram-authenticated (same
  * pattern as pairing-code issuance) but does NOT require an approved
  * invite — anyone who opened the Mini App can leave feedback, since the

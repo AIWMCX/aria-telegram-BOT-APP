@@ -299,6 +299,30 @@
   renderEngineDisconnected();
   if (isInTelegram) { void refreshEngine(); setInterval(() => void refreshEngine(), 5000); }
 
+  // LIVE/paid interest signals — real demand data for a build-it-or-not
+  // decision, not a functioning purchase or waitlist flow. Both disabled
+  // tiles were previously fully inert; clicking now records intent.
+  async function registerInterest(kind, btn) {
+    if (!isInTelegram) { text("interest-result", "Open this inside Telegram to register interest."); return; }
+    btn.disabled = true;
+    try {
+      const response = await fetch("/api/interest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ initData, kind }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || "failed");
+      btn.textContent = "THANKS — NOTED";
+      text("interest-result", "Recorded. This is real signal the team uses to decide what to build next.");
+    } catch (error) {
+      btn.disabled = false;
+      text("interest-result", error && error.message ? error.message : "failed, try again");
+    }
+  }
+  $("btn-standard").addEventListener("click", () => void registerInterest("live", $("btn-standard")));
+  $("btn-pro").addEventListener("click", () => void registerInterest("paid", $("btn-pro")));
+
   // Feedback capture — Telegram-authenticated but not gated on invite
   // status, since the point is hearing from anyone who's stuck, not
   // just approved beta users.
