@@ -9,6 +9,48 @@ it has the exact P0-1 through P0-9 execution order for the sync-desync
 investigation and beta acceptance. Don't reconstruct the plan from chat
 history.**
 
+## SESSION B, ITEM 1 OF 8 — FUNNEL TELEMETRY + BETA OPS VIEW SHIPPED (2026-09-06T18:41 UTC)
+
+Commit `5a3a08a`, deployment `597e781a`, verified live via `/healthz`
+(`{"ok":true,"uptime":298.5,"leads":3,"paymentsEnabled":false}`) after
+`list-deployments` confirmed `SUCCESS` — the prior deployment briefly
+showed `CRASHED` during cutover, the same harmless transient artifact
+observed and confirmed false-alarm many times this session; it settled
+to `REMOVED` once the new one reached `SUCCESS`.
+
+- New `funnel_events` table (append-only: event name, optional user_id,
+  optional jsonb metadata) — `src/funnel.ts`'s `trackEvent()` never
+  throws, so a telemetry write failing can never break the real action
+  it's recording.
+- Wired into real existing action points, not new instrumentation-only
+  paths: `invite_created`, `invite_redeemed` (`invites.ts`),
+  `pairing_code_created` (`server.ts`), `pairing_completed`
+  (`invites.ts`'s `markInvitePaired`, guarded to fire only on the
+  actual activated→paired transition), `miniapp_opened`
+  (`/api/product-reality`, called once per page load — not the
+  `/api/engine/me` endpoint the Mini App polls every 5s), `support_opened`
+  (`/support` command).
+- Deliberately NOT tracked, and why: `journal_opened` (aria-engine's
+  `journal` command is local-only CLI, never reaches the control plane
+  — no event exists to hook); `engine_online`, `first_candidate_seen`,
+  `first_position_seen` (correctly detecting "first" needs new per-user
+  state or an expensive existence check every sync tick, and the PAPER
+  snapshot already surfaces open/closed/rejected counts in the Mini App
+  — revisit only if the simpler events show it's actually needed).
+- New `/beta` admin bot command: cohort counts (invited/activated/paired)
+  + all-time funnel counts + per-user status list — built on data now
+  being written, not a new dashboard surface.
+
+Typecheck clean, full suite green (`frontend-reality.ts` unaffected —
+`/api/product-reality`'s response shape is unchanged).
+
+**Still open from Session B** (7 of 8 remaining): version/update
+enforcement, candidate-rejection explanation drawer, feedback capture,
+notification preferences, invite attribution (likely near-free — the
+existing `note` field on `invites` already lets `/invite <note>` serve
+as campaign/source tagging; probably just needs formalizing/documenting,
+not new schema), LIVE-interest CTA, paid-interest CTA.
+
 ## MINI APP UX — SESSION A SUBSET SHIPPED (2026-09-06T18:19 UTC)
 
 From a 20-item productization proposal, shipped the bounded, low-risk
