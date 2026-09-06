@@ -121,6 +121,21 @@ outdated. Deliberately non-blocking — disclosure, not a hard gate,
 since a soft version mismatch shouldn't lock a beta user out of PAPER
 trading.
 
+**REGRESSION FOUND AND FIXED (commit `6bbec06`, deployed, confirmed live
+by curling production `/app.js` directly — not just re-trusting a
+typecheck/test pass):** a leftover `$("btn-standard").disabled = true;
+$("btn-pro").disabled = true;` line from before commit `35e42d1`
+repurposed those buttons ran AFTER the interest-capture click handlers
+were attached, silently defeating items 5+6 (LIVE/paid-interest CTAs)
+in production this whole time despite that commit's tests passing and
+its message claiming it worked. Neither the test suite nor the earlier
+`/healthz` check could have caught this — it's a DOM-interaction bug,
+not a server-side or schema issue. Caught by actually loading the page
+in a browser and checking `.disabled` at runtime, not by re-reading the
+diff. Lesson: a green test suite proves the tested paths, not the whole
+page — worth an actual browser check on any UI commit touching
+pre-existing init code, not just new code.
+
 **SESSION B COMPLETE — all 8 items shipped** (funnel telemetry, beta
 ops view, invite attribution, feedback capture, candidate-rejection
 drawer, LIVE-interest CTA, paid-interest CTA, version enforcement).
