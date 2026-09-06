@@ -79,9 +79,19 @@ surfacing: rejection rows now show a plain-English summary and expand
 on click to a fuller explanation. Unmapped future reason codes fall
 back to showing the raw code, never silently dropped.
 
-**Still open from Session B** (4 of 8 remaining): version/update
-enforcement, notification preferences, LIVE-interest CTA, paid-interest
-CTA.
+**Session B, items 5+6/8 — LIVE and paid-interest capture (commit
+`35e42d1`, deployment `fa668db4`, confirmed `SUCCESS`):** the disabled
+REAL-2 and COMMERCIAL GA pricing tiles had fully inert buttons
+("NOT AVAILABLE", no handler) — wasted demand signal. New
+`POST /api/interest` fires `live_interest_clicked` /
+`paid_interest_clicked` (funnel event names that existed in
+`funnel.ts`'s union since item 1 but had no caller until now). Buttons
+now read "NOTIFY ME WHEN AVAILABLE" / "I'D PAY FOR THIS", disable and
+confirm on click. Still make no false claim that either product
+exists — pure signal capture, not a waitlist or purchase flow.
+
+**Still open from Session B** (2 of 8 remaining): version/update
+enforcement, notification preferences.
 
 ## MINI APP UX — SESSION A SUBSET SHIPPED (2026-09-06T18:19 UTC)
 
