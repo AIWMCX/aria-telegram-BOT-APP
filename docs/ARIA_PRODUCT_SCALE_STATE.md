@@ -145,6 +145,18 @@ resolvable would be dishonest. Auto-hides at 4/4. Verified in-browser
 via screenshot + a real click-through of the GET ACCESS action, not
 just the test suite.
 
+**Unified status card (commit `1017b73`, deployed, confirmed live by
+curling production `/` and `/app.js` directly):** consolidated
+Account/Device/Engine/Mode/Network/Market data/Last sync/Version —
+previously scattered across the topbar and engine panel — into one
+glanceable card. Pure mirroring of already-computed values at their
+existing set-sites (no second source of truth). Deliberately did NOT
+add a HEALTHY/DEGRADED market-data distinction as the original mockup
+suggested — no real RPC-health signal exists anywhere in this stack to
+back that claim, so it shows the same literal, already-true label
+instead of inventing a status this system can't verify. Verified
+in-browser: read every field's live value, screenshotted the layout.
+
 **REGRESSION FOUND AND FIXED (commit `6bbec06`, deployed, confirmed live
 by curling production `/app.js` directly — not just re-trusting a
 typecheck/test pass):** a leftover `$("btn-standard").disabled = true;
