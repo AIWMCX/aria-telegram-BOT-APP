@@ -172,6 +172,18 @@ on `isInTelegram` and unreachable from a plain browser), screenshotting
 it, and separately clicking the real COPY DOCTOR COMMAND button to
 confirm the clipboard write actually happens.
 
+**First-session success moment (commit `47e4202`, deployed, confirmed
+live):** shows once ever, the first time a device is genuinely paired
+AND online, with real cumulative counts from the same snapshot data
+already used in `renderPaperSnapshot`. Labeled "so far" not "Today" —
+these counters aren't confirmed to reset on a UTC-day boundary
+anywhere in aria-engine, so a "Today" claim would be fabricated
+precision. localStorage-gated dismiss, same pattern as the PAPER
+explainer. Verified by populating the DOM the same way the real code
+path does (engine dashboard is gated on `isInTelegram`, unreachable
+from a plain browser) and clicking the real DISMISS button, confirming
+via `localStorage.getItem` afterward that the actual handler ran.
+
 **REGRESSION FOUND AND FIXED (commit `6bbec06`, deployed, confirmed live
 by curling production `/app.js` directly — not just re-trusting a
 typecheck/test pass):** a leftover `$("btn-standard").disabled = true;
