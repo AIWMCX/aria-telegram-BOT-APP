@@ -141,6 +141,16 @@
     <div class="hint" id="engine-pairing">Pairing connects your Telegram account to one local ARIA device. Private wallet material is never sent to this app.</div>
     <div class="hint" id="engine-pairing-fallback-notice">Telegram chat commands may occasionally be delayed during beta. This button works independently — you can always pair your device directly from here.</div>
     <div class="hint" id="engine-version-notice" aria-live="polite"></div>
+    <div class="panel" id="engine-recovery" hidden style="margin-top:10px;padding:12px;border:1px solid var(--line);" role="alert">
+      <div style="font-weight:600;letter-spacing:0.08em;text-transform:uppercase;" id="recovery-title"></div>
+      <p id="recovery-body" style="margin:8px 0"></p>
+      <div id="recovery-safety" style="margin:8px 0"></div>
+      <ol id="recovery-steps" style="margin:8px 0 12px 18px;padding:0"></ol>
+      <div class="engine-controls">
+        <button class="plan-btn" id="recovery-copy-doctor-btn" type="button" style="width:auto">COPY DOCTOR COMMAND</button>
+        <button class="plan-btn" id="recovery-retry-btn" type="button" style="width:auto">RETRY</button>
+      </div>
+    </div>
     <div class="hint" id="engine-diagnostics-result" aria-live="polite"></div>
     <div class="feed" id="engine-events" role="log" aria-label="paper engine events"></div>
   </section>

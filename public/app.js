@@ -200,6 +200,7 @@
     text("status-engine", "STOPPED");
     text("status-sync", "—");
     text("status-version", "—");
+    renderRecovery(null);
     onboardingState.paired = false;
     onboardingState.online = false;
     renderOnboarding();
@@ -281,6 +282,59 @@
       : "No open positions — this is normal. ARIA intentionally rejects most candidates; it's waiting for one that passes the full decision pipeline.");
   }
 
+  // Structured recovery states — only for conditions with a real, checkable
+  // signal and a real fix a user can act on. Two kinds: "offline" (a
+  // previously paired device hasn't synced recently) and "server" (this
+  // control plane itself was unreachable — a fetch-level failure, not an
+  // API error response). Deliberately NOT built for every state the
+  // original mockup listed (RPC degraded, journal unavailable) — no signal
+  // exists anywhere in this stack for those, and a recovery card with no
+  // real underlying check would be exactly the kind of fabricated status
+  // this session's truthfulness discipline exists to prevent.
+  const RECOVERY_COPY = {
+    offline: {
+      title: "Device offline",
+      body: "ARIA has not heard from your local engine recently.",
+      safety: ["Journal preserved", "PAPER positions preserved", "Settings preserved"],
+      steps: ["Make sure ARIA is running.", "Run `aria doctor`.", "Reconnect if needed."],
+    },
+    server: {
+      title: "Server temporarily unavailable",
+      body: "This control center couldn't be reached just now — your local ARIA engine keeps running independently of this page.",
+      safety: ["Journal preserved", "PAPER positions preserved", "Settings preserved"],
+      steps: ["Check your connection.", "Wait a few seconds.", "Retry below."],
+    },
+  };
+  function renderRecovery(kind) {
+    const panel = $("engine-recovery");
+    if (!panel) return;
+    if (!kind || !RECOVERY_COPY[kind]) { panel.hidden = true; return; }
+    const copy = RECOVERY_COPY[kind];
+    panel.hidden = false;
+    text("recovery-title", copy.title);
+    text("recovery-body", copy.body);
+    const safety = $("recovery-safety");
+    safety.textContent = "";
+    for (const item of copy.safety) {
+      const row = document.createElement("div");
+      row.textContent = "• " + item;
+      safety.append(row);
+    }
+    const steps = $("recovery-steps");
+    steps.textContent = "";
+    for (const step of copy.steps) {
+      const li = document.createElement("li");
+      li.textContent = step;
+      steps.append(li);
+    }
+  }
+  $("recovery-copy-doctor-btn").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText("aria doctor"); } catch {}
+    text("recovery-copy-doctor-btn", "COPIED");
+    setTimeout(() => text("recovery-copy-doctor-btn", "COPY DOCTOR COMMAND"), 2000);
+  });
+  $("recovery-retry-btn").addEventListener("click", () => void refreshEngine());
+
   function renderEngineDashboard(data) {
     if (!data || data.ok !== true || !data.paired || !data.device) {
       renderEngineDisconnected();
@@ -290,7 +344,8 @@
     text("engine-connection", device.online ? "CONNECTED" : "OFFLINE");
     text("engine-status", device.online
       ? (data.entitlement ? `entitlement ${String(data.entitlement.status).toUpperCase()} · PAPER ONLY` : "entitlement unavailable")
-      : "Not heard from recently — your PAPER positions and journal are safe. Make sure ARIA is running, or run `aria doctor`.");
+      : "Not heard from recently — see recovery steps below.");
+    renderRecovery(device.online ? null : "offline");
     text("engine-network", device.platform ? String(device.platform).toUpperCase() : "LOCAL");
     text("engine-address", device.engineVersion || "unknown");
     text("engine-balance", timeAgo(device.lastSeenAt));
@@ -320,12 +375,21 @@
 
   async function refreshEngine() {
     if (!isInTelegram) { renderEngineDisconnected("open this control center inside Telegram"); return; }
+    let response;
     try {
-      const response = await engineRequest("/api/engine/me", {
+      response = await engineRequest("/api/engine/me", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ initData }),
       });
+    } catch {
+      // The request itself never completed (offline, DNS, timeout) — this
+      // control plane being briefly unreachable, distinct from a clean API
+      // error response below. Your local engine keeps running regardless.
+      renderRecovery("server");
+      return;
+    }
+    try {
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || "engine unavailable");
       renderEngineDashboard(data);
