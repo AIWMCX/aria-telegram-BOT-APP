@@ -268,6 +268,32 @@
   renderEngineDisconnected();
   if (isInTelegram) { void refreshEngine(); setInterval(() => void refreshEngine(), 5000); }
 
+  // Feedback capture — Telegram-authenticated but not gated on invite
+  // status, since the point is hearing from anyone who's stuck, not
+  // just approved beta users.
+  $("feedback-submit-btn").addEventListener("click", async () => {
+    const textarea = $("feedback-text");
+    const message = textarea.value.trim();
+    if (!message) { text("feedback-result", "Write something first."); return; }
+    if (!isInTelegram) { text("feedback-result", "Open this inside Telegram to send feedback."); return; }
+    $("feedback-submit-btn").disabled = true;
+    try {
+      const response = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ initData, message }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || "feedback failed");
+      textarea.value = "";
+      text("feedback-result", "Sent — thank you.");
+    } catch (error) {
+      text("feedback-result", error && error.message ? error.message : "feedback failed, try again");
+    } finally {
+      $("feedback-submit-btn").disabled = false;
+    }
+  });
+
   const TIER_LIMITS = {
     trial: { label: "FREE", buy: "0.005 SOL", pos: "3", total: "0.015 SOL" },
     standard: { label: "STANDARD", buy: "0.01 SOL", pos: "5", total: "0.05 SOL" },

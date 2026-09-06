@@ -10,6 +10,7 @@ import { createPairingCode } from "./engine-pairing.js";
 import { setEntitlementStatus } from "./engine-entitlements.js";
 import { createInvite, listInvites, redeemInvite, isUserApproved, getAttributionBreakdown } from "./invites.js";
 import { trackEvent, getFunnelCounts } from "./funnel.js";
+import { listRecentFeedback } from "./feedback.js";
 import type { Lead } from "./leads.js";
 import type { IssuedLicense } from "./licenses.js";
 
@@ -328,6 +329,15 @@ bot.command("attribution", async (ctx) => {
   if (rows.length === 0) { await ctx.reply("No invites yet."); return; }
   const lines = rows.map((r) => `${r.source.padEnd(24)} invited ${r.invited}  activated ${r.activated}  paired ${r.paired}`);
   await ctx.reply(["*Attribution by invite source*", "```", ...lines, "```"].join("\n"), { parse_mode: "Markdown" });
+});
+
+/** Session B item — read what the Mini App's feedback form has captured. */
+bot.command("feedback", async (ctx) => {
+  if (!(await requireAdmin(ctx, "feedback"))) return;
+  const rows = await listRecentFeedback(20);
+  if (rows.length === 0) { await ctx.reply("No feedback yet."); return; }
+  const lines = rows.map((r) => `[${new Date(r.submitted_at).toISOString().slice(0, 16).replace("T", " ")}] ${r.user_id ? `user ${r.user_id}` : "anon"}: ${r.message}`);
+  await ctx.reply(["*Recent feedback*", "```", ...lines, "```"].join("\n"), { parse_mode: "Markdown" });
 });
 
 bot.command("revoke", async (ctx) => {

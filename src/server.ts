@@ -24,6 +24,7 @@ import { recordEventBatch } from "./engine-events.js";
 import { getPendingCommands, ackCommand } from "./engine-commands.js";
 import { isUserApproved, markInvitePaired } from "./invites.js";
 import { trackEvent } from "./funnel.js";
+import { submitFeedback } from "./feedback.js";
 
 export const app = new Hono();
 
@@ -556,6 +557,48 @@ app.post("/api/webhook/stripe", async (c) => {
   } catch (err: any) {
     logger.error({ err }, "stripe webhook verification/handling failed");
     return c.json({ ok: false, error: err?.message ?? "webhook error" }, 400);
+  }
+});
+
+/**
+ * Session B item — feedback capture. Telegram-authenticated (same
+ * pattern as pairing-code issuance) but does NOT require an approved
+ * invite — anyone who opened the Mini App can leave feedback, since the
+ * point is hearing from people who are stuck or confused, not just the
+ * ones who already got access.
+ */
+app.post("/api/feedback", async (c) => {
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ ok: false, error: "invalid JSON" }, 400); }
+
+  const parsed = z.object({
+    initData: z.string().min(10),
+    message: z.string().trim().min(1).max(2000),
+  }).safeParse(body);
+  if (!parsed.success) {
+    return c.json({ ok: false, error: parsed.error.issues[0]?.message ?? "invalid input" }, 400);
+  }
+
+  const verified = verifyInitData(parsed.data.initData);
+  if (!verified) {
+    return c.json({ ok: false, error: "Telegram verification failed. Open via the bot, not directly." }, 401);
+  }
+
+  try {
+    const user = USERS_DOMAIN_ENABLED
+      ? await upsertUserFromTelegram({
+          id: verified.user.id,
+          username: verified.user.username,
+          first_name: verified.user.first_name,
+          last_name: verified.user.last_name,
+        })
+      : undefined;
+    await submitFeedback(user?.id, parsed.data.message);
+    void trackEvent("feedback_submitted", user?.id);
+    return c.json({ ok: true });
+  } catch (err: any) {
+    logger.error({ err }, "feedback submission failed");
+    return c.json({ ok: false, error: "Feedback service temporarily unavailable." }, 503);
   }
 });
 

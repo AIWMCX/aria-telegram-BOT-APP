@@ -125,6 +125,16 @@
     <div class="feed" id="engine-events" role="log" aria-label="paper engine events"></div>
   </section>
 
+  <section class="panel full" id="feedback-panel">
+    <div class="ph"><h2>Feedback</h2><span class="meta">goes straight to the operator</span></div>
+    <div class="hint">Confused by something, hit a bug, or want a feature? Say so here — read directly, no support ticket system.</div>
+    <textarea id="feedback-text" rows="3" maxlength="2000" placeholder="What's working, what's not..." style="width:100%;box-sizing:border-box;margin-top:8px;font-family:inherit"></textarea>
+    <div class="engine-controls" style="margin-top:8px">
+      <button class="plan-btn primary" id="feedback-submit-btn" type="button">SEND FEEDBACK</button>
+    </div>
+    <div class="hint" id="feedback-result" aria-live="polite"></div>
+  </section>
+
   <section class="panel full" id="pricing">
     <div class="ph"><h2>Access</h2><span class="meta">REAL-1 closed beta</span></div>
     <div class="pricing-grid">
