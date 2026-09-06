@@ -6,7 +6,7 @@
   --line-hot: #2a3340;
   --ink:      #e7ecef;
   --ink-dim:  #8a9199;
-  --ink-mute: #5a626c;
+  --ink-mute: #7a828c; /* was #5a626c (3.17:1 on --bg) — 5.04:1 clears WCAG AA's 4.5:1 for the small label text this is used on */
   --acid:     #b6ff3c;
   --acid-2:   #6fdd00;
   --amber:    #ffb547;
@@ -51,7 +51,8 @@ body {
 .brand .dot { color: var(--acid); }
 .brand .sub { color: var(--ink-mute); margin-left: 8px; font-size: 9px; letter-spacing: 0.3em; display: none; }
 @media (min-width: 600px) { .brand .sub { display: inline; } .brand { font-size: 18px; } }
-.topbar .center { display: flex; gap: 14px; justify-content: center; align-items: center; color: var(--ink-dim); font-size: 10px; }
+.topbar .center { display: none; gap: 14px; justify-content: center; align-items: center; color: var(--ink-dim); font-size: 10px; min-width: 0; }
+@media (min-width: 600px) { .topbar .center { display: flex; } }
 .pulse {
   display: inline-block; width: 7px; height: 7px; border-radius: 50%;
   background: var(--ink-mute); margin-right: 6px; vertical-align: middle;
@@ -59,8 +60,14 @@ body {
 }
 .pulse.ok { background: var(--acid); color: var(--acid); animation: pulse 1.6s infinite; }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 currentColor; } 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
-.topbar .right { display: flex; gap: 10px; align-items: center; }
+.topbar .right { display: flex; gap: 10px; align-items: center; min-width: 0; }
 .clock { color: var(--ink-dim); font-variant-numeric: tabular-nums; font-size: 11px; }
+/* Below 600px, execution-mode/control-state chips are hidden — both are
+   already shown in the ARIA Status card and reality banner, so nothing
+   is lost, and cramming them into the topbar is what forced horizontal
+   overflow at narrow widths (confirmed: 320px viewport rendered a
+   515px-wide document before this fix). */
+@media (max-width: 599px) { .topbar .right .chip { display: none; } }
 
 /* ── License / plan banner ─────────────────────────────────────────── */
 .license-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line-hot); }
@@ -156,7 +163,8 @@ td.loss { color: var(--red); }
 .plan li.no { color: var(--ink-mute); }
 .plan li.no::before { content: "· "; color: var(--ink-mute); }
 .plan-btn {
-  display: block; width: 100%; padding: 11px; text-align: center; font-family: inherit; font-size: 11px;
+  display: flex; align-items: center; justify-content: center; width: 100%; min-height: 44px;
+  padding: 11px; text-align: center; font-family: inherit; font-size: 11px;
   letter-spacing: 0.2em; text-transform: uppercase; border: 1px solid var(--acid); background: transparent;
   color: var(--acid); cursor: pointer; border-radius: 2px;
 }
