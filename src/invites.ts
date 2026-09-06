@@ -96,6 +96,34 @@ export async function markInvitePaired(userId: number): Promise<void> {
   if ((rowCount ?? 0) > 0) void trackEvent("pairing_completed", userId);
 }
 
+export interface AttributionRow {
+  source: string;
+  invited: number;
+  activated: number;
+  paired: number;
+}
+
+/**
+ * `/invite <note>` already tags each invite with a free-text source —
+ * this is just the aggregate view across the whole cohort, grouped by
+ * that existing note. No new schema: `note` was always meant to answer
+ * "which source is this invite from," it just had no rollup query yet.
+ */
+export async function getAttributionBreakdown(): Promise<AttributionRow[]> {
+  const pool = requirePool();
+  const { rows } = await pool.query<{ source: string; invited: string; activated: string; paired: string }>(
+    `SELECT
+       COALESCE(note, '(no note)') AS source,
+       COUNT(*) AS invited,
+       COUNT(*) FILTER (WHERE status <> 'invited') AS activated,
+       COUNT(*) FILTER (WHERE status IN ('paired', 'active')) AS paired
+     FROM invites
+     GROUP BY note
+     ORDER BY COUNT(*) DESC`,
+  );
+  return rows.map((r) => ({ source: r.source, invited: Number(r.invited), activated: Number(r.activated), paired: Number(r.paired) }));
+}
+
 export async function suspendInviteForUser(userId: number): Promise<boolean> {
   const pool = requirePool();
   const { rowCount } = await pool.query(`UPDATE invites SET status = 'suspended' WHERE user_id = $1`, [userId]);

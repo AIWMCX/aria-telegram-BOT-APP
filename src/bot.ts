@@ -8,7 +8,7 @@ import { revokeLicense } from "./licenses.js";
 import { upsertUserFromTelegram } from "./users.js";
 import { createPairingCode } from "./engine-pairing.js";
 import { setEntitlementStatus } from "./engine-entitlements.js";
-import { createInvite, listInvites, redeemInvite, isUserApproved } from "./invites.js";
+import { createInvite, listInvites, redeemInvite, isUserApproved, getAttributionBreakdown } from "./invites.js";
 import { trackEvent, getFunnelCounts } from "./funnel.js";
 import type { Lead } from "./leads.js";
 import type { IssuedLicense } from "./licenses.js";
@@ -315,6 +315,19 @@ bot.command("beta", async (ctx) => {
     ].join("\n"),
     { parse_mode: "Markdown" },
   );
+});
+
+/**
+ * Session B item — invite attribution. `/invite <note>` already tags a
+ * source at creation time; this is the rollup that was missing: which
+ * source is actually converting, not just what one invite's note says.
+ */
+bot.command("attribution", async (ctx) => {
+  if (!(await requireAdmin(ctx, "attribution"))) return;
+  const rows = await getAttributionBreakdown();
+  if (rows.length === 0) { await ctx.reply("No invites yet."); return; }
+  const lines = rows.map((r) => `${r.source.padEnd(24)} invited ${r.invited}  activated ${r.activated}  paired ${r.paired}`);
+  await ctx.reply(["*Attribution by invite source*", "```", ...lines, "```"].join("\n"), { parse_mode: "Markdown" });
 });
 
 bot.command("revoke", async (ctx) => {
