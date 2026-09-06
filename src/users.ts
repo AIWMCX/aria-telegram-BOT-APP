@@ -18,6 +18,7 @@ export interface User {
   created_at: string;
   updated_at: string;
   last_seen_at: string | null;
+  notify_engine_offline: boolean;
 }
 
 export interface TelegramIdentity {
@@ -54,4 +55,14 @@ export async function getUserByTelegramId(telegramUserId: number): Promise<User 
   const pool = requirePool();
   const { rows } = await pool.query<User>(`SELECT * FROM users WHERE telegram_user_id = $1`, [telegramUserId]);
   return rows[0];
+}
+
+/** The one real, honestly-backed notification preference — see engine-offline-alerts.ts. */
+export async function setNotifyEngineOffline(telegramUserId: number, enabled: boolean): Promise<boolean> {
+  const pool = requirePool();
+  const { rowCount } = await pool.query(
+    `UPDATE users SET notify_engine_offline = $2 WHERE telegram_user_id = $1`,
+    [telegramUserId, enabled],
+  );
+  return (rowCount ?? 0) > 0;
 }

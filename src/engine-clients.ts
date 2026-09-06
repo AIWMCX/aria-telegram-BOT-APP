@@ -24,6 +24,7 @@ export interface EngineClient {
   last_seen_at: string | null;
   paired_at: string;
   revoked_at: string | null;
+  offline_notified_at: string | null;
 }
 
 function requirePool() {
@@ -94,11 +95,40 @@ export async function getLatestActiveClientForUser(userId: number): Promise<Engi
  */
 export async function atomicAdvanceSequence(id: string, newSequence: bigint): Promise<boolean> {
   const pool = requirePool();
+  // offline_notified_at resets on every real sync — a device that comes
+  // back online can trigger a fresh offline alert the next time it goes
+  // quiet, rather than staying permanently "already notified" forever.
   const { rowCount } = await pool.query(
-    `UPDATE engine_clients SET last_sequence = $2, last_seen_at = now() WHERE id = $1 AND last_sequence < $2`,
+    `UPDATE engine_clients SET last_sequence = $2, last_seen_at = now(), offline_notified_at = NULL WHERE id = $1 AND last_sequence < $2`,
     [id, newSequence.toString()],
   );
   return (rowCount ?? 0) > 0;
+}
+
+/**
+ * Finds active clients that have gone quiet for longer than the given
+ * threshold and haven't already been notified for this offline streak.
+ * Deliberately a much longer threshold than the Mini App's own 45s
+ * "online" freshness gate — that's for an at-a-glance status check, this
+ * is for a real DM interrupting the user, which should only fire for a
+ * genuinely sustained outage, not a routine few-second gap between syncs.
+ */
+export async function findClientsNewlyOffline(thresholdMinutes: number): Promise<EngineClient[]> {
+  const pool = requirePool();
+  const { rows } = await pool.query<EngineClient>(
+    `SELECT * FROM engine_clients
+     WHERE status = 'active'
+       AND offline_notified_at IS NULL
+       AND last_seen_at IS NOT NULL
+       AND last_seen_at < now() - ($1 || ' minutes')::interval`,
+    [thresholdMinutes],
+  );
+  return rows;
+}
+
+export async function markOfflineNotified(id: string): Promise<void> {
+  const pool = requirePool();
+  await pool.query(`UPDATE engine_clients SET offline_notified_at = now() WHERE id = $1`, [id]);
 }
 
 export async function listClientsForUser(userId: number): Promise<EngineClient[]> {

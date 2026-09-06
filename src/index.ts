@@ -11,6 +11,7 @@ import { runEngineAuthSelfTest } from "./engine-auth-selftest.js";
 import { runEngineSyncSelfTest } from "./engine-sync-selftest.js";
 import { runSyncDesyncRepro } from "./engine-sync-desync-repro.js";
 import { startExpiryWarningScheduler } from "./expiry-warnings.js";
+import { startOfflineAlertScheduler } from "./engine-offline-alerts.js";
 import { randomUUID } from "node:crypto";
 
 async function main(): Promise<void> {
@@ -81,6 +82,16 @@ async function main(): Promise<void> {
     startExpiryWarningScheduler();
   } catch (err) {
     logger.error({ err }, "expiry warning scheduler failed to start — license issuance/checkout unaffected");
+  }
+
+  // Engine-disconnected alerts — the one notification-preference category
+  // from tonight's restated productization prompt with a real underlying
+  // signal (a paired device's last_seen_at going stale). Opt-out via
+  // /notifications engine off.
+  try {
+    startOfflineAlertScheduler();
+  } catch (err) {
+    logger.error({ err }, "engine-offline alert scheduler failed to start — pairing/sync unaffected");
   }
 
   const botProcessId = randomUUID();

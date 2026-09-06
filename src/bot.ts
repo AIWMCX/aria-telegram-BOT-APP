@@ -5,7 +5,7 @@ import { logger } from "./logger.js";
 import { totalLeads, getLatestLeadByTgUser } from "./leads.js";
 import { getActiveLicenseForLead } from "./licenses.js";
 import { revokeLicense } from "./licenses.js";
-import { upsertUserFromTelegram } from "./users.js";
+import { upsertUserFromTelegram, getUserByTelegramId, setNotifyEngineOffline } from "./users.js";
 import { createPairingCode } from "./engine-pairing.js";
 import { setEntitlementStatus } from "./engine-entitlements.js";
 import { createInvite, listInvites, redeemInvite, isUserApproved, getAttributionBreakdown } from "./invites.js";
@@ -248,29 +248,62 @@ bot.command("support", async (ctx) => {
 });
 
 /**
- * Session B item — notification preferences. Only the $RYPTO$ community
- * redirect DM is ever gated on this (see notifyCustomerLicenseIssued) —
- * license issuance and expiry warnings tell you about your own account
- * state and are never made optional.
+ * Notification preferences. Two real, independently-gated categories —
+ * deliberately not the original mockup's 6, since 5 of them (position
+ * opened/closed, candidate detected, daily summary, market degraded)
+ * have no underlying trigger anywhere in this stack. License issuance,
+ * expiry warnings, and support replies are never optional — they're
+ * about the user's own account state, not promotional or ambient.
+ *
+ *   /notifications              — show both settings
+ *   /notifications on|off       — community/promo messages (legacy form, kept for compatibility)
+ *   /notifications promo on|off — same, explicit form
+ *   /notifications engine on|off — engine-disconnected alerts
  */
 bot.command("notifications", async (ctx) => {
   const tgUserId = ctx.from?.id;
   if (!tgUserId) return;
-  const arg = ctx.match?.toString().trim().toLowerCase();
-  if (arg === "on" || arg === "off") {
-    const changed = setNotifyPromotions(tgUserId, arg === "on");
+  const parts = (ctx.match?.toString().trim().toLowerCase() ?? "").split(/\s+/).filter(Boolean);
+  const [first, second] = parts;
+
+  if (first === "on" || first === "off") {
+    const changed = setNotifyPromotions(tgUserId, first === "on");
     await ctx.reply(changed
-      ? `Community/promo messages: *${arg.toUpperCase()}*.`
+      ? `Community/promo messages: *${first.toUpperCase()}*.`
       : "No account found yet — get your free license first (/start), then this setting applies.",
       { parse_mode: "Markdown" });
     return;
   }
-  const current = getNotifyPromotions(tgUserId);
+  if (first === "promo" && (second === "on" || second === "off")) {
+    const changed = setNotifyPromotions(tgUserId, second === "on");
+    await ctx.reply(changed
+      ? `Community/promo messages: *${second.toUpperCase()}*.`
+      : "No account found yet — get your free license first (/start), then this setting applies.",
+      { parse_mode: "Markdown" });
+    return;
+  }
+  if (first === "engine" && (second === "on" || second === "off")) {
+    if (!USERS_DOMAIN_ENABLED) { await ctx.reply("Engine account service not yet available."); return; }
+    const changed = await setNotifyEngineOffline(tgUserId, second === "on");
+    await ctx.reply(changed
+      ? `Engine-disconnected alerts: *${second.toUpperCase()}*.`
+      : "No paired-engine account found yet — pair a device first, then this setting applies.",
+      { parse_mode: "Markdown" });
+    return;
+  }
+
+  const promo = getNotifyPromotions(tgUserId);
+  let engineStatus = "unavailable — no paired-engine account yet";
+  if (USERS_DOMAIN_ENABLED) {
+    const user = await getUserByTelegramId(tgUserId);
+    if (user) engineStatus = user.notify_engine_offline ? "ON" : "OFF";
+  }
   await ctx.reply(
     [
-      `Community/promo messages (the $RYPTO$ join prompt): *${current ? "ON" : "OFF"}*.`,
-      `/notifications on — turn on`,
-      `/notifications off — turn off`, ``,
+      `Community/promo messages (the $RYPTO$ join prompt): *${promo ? "ON" : "OFF"}*`,
+      `Engine-disconnected alerts: *${engineStatus}*`, ``,
+      `/notifications promo on|off`,
+      `/notifications engine on|off`, ``,
       `This never affects your license, expiry warnings, or support replies — those always reach you.`,
     ].join("\n"),
     { parse_mode: "Markdown" },
@@ -286,7 +319,7 @@ bot.command("help", async (ctx) => {
       `/license (or /status) — your current plan and expiry`,
       `/pair — get a code to connect your local ARIA engine`,
       `/support — contact us, terms & risk disclosure`,
-      `/notifications — toggle community/promo messages`,
+      `/notifications — manage promo/engine-alert preferences`,
       `/help — this message`, ``,
       `Everything else — pairing, PAPER trading, journal, replay — happens inside the terminal.`,
     ].join("\n"),
@@ -504,5 +537,26 @@ export async function notifyCustomerOfExpiryWarning(lead: Lead, license: { id: s
     await bot.api.sendMessage(lead.tg_user_id, text, { parse_mode: "Markdown" });
   } catch (err) {
     logger.warn({ err }, "expiry-warning DM failed (non-fatal) — they may not have started the bot chat");
+  }
+}
+
+/**
+ * DM the customer that their paired ARIA engine has gone quiet for a
+ * sustained period — see engine-offline-alerts.ts. Sent at most once per
+ * offline streak (offline_notified_at gates this at the caller, reset on
+ * the next successful sync). Reassures data safety explicitly, matching
+ * this session's structured-recovery-state copy elsewhere.
+ */
+export async function notifyCustomerOfEngineOffline(telegramUserId: number, deviceName: string | null, minutesOffline: number): Promise<void> {
+  const label = deviceName ? esc(deviceName) : "your ARIA engine";
+  const text = [
+    `⚠️ ${label} has not synced in over ${minutesOffline} minutes.`, ``,
+    `Your PAPER positions and journal are safe — nothing is lost while it's offline.`, ``,
+    `Make sure ARIA is running, or run \`aria doctor\` to check.`,
+  ].join("\n");
+  try {
+    await bot.api.sendMessage(telegramUserId, text, { parse_mode: "Markdown" });
+  } catch (err) {
+    logger.warn({ err }, "engine-offline DM failed (non-fatal) — they may not have started the bot chat");
   }
 }
