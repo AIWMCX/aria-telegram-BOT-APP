@@ -77,6 +77,66 @@
   })();
 
   function text(id, value) { const el = $(id); if (el) el.textContent = value; }
+
+  // Onboarding progress — 4 steps, each backed by a real, checkable signal
+  // (account exists, device paired, device recently synced, at least one
+  // engine event received). Deliberately not 6 fabricated steps like
+  // "ARIA installed" or "system check passed" — those aren't observable
+  // from the server side, and a step that's always silently marked done
+  // (or worse, never resolvable) undermines the whole strip's honesty.
+  // Auto-hides once every step is real and complete.
+  const onboardingState = { hasAccount: false, paired: false, online: false, sawActivity: false };
+  function renderOnboarding() {
+    const strip = $("onboarding-strip");
+    if (!strip) return;
+    const steps = [
+      { label: "Get beta access", done: onboardingState.hasAccount, action: () => $("request-form").scrollIntoView({ behavior: "smooth" }), actionLabel: "GET ACCESS" },
+      { label: "Connect your engine", done: onboardingState.paired, action: () => $("engine-panel").scrollIntoView({ behavior: "smooth" }), actionLabel: "CONNECT" },
+      { label: "Start PAPER trading", done: onboardingState.online, hint: "Run `aria paper start` on your machine, then this checks off automatically." },
+      { label: "See your first candidate", done: onboardingState.sawActivity, hint: "ARIA will show this the moment it evaluates a real candidate." },
+    ];
+    const doneCount = steps.filter((s) => s.done).length;
+    if (doneCount === steps.length) { strip.hidden = true; return; }
+    strip.hidden = false;
+    text("onboarding-count", `${doneCount} of ${steps.length} complete`);
+    const list = $("onboarding-steps");
+    list.textContent = "";
+    for (const step of steps) {
+      const row = document.createElement("li");
+      const top = document.createElement("div");
+      top.style.display = "flex";
+      top.style.alignItems = "center";
+      top.style.gap = "8px";
+      const mark = document.createElement("span");
+      mark.textContent = step.done ? "✓" : "○";
+      mark.style.color = step.done ? "var(--acid, #7cff6b)" : "inherit";
+      top.append(mark);
+      const label = document.createElement("span");
+      label.textContent = step.label;
+      top.append(label);
+      row.append(top);
+      if (!step.done) {
+        if (step.action) {
+          const btn = document.createElement("button");
+          btn.className = "plan-btn";
+          btn.type = "button";
+          btn.style.width = "auto";
+          btn.style.display = "inline-block";
+          btn.style.margin = "4px 0 0 22px";
+          btn.textContent = step.actionLabel;
+          btn.addEventListener("click", step.action);
+          row.append(btn);
+        } else if (step.hint) {
+          const hint = document.createElement("div");
+          hint.className = "hint";
+          hint.style.margin = "2px 0 0 22px";
+          hint.textContent = step.hint;
+          row.append(hint);
+        }
+      }
+      list.append(row);
+    }
+  }
   function lamportsToSol(value) {
     try { return (Number(BigInt(String(value || "0"))) / 1_000_000_000).toFixed(6); } catch { return "—"; }
   }
@@ -130,6 +190,9 @@
     $("engine-pause-btn").disabled = true;
     $("engine-stop-btn").disabled = true;
     clearPaperSnapshot();
+    onboardingState.paired = false;
+    onboardingState.online = false;
+    renderOnboarding();
   }
 
   // Real reason codes from aria-engine's evaluatePaperRisk() (src/paper/paper-risk.ts)
@@ -233,6 +296,12 @@
       : "Connected to local ARIA engine.");
     renderPaperSnapshot(data.snapshot);
     renderPaperEvents(data.events);
+    onboardingState.paired = true;
+    onboardingState.online = Boolean(device.online);
+    const snapshotData = data.snapshot && data.snapshot.data;
+    const hasSnapshotActivity = Boolean(snapshotData && ((snapshotData.openedCount ?? 0) > 0 || (snapshotData.rejectedCount ?? 0) > 0));
+    if (hasSnapshotActivity || (Array.isArray(data.events) && data.events.length > 0)) onboardingState.sawActivity = true;
+    renderOnboarding();
   }
 
   async function refreshEngine() {
@@ -397,6 +466,8 @@
         $("el-token").value = data.license.token;
         text("el-expires", new Date(data.license.expiresAt).toISOString().slice(0, 10));
       }
+      onboardingState.hasAccount = Boolean(response.ok && data.ok && data.hasAccount);
+      renderOnboarding();
     } catch {}
   }
   $("el-reveal-btn").addEventListener("click", () => { $("el-token").style.filter = "none"; $("el-reveal-btn").classList.add("hidden"); $("el-copy-btn").classList.remove("hidden"); });
