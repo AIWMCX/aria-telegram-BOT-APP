@@ -44,6 +44,12 @@
     $("reality-banner").textContent = reality.dataMode === "live"
       ? `REAL MAINNET MARKET DATA · ${EXECUTION_LABEL[reality.executionMode]} · NO REAL ORDERS`
       : `REAL-1 · ${EXECUTION_LABEL[reality.executionMode]} · NO REAL ORDERS`;
+    // Status card mirrors the same already-validated fields — no separate
+    // source of truth, no new "HEALTHY/DEGRADED" claim invented on top of
+    // dataMode (there's no real RPC-health signal to back that distinction).
+    text("status-mode", EXECUTION_LABEL[reality.executionMode]);
+    text("status-network", NETWORK_LABEL[reality.network]);
+    text("status-market", DATA_LABEL[reality.dataMode]);
   }
 
   async function loadReality() {
@@ -190,6 +196,10 @@
     $("engine-pause-btn").disabled = true;
     $("engine-stop-btn").disabled = true;
     clearPaperSnapshot();
+    text("status-device", "DISCONNECTED");
+    text("status-engine", "STOPPED");
+    text("status-sync", "—");
+    text("status-version", "—");
     onboardingState.paired = false;
     onboardingState.online = false;
     renderOnboarding();
@@ -287,6 +297,10 @@
     text("engine-version-notice", device.versionStatus === "outdated"
       ? `Your ARIA engine (${device.engineVersion}) is behind the current beta build (${device.minSupportedVersion}). Pull the latest aria-engine code, run npm install, and re-pair if prompted.`
       : "");
+    text("status-device", device.online ? "ONLINE" : "OFFLINE");
+    text("status-engine", device.online ? "RUNNING" : "STOPPED");
+    text("status-sync", timeAgo(device.lastSeenAt));
+    text("status-version", device.engineVersion || "unknown");
     const caps = data.capabilities || {};
     $("engine-start-btn").disabled = true;
     $("engine-pause-btn").disabled = !caps.paperPause;
@@ -433,6 +447,8 @@
     text("lic-tier", cfg.label);
     text("lic-days", Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86_400_000)) + "d");
     text("lic-buy", cfg.buy); text("lic-pos", cfg.pos); text("lic-total", cfg.total);
+    const daysLeft = Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86_400_000);
+    text("status-account", daysLeft > 0 ? `ACTIVE (${cfg.label})` : "EXPIRED");
   }
 
   const SOLANA_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
