@@ -63,9 +63,25 @@ admin command reading the last 20 submissions. No thread/status
 workflow — read-and-follow-up-directly, same posture as `/beta` and
 `/attribution`.
 
-**Still open from Session B** (5 of 8 remaining): version/update
-enforcement, candidate-rejection explanation drawer, notification
-preferences, LIVE-interest CTA, paid-interest CTA.
+**Session B, item 4/8 — candidate-rejection explanation drawer (commit
+`ef66e83`, deployment `28dac91d`, confirmed `SUCCESS` via
+`list-deployments`):** the event feed showed rejection events as a
+bare type name with no explanation. Checked `aria-engine`'s actual
+source (`src/paper/paper-risk.ts`, wired through the real production
+path `paper-loop.ts` — not the separate `shadow-loop.ts`) rather than
+guessing: every rejection already carries one of exactly 8 real reason
+codes (`stale-observation`, `invalid-input`, `invalid-price`,
+`duplicate-candidate`, `position-cap`, `daily-loss-limit`,
+`mint-cooldown`, `exposure-cap`), already synced end-to-end through
+`event_batch` → `engine_events` → `/api/engine/me`'s
+`events[].data.reason`. No aria-engine change needed — pure Mini App
+surfacing: rejection rows now show a plain-English summary and expand
+on click to a fuller explanation. Unmapped future reason codes fall
+back to showing the raw code, never silently dropped.
+
+**Still open from Session B** (4 of 8 remaining): version/update
+enforcement, notification preferences, LIVE-interest CTA, paid-interest
+CTA.
 
 ## MINI APP UX — SESSION A SUBSET SHIPPED (2026-09-06T18:19 UTC)
 
