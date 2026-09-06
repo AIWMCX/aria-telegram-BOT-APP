@@ -9,6 +9,33 @@ it has the exact P0-1 through P0-9 execution order for the sync-desync
 investigation and beta acceptance. Don't reconstruct the plan from chat
 history.**
 
+## MINI APP UX — SESSION A SUBSET SHIPPED (2026-09-06T18:19 UTC)
+
+From a 20-item productization proposal, shipped the bounded, low-risk
+subset that's pure UI/copy on existing endpoints (commit `5542970`,
+verified live in production by downloading the real page and confirming
+the new markup is actually served, not just checking the deploy log):
+
+- One-time PAPER-mode explainer panel (localStorage-gated), manually
+  verified in-browser to show once and stay dismissed across reload.
+- `COPY SUPPORT DIAGNOSTICS` button — safe fields only (version,
+  connection, mode, market-data state, last sync, random diagnostic
+  ID), verified no secret material is included.
+- Reworded disconnected/empty-state copy to be actionable ("Connect
+  your ARIA engine — no chat command needed") and honest ("most
+  candidates being rejected is normal, not broken").
+
+`test/frontend-reality.ts` and `test/real1-truthfulness.ts` both pass
+unmodified — no truthfulness-claim regression from this pass.
+
+**Deliberately NOT done this pass** (real, scoped, still open):
+version/update-compatibility enforcement, candidate-rejection
+explanation drawer, funnel instrumentation (`invite_created` ->
+`onboarding_completed` event chain), feedback capture, notification
+preferences, beta operations view, invite attribution, LIVE-interest
+and paid-interest capture. These are Session B of the same proposal —
+pick up there next, not by re-deriving the list from scratch.
+
 ## PIVOT 2026-09-05/06: TELEGRAM COMMAND DEPENDENCY REMOVED FROM CRITICAL PATH
 
 After the 3s webhook reassertion could not be proven (20-command retest
