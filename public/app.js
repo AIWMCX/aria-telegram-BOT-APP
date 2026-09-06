@@ -201,6 +201,7 @@
     text("status-sync", "—");
     text("status-version", "—");
     renderRecovery(null);
+    if ($("first-run-success")) $("first-run-success").hidden = true;
     onboardingState.paired = false;
     onboardingState.online = false;
     renderOnboarding();
@@ -335,6 +336,31 @@
   });
   $("recovery-retry-btn").addEventListener("click", () => void refreshEngine());
 
+  // First-session success moment — shown exactly once, ever, the first
+  // time this device is genuinely paired AND online. Numbers are the
+  // real cumulative snapshot counters already used elsewhere (renderPaperSnapshot) —
+  // labeled "so far", not "today", since there's no confirmed UTC-day
+  // reset on these counters to back a "today" claim.
+  function maybeShowFirstRunSuccess(snapshotData) {
+    const panel = $("first-run-success");
+    if (!panel) return;
+    let alreadySeen = false;
+    try { alreadySeen = localStorage.getItem("aria_first_run_seen") === "1"; } catch {}
+    if (alreadySeen) { panel.hidden = true; return; }
+    panel.hidden = false;
+    const s = snapshotData || {};
+    text("frs-reviewed", String((s.openedCount ?? 0) + (s.rejectedCount ?? 0)));
+    text("frs-rejected", String(s.rejectedCount ?? 0));
+    text("frs-open", String(s.openPositionCount ?? 0));
+    text("frs-closed", String(s.closedCount ?? 0));
+  }
+  function dismissFirstRunSuccess() {
+    $("first-run-success").hidden = true;
+    try { localStorage.setItem("aria_first_run_seen", "1"); } catch {}
+  }
+  $("frs-dismiss-btn").addEventListener("click", dismissFirstRunSuccess);
+  $("frs-view-btn").addEventListener("click", () => { dismissFirstRunSuccess(); $("engine-panel").scrollIntoView({ behavior: "smooth" }); });
+
   function renderEngineDashboard(data) {
     if (!data || data.ok !== true || !data.paired || !data.device) {
       renderEngineDisconnected();
@@ -346,6 +372,8 @@
       ? (data.entitlement ? `entitlement ${String(data.entitlement.status).toUpperCase()} · PAPER ONLY` : "entitlement unavailable")
       : "Not heard from recently — see recovery steps below.");
     renderRecovery(device.online ? null : "offline");
+    if (device.online) maybeShowFirstRunSuccess(data.snapshot && data.snapshot.data);
+    else if ($("first-run-success")) $("first-run-success").hidden = true;
     text("engine-network", device.platform ? String(device.platform).toUpperCase() : "LOCAL");
     text("engine-address", device.engineVersion || "unknown");
     text("engine-balance", timeAgo(device.lastSeenAt));

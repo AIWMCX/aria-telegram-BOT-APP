@@ -47,6 +47,21 @@
   </div>
 </section>
 
+<section class="panel full" id="first-run-success" hidden role="status">
+  <div class="ph"><h2>ARIA is running</h2></div>
+  <p>Your device is connected and PAPER trading is active.</p>
+  <div class="stats-grid">
+    <div class="stat"><div class="lbl">Candidates reviewed (so far)</div><div class="num" id="frs-reviewed">—</div></div>
+    <div class="stat"><div class="lbl">Rejected</div><div class="num" id="frs-rejected">—</div></div>
+    <div class="stat"><div class="lbl">Open PAPER positions</div><div class="num" id="frs-open">—</div></div>
+    <div class="stat"><div class="lbl">Closed</div><div class="num" id="frs-closed">—</div></div>
+  </div>
+  <div class="engine-controls" style="margin-top:10px">
+    <button class="plan-btn primary" id="frs-view-btn" type="button" style="width:auto">VIEW ACTIVITY</button>
+    <button class="plan-btn" id="frs-dismiss-btn" type="button" style="width:auto">DISMISS</button>
+  </div>
+</section>
+
 <div class="panel full" id="onboarding-strip" hidden>
   <div class="ph"><h2>Getting started</h2><span class="meta" id="onboarding-count"></span></div>
   <ul id="onboarding-steps" style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;"></ul>
