@@ -184,6 +184,17 @@ path does (engine dashboard is gated on `isInTelegram`, unreachable
 from a plain browser) and clicking the real DISMISS button, confirming
 via `localStorage.getItem` afterward that the actual handler ran.
 
+**Session summary (commit `78f13fc`, deployed, confirmed live):**
+consolidates already-known snapshot numbers plus two genuinely new
+ones — client-side session wall-clock time (no server-tracked session
+concept exists) and most-common-recent rejection reason from the
+up-to-20 visible events (reusing the rejection-drawer's reason map).
+Labeled "so far"/"recent" throughout, not "Today"/"top reason" — no
+UTC-day-scoped aggregation exists anywhere in this stack to back a
+stronger claim. Verified the time ticker renders unconditionally at
+init, and the data-population layout by populating the DOM the way the
+real gated function does.
+
 **REGRESSION FOUND AND FIXED (commit `6bbec06`, deployed, confirmed live
 by curling production `/app.js` directly — not just re-trusting a
 typecheck/test pass):** a leftover `$("btn-standard").disabled = true;
