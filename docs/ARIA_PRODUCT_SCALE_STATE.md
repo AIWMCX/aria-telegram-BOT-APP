@@ -211,6 +211,25 @@ text it's used on — changed to `#7a828c` (5.04:1), confirmed no visual
 regression by screenshot. Also confirmed desktop width still shows the
 topbar center/chips (mobile-first hide, not a permanent loss).
 
+**Engine-disconnected alerts (commit `693676c`, deployment `c37ac066`,
+confirmed `SUCCESS`, fresh-boot `/healthz` uptime consistent with
+deploy timestamp — migration applied without crashing boot):** checked
+first that none of the original mockup's 6 notification categories
+(position opened/closed, candidate detected, engine disconnected,
+daily summary, market degraded) exist as real proactive DMs — only
+license issuance, expiry warnings, and the $RYPTO$ promo redirect do.
+Built the one category with a real signal: `engine_clients.last_seen_at`
+going stale for 10+ minutes (much longer than the Mini App's own 45s
+glance-check, since this fires an actual interrupting DM). New
+`offline_notified_at` (reset on every successful sync) and
+`users.notify_engine_offline` (default on). Scheduler follows the exact
+`expiry-warnings.ts` pattern: marks notified before attempting delivery,
+5-minute interval, a check failure never kills the loop. `/notifications`
+extended to `promo|engine` sub-commands, bare on/off kept working.
+Deliberately did NOT build toggles for the other 5 categories — a
+checkbox controlling a notification that can never fire would be worse
+than not having it.
+
 **REGRESSION FOUND AND FIXED (commit `6bbec06`, deployed, confirmed live
 by curling production `/app.js` directly — not just re-trusting a
 typecheck/test pass):** a leftover `$("btn-standard").disabled = true;
