@@ -195,6 +195,22 @@ stronger claim. Verified the time ticker renders unconditionally at
 init, and the data-population layout by populating the DOM the way the
 real gated function does.
 
+**Mobile/accessibility pass (commit `699c10d`, deployed, confirmed
+live):** actually tested at a 320px viewport rather than assuming it
+worked, and found 3 real, measured bugs: (1) topbar's CSS Grid
+`1fr` center track had no `min-width:0`, letting its content force the
+whole document to 515px wide on a 320px viewport (confirmed via
+`window.innerWidth` before/after) — fixed by hiding the now-redundant
+center/chip content below 600px, since both duplicate the ARIA Status
+card; (2) `btn-trial` measured 38px tall, under the 44px touch-target
+guideline, while other buttons only cleared it by accident (wrapped
+text) — fixed at the shared `.plan-btn` rule so it's guaranteed, not
+incidental; (3) `--ink-mute` measured 3.17:1 contrast via the real WCAG
+luminance formula, failing the 4.5:1 AA minimum for the small label
+text it's used on — changed to `#7a828c` (5.04:1), confirmed no visual
+regression by screenshot. Also confirmed desktop width still shows the
+topbar center/chips (mobile-first hide, not a permanent loss).
+
 **REGRESSION FOUND AND FIXED (commit `6bbec06`, deployed, confirmed live
 by curling production `/app.js` directly — not just re-trusting a
 typecheck/test pass):** a leftover `$("btn-standard").disabled = true;
