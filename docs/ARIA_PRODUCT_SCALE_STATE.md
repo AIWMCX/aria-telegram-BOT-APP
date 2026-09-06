@@ -102,8 +102,33 @@ spam risk. New `notify_promotions` column on `leads` (SQLite,
 defensive `ALTER TABLE` per this file's existing pattern), default on.
 `/notifications [on|off]` toggles it; the $RYPTO$ DM now checks it.
 
-**Still open from Session B** (1 of 8 remaining): version/update
-enforcement.
+**Session B, item 8/8 — version/update enforcement (commit `3d2ff3b`,
+deployment `1867f1b0`, confirmed `SUCCESS`, fresh-boot `/healthz`
+uptime 34.7s):** confirmed aria-engine has no existing update-notice
+mechanism (private git checkout, not a registry — checked its README
+and CLI directly) before building one. `MIN_SUPPORTED_ENGINE_VERSION`
+in `config.ts` (currently `0.7.0-beta.4`, matching aria-engine's real
+`ARIA_VERSION` at time of writing — a value to bump by hand on a real
+future release, not a moving target) is compared by exact string match
+against the paired device's reported version, deliberately not semver
+ordering (comparing prerelease tags like `beta.4` numerically would be
+more likely wrong than an honest "doesn't match"). `/api/engine/me`
+returns `device.versionStatus` (`current`/`outdated`/`unknown` — never
+silently calling an old-format device "outdated") and
+`minSupportedVersion`; the Mini App shows a plain-language banner with
+real instructions (pull latest code, `npm install`, re-pair) when
+outdated. Deliberately non-blocking — disclosure, not a hard gate,
+since a soft version mismatch shouldn't lock a beta user out of PAPER
+trading.
+
+**SESSION B COMPLETE — all 8 items shipped** (funnel telemetry, beta
+ops view, invite attribution, feedback capture, candidate-rejection
+drawer, LIVE-interest CTA, paid-interest CTA, version enforcement).
+Every item was individually typechecked, tested, committed, deployed,
+and confirmed live via `/healthz` and `list-deployments` before moving
+to the next — no batch-and-hope. Combined with Session A (shipped
+earlier the same day), the full 20-item productization proposal from
+tonight's master prompt is now closed out.
 
 ## MINI APP UX — SESSION A SUBSET SHIPPED (2026-09-06T18:19 UTC)
 
