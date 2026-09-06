@@ -121,6 +121,30 @@ outdated. Deliberately non-blocking — disclosure, not a hard gate,
 since a soft version mismatch shouldn't lock a beta user out of PAPER
 trading.
 
+## RESTATED PRODUCTIZATION PROMPT (2026-09-06T19:4x UTC) — reconciled against what's already shipped
+
+The 2026-09-06 productization master prompt was pasted again, expanded
+to 20 items with mockup copy. Reconciled line by line against Session
+A/B above before doing anything: PAPER explanation, empty states,
+diagnostic copy, version/update floor, funnel events, feedback capture,
+LIVE/paid-interest CTAs, invite attribution, and beta ops view were
+ALL already shipped and live — not re-built. Genuinely new asks:
+onboarding progress, unified status card, expanded structured recovery
+states, first-session success moment, daily/session summary, mobile/
+accessibility pass, per-category notification controls, dual-tier
+(recommended vs minimum) version enforcement.
+
+**Onboarding progress strip (commit `4f1abcc`, deployed, confirmed live
+by curling production `/` and `/app.js` directly — not just `/healthz`,
+per the lesson below):** 4 steps, each backed by a real signal (account
+exists, engine paired, engine online, at least one event/snapshot
+activity seen) — deliberately not the mockup's 6 steps, since 2 of them
+("ARIA installed", "system check passed") have no server-observable
+signal at all and a step that's either always fake-done or never
+resolvable would be dishonest. Auto-hides at 4/4. Verified in-browser
+via screenshot + a real click-through of the GET ACCESS action, not
+just the test suite.
+
 **REGRESSION FOUND AND FIXED (commit `6bbec06`, deployed, confirmed live
 by curling production `/app.js` directly — not just re-trusting a
 typecheck/test pass):** a leftover `$("btn-standard").disabled = true;
