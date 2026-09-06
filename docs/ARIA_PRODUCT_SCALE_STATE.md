@@ -157,6 +157,21 @@ back that claim, so it shows the same literal, already-true label
 instead of inventing a status this system can't verify. Verified
 in-browser: read every field's live value, screenshotted the layout.
 
+**Structured recovery states (commit `a624333`, deployed, confirmed
+live):** replaced a single sentence with a real structured card (title,
+explanation, data-safety bullets, numbered steps, COPY DOCTOR COMMAND +
+RETRY actions) for exactly 2 states backed by a real distinguishable
+signal — "offline" (paired device gone quiet) and "server" (the
+`/api/engine/me` fetch itself failed, distinct from a clean API error).
+Deliberately did not build cards for RPC-degraded/journal-unavailable —
+no real signal exists for either anywhere in this stack, and invite
+redemption already has real structured per-case messages in `bot.ts`
+that didn't need duplicating. Verified by populating the DOM the same
+way the real render function does (the engine dashboard path is gated
+on `isInTelegram` and unreachable from a plain browser), screenshotting
+it, and separately clicking the real COPY DOCTOR COMMAND button to
+confirm the clipboard write actually happens.
+
 **REGRESSION FOUND AND FIXED (commit `6bbec06`, deployed, confirmed live
 by curling production `/app.js` directly — not just re-trusting a
 typecheck/test pass):** a leftover `$("btn-standard").disabled = true;
