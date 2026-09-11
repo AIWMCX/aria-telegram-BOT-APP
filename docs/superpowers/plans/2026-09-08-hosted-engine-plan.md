@@ -10,6 +10,9 @@ infrastructure, controlled through Telegram, with zero local process.
 **Repos involved:**
 - `aria-telegram-BOT-APP` (this repo) — the new Fleet Manager service, Telegram command wiring, schema changes.
 - `aria-engine` (sibling repo, `C:\Users\AIWMC\dev\aria-engine`) — only touched if Task 1 finds the runtime-path override plumbing isn't fully wired end-to-end (function-level support exists per the spec's research; CLI/env-var wiring needs verification).
+- **Not involved**: `sniper-solana` / `C:\solana-sniper` and this repo's own legacy `license-signer.ts`/`licenses.ts`/Stripe billing system (Standard/Pro tiers issuing licenses for that repo) — confirmed legacy/abandoned, 2026-09-11. Any future PRO-tier entitlement work in this program builds fresh on `engine_clients`/the ARIAE1 entitlement system aria-engine already uses, never on the old license system.
+
+**2026-09-11 reconciliation (post-write, pre-Task-1) — VALID, one addendum:** independently re-verified against current code — `ensureRuntimeDirs(root)`/`acquireLock(lockPath)` are still override-capable exactly as described, `cli.ts` still calls `acquireLock()` with no argument (the gap is real and still open), and nothing on either repo's `main` has changed since this plan was written. One addition for Task 1: the reference-driven-commercialization program shipped `aria audit-paper --duration-minutes <N> [--json]` (a certification command reading the durable journal) — fold it into the command surface Task 2's Fleet Manager should be able to spawn/observe alongside `paper start`, not just the commands this plan originally listed.
 
 ## Global Constraints
 
