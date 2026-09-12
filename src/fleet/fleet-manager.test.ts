@@ -124,6 +124,62 @@ async function main() {
     delete process.env.FAKE_EXIT_CODE;
   }
 
+  // ── REGRESSION (reviewer-found race, commit fdb4796 review fix): calling
+  // stopTenant() during the crashed/pending-restart window must actually
+  // cancel the scheduled restart, not silently no-op and let it fire ──
+  {
+    process.env.FAKE_CRASH_AFTER_MS = "100";
+    process.env.FAKE_EXIT_CODE = "9";
+    const tenantsRoot = freshTempRoot();
+    const logsRoot = freshTempRoot();
+    const restartBackoffMs = 300;
+    const fm = new FleetManager({ engineInvocation: fakeInvocation(), tenantsRoot, logsRoot, restartBackoffMs });
+    await fm.spawnTenant("tenant-stop-during-crash");
+    await waitFor(() => fm.getTenantStatus("tenant-stop-during-crash")?.status === "running");
+
+    const sawCrashed = await waitFor(() => fm.getTenantStatus("tenant-stop-during-crash")?.status === "crashed", 1000);
+    check("regression setup: tenant reaches crashed state", sawCrashed);
+
+    // Call stopTenant() WHILE the restart is pending (well inside the
+    // restartBackoffMs window) — this is exactly the reviewer's reproduced
+    // timeline: stopTenant() must not return as a no-op that leaves the
+    // scheduled restart armed.
+    await fm.stopTenant("tenant-stop-during-crash", true);
+    check("stopTenant() resolves with status stopped, not left crashed", fm.getTenantStatus("tenant-stop-during-crash")?.status === "stopped");
+
+    // Now wait PAST what would have been the restart time (backoff + margin)
+    // and assert the tenant is genuinely stopped with no live process — the
+    // pre-fix code would have let the pending restartTimer fire here and
+    // resurrect a new process (status flips to "starting"/"running" again,
+    // exactly the reviewer's `+600ms status: starting` / `+800ms status:
+    // running` timeline), which this assertion catches.
+    await sleep(restartBackoffMs + 400);
+    check(
+      "no resurrection: tenant is still stopped well past the original backoff window",
+      fm.getTenantStatus("tenant-stop-during-crash")?.status === "stopped",
+    );
+    check("no resurrection: pid was cleared and not reassigned", fm.getTenantStatus("tenant-stop-during-crash")?.pid === undefined);
+    check(
+      "restartCount did not increment (no restart actually happened after the stop)",
+      fm.getTenantStatus("tenant-stop-during-crash")?.restartCount === 0,
+    );
+
+    // Calling stopTenant() again after the fix already stopped a crashed
+    // tenant must remain a safe no-op (guards against reintroducing a
+    // different bug while fixing this one).
+    let secondCallThrew = false;
+    try {
+      await fm.stopTenant("tenant-stop-during-crash", true);
+    } catch {
+      secondCallThrew = true;
+    }
+    check("calling stopTenant() again after it already stopped a crashed tenant is a safe no-op", !secondCallThrew);
+    check("status remains stopped after the redundant second stopTenant() call", fm.getTenantStatus("tenant-stop-during-crash")?.status === "stopped");
+
+    delete process.env.FAKE_CRASH_AFTER_MS;
+    delete process.env.FAKE_EXIT_CODE;
+  }
+
   // ── double-spawn on an already-running tenant is a no-op returning the same handle ──
   {
     const tenantsRoot = freshTempRoot();
@@ -209,6 +265,8 @@ async function main() {
 
     const victimPidBefore = fm.getTenantStatus("victim")?.pid!;
     const survivorPid = fm.getTenantStatus("survivor")?.pid!;
+    const survivorLogPath = path.join(logsRoot, "survivor.log");
+    const survivorLogBefore = fs.readFileSync(survivorLogPath, "utf8");
 
     // Deliberately misbehave "victim" from OUTSIDE FleetManager's own
     // stopTenant() path — a real external SIGKILL, exactly like an OOM
@@ -223,6 +281,23 @@ async function main() {
     check("the OTHER tenant's process is completely unaffected: still running", fm.getTenantStatus("survivor")?.status === "running");
     check("the OTHER tenant's pid is unchanged (it was never touched)", fm.getTenantStatus("survivor")?.pid === survivorPid);
     check("the OTHER tenant's restartCount is untouched", fm.getTenantStatus("survivor")?.restartCount === 0);
+
+    // Reviewer's secondary finding: checking only FleetManager's in-memory
+    // bookkeeping proves nothing about the ACTUAL OS process. Send signal 0
+    // to the survivor's real pid — this sends no signal, but throws if no
+    // process with that pid exists, giving a genuine OS-level liveness check.
+    let survivorReallyAlive = true;
+    try {
+      process.kill(survivorPid, 0);
+    } catch {
+      survivorReallyAlive = false;
+    }
+    check("the survivor's REAL OS process is still alive (OS-level check, not just in-memory status)", survivorReallyAlive);
+
+    // Also confirm the survivor's own log file (its tenant-scoped runtime
+    // artifact) was not touched/modified by the victim's crash.
+    const survivorLogAfter = fs.readFileSync(survivorLogPath, "utf8");
+    check("the survivor's log file was not touched by the victim's crash", survivorLogAfter === survivorLogBefore);
 
     // The Fleet Manager itself must be unaffected: still able to service
     // new spawns/stops after a sibling's violent death.
@@ -243,6 +318,34 @@ async function main() {
     await fm.stopTenant("victim", true);
     await fm.stopTenant("survivor", true);
     await fm.stopTenant("post-kill-newcomer", true);
+  }
+
+  // ── LOG CROSS-CONTAMINATION: two tenants, each with a distinctive stdout
+  // line, must each end up ONLY in their own log file, never the other's ──
+  {
+    const tenantsRoot = freshTempRoot();
+    const logsRoot = freshTempRoot();
+    const fm = new FleetManager({ engineInvocation: fakeInvocation(), tenantsRoot, logsRoot });
+
+    process.env.FAKE_EXTRA_LINE = "DISTINCTIVE-LINE-FOR-tenant-log-a";
+    await fm.spawnTenant("tenant-log-a");
+    await waitFor(() => fm.getTenantStatus("tenant-log-a")?.status === "running");
+
+    process.env.FAKE_EXTRA_LINE = "DISTINCTIVE-LINE-FOR-tenant-log-b";
+    await fm.spawnTenant("tenant-log-b");
+    await waitFor(() => fm.getTenantStatus("tenant-log-b")?.status === "running");
+    delete process.env.FAKE_EXTRA_LINE;
+
+    await fm.stopTenant("tenant-log-a", true);
+    await fm.stopTenant("tenant-log-b", true);
+
+    const logA = fs.readFileSync(path.join(logsRoot, "tenant-log-a.log"), "utf8");
+    const logB = fs.readFileSync(path.join(logsRoot, "tenant-log-b.log"), "utf8");
+
+    check("tenant-log-a's log contains its own distinctive line", logA.includes("DISTINCTIVE-LINE-FOR-tenant-log-a"));
+    check("tenant-log-a's log does NOT contain tenant-log-b's line", !logA.includes("DISTINCTIVE-LINE-FOR-tenant-log-b"));
+    check("tenant-log-b's log contains its own distinctive line", logB.includes("DISTINCTIVE-LINE-FOR-tenant-log-b"));
+    check("tenant-log-b's log does NOT contain tenant-log-a's line", !logB.includes("DISTINCTIVE-LINE-FOR-tenant-log-a"));
   }
 
   console.log(`\n${failures === 0 ? "✅ ALL PASSED" : `❌ ${failures} FAILED`}`);

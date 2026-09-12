@@ -20,6 +20,9 @@
  *                         instead of running until told to stop (simulates a crash)
  *   FAKE_FAIL_ON_START  - if "1", exits(FAKE_EXIT_CODE) immediately instead of
  *                         printing the ready line (simulates "never became healthy")
+ *   FAKE_EXTRA_LINE     - if set, printed to stdout right after the ready marker —
+ *                         used by cross-contamination tests to give each tenant's
+ *                         process a distinctive, greppable line in its own log file
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -71,6 +74,7 @@ if (cmd === "stop") {
   fs.writeFileSync(lockPath, String(process.pid));
   fs.writeFileSync(desiredPath, "running");
   console.log("paper engine started (FAKE fixture)");
+  if (process.env.FAKE_EXTRA_LINE) console.log(process.env.FAKE_EXTRA_LINE);
 
   let stopped = false;
   const shutdown = (code) => {

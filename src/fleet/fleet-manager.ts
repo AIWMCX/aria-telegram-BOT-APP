@@ -113,6 +113,21 @@ export class FleetManager {
         throw new Error(`tenant ${clientId} is currently stopping — wait for it to finish before starting again`);
       }
       // stopped/crashed: fall through and respawn, reusing the same handle object (restartCount persists).
+      // If a restart was already scheduled from the crash (status "crashed"
+      // with a pending restartTimer), cancel it here before proceeding —
+      // otherwise the OLD timer stays armed with a stale closure. Its own
+      // `status !== "crashed"` guard prevents it from spawning a SECOND
+      // live process once this explicit launch() flips status away from
+      // "crashed", but if the newly-spawned process itself crashes again
+      // before the old timer's backoff elapses, status flips back to
+      // "crashed" and the old timer's guard would pass, firing an
+      // unwanted extra (premature) restart on top of the new crash's own
+      // correctly-scheduled timer. Clearing it here removes that
+      // dangling reference entirely instead of relying on the guard.
+      if (existing.restartTimer) {
+        clearTimeout(existing.restartTimer);
+        existing.restartTimer = undefined;
+      }
     }
 
     const entry: TenantEntry = existing ?? {
@@ -203,8 +218,26 @@ export class FleetManager {
    */
   async stopTenant(clientId: string, graceful: boolean): Promise<void> {
     const entry = this.tenants.get(clientId);
-    if (!entry || !entry.process || entry.handle.status === "stopped") return;
+    if (!entry || entry.handle.status === "stopped") return;
     if (entry.stopInFlight) return entry.stopInFlight;
+
+    if (!entry.process) {
+      // No live process to signal — this is the "crashed" state with a
+      // restart pending (entry.restartTimer set), or some other no-process
+      // state. The ORIGINAL BUG: this branch used to be folded into the
+      // early-return guard above (`!entry.process` triggered a silent
+      // no-op), so calling stopTenant() during the crash/pending-restart
+      // window returned as if the stop succeeded while restartTimer stayed
+      // armed and fired anyway, resurrecting a process the caller had just
+      // asked to stop. Fix: cancel the pending restart and transition to
+      // "stopped" for real instead of no-op'ing.
+      if (entry.restartTimer) {
+        clearTimeout(entry.restartTimer);
+        entry.restartTimer = undefined;
+      }
+      entry.handle.status = "stopped";
+      return;
+    }
 
     const tp = entry.process;
     entry.handle.status = "stopping";
