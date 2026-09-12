@@ -16,7 +16,7 @@ NOT STARTED / IN PROGRESS / IMPLEMENTED (awaiting review) / REVIEWED-PASS / REVI
 | Task | Description | Status | Commit(s) | Reviewer verdict | Notes |
 |---|---|---|---|---|---|
 | Reconciliation | Post-write plan audit vs. current code | DONE | `026be66` | — | VALID, zero drift, one addendum (audit-paper command) applied |
-| 1 | Confirm schema + runtime-path plumbing ready for multi-tenancy | IMPLEMENTED (awaiting review) | aria-engine `69299df` (branch `feat/hosted-runtime-dir-override`, NOT merged to aria-engine main); this repo `7e5d7a2` | | `ARIA_RUNTIME_DIR` env var added in aria-engine; `hosting_mode` column migration added here |
+| 1 | Confirm schema + runtime-path plumbing ready for multi-tenancy | DONE | aria-engine `69299df` (branch `feat/hosted-runtime-dir-override`, NOT merged to aria-engine main); this repo `7e5d7a2` | DONE — REVIEWED-PASS (independent reviewer traced all 9 exported path constants, confirmed the lock file — the highest-risk gap — genuinely moves with the state directory under the override, not left shared; independently re-ran both repos' full suites, 65/65 and 5/5 green) | `ARIA_RUNTIME_DIR` env var added in aria-engine; `hosting_mode` column migration added here. Task 2 must spawn processes off aria-engine's unmerged `feat/hosted-runtime-dir-override` branch until it's merged. |
 | 2 | Fleet Manager core (spawn/monitor/stop one tenant process) | NOT STARTED | | | Depends on: 1 |
 | 3 | Resource bounds + crash-loop protection | NOT STARTED | | | Depends on: 2 |
 | 4 | Wire Telegram commands to Fleet Manager | NOT STARTED | | | Depends on: 2, 3 |
