@@ -247,20 +247,28 @@ load test is required or run in CI, per the plan's own instruction):
   past `sustainedHealthyMs` on its restart, crashes again, and
   `consecutiveCrashes` is confirmed to have reset to 1 (not escalated to 2).
 
-## 8. Known, disclosed gap (unrelated to this task, pre-existing)
+## 8. Known, disclosed gap (unrelated to this task, pre-existing) — RESOLVED 2026-09-14
 
 `fleet-manager.integration.test.ts` (Task 2) depends on the sibling
 `aria-engine` checkout at `C:\Users\AIWMC\dev\aria-engine` having the
 `feat/hosted-runtime-dir-override` branch checked out (or built from), per
 Task 1/2's ledger entries — that branch is where `ARIA_RUNTIME_DIR` support
-lives, and it is NOT merged to `aria-engine`'s `main`. As of this task, that
-sibling worktree's `HEAD` is on `main`, not that branch (confirmed by direct
-inspection, not assumed), which causes 3 of that integration test's 8
-assertions (the ones checking the tenant-scoped runtime dir/config.json/log
-content produced by the REAL binary) to fail — the same 3 fail identically
-against Task 2's own unmodified baseline commit, confirmed by temporarily
-reverting to it. This is a sibling-repo checkout/environment condition, not
-a Fleet Manager code defect, and this task does not touch `aria-engine` (out
-of scope per this program's Global Constraints). Whoever next needs that
-integration test green should check out `feat/hosted-runtime-dir-override`
-(or a build that includes it) in that worktree before running it.
+lives, and it is NOT merged to `aria-engine`'s `main`. At Task 3's own
+commit time, that sibling worktree's `HEAD` was on `main`, not that branch
+(confirmed by direct inspection, not assumed), which caused 3 of that
+integration test's 8 assertions (the ones checking the tenant-scoped
+runtime dir/config.json/log content produced by the REAL binary) to fail —
+the same 3 failed identically against Task 2's own unmodified baseline
+commit, confirmed by temporarily reverting to it. This was a sibling-repo
+checkout/environment condition, not a Fleet Manager code defect, and Task 3
+did not touch `aria-engine` (out of scope per this program's Global
+Constraints).
+
+**Resolved**: the sibling worktree was checked out back to
+`feat/hosted-runtime-dir-override` @ `69299df` and rebuilt. Re-ran
+`fleet-manager.integration.test.ts` immediately afterward: 8/8 pass.
+Whoever runs this test in a fresh environment should still check out
+`feat/hosted-runtime-dir-override` (or a build that includes it) in the
+sibling `aria-engine` worktree first — this remains a real environment
+prerequisite until that branch is merged to `aria-engine main`, it just is
+no longer an open/reproducing gap in THIS worktree right now.
