@@ -13,7 +13,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { FleetManager, type EngineInvocation } from "./fleet-manager.js";
+import { FleetManager, FleetCapacityError, type EngineInvocation } from "./fleet-manager.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(__dirname, "test-fixtures", "fake-engine.mjs");
@@ -346,6 +346,159 @@ async function main() {
     check("tenant-log-a's log does NOT contain tenant-log-b's line", !logA.includes("DISTINCTIVE-LINE-FOR-tenant-log-b"));
     check("tenant-log-b's log contains its own distinctive line", logB.includes("DISTINCTIVE-LINE-FOR-tenant-log-b"));
     check("tenant-log-b's log does NOT contain tenant-log-a's line", !logB.includes("DISTINCTIVE-LINE-FOR-tenant-log-a"));
+  }
+
+  // ── TASK 3: max concurrent tenant count is enforced, not silently dropped ──
+  {
+    delete process.env.FAKE_CRASH_AFTER_MS;
+    delete process.env.FAKE_EXIT_CODE;
+    const tenantsRoot = freshTempRoot();
+    const logsRoot = freshTempRoot();
+    const fm = new FleetManager({ engineInvocation: fakeInvocation(), tenantsRoot, logsRoot, maxConcurrentTenants: 2 });
+
+    await fm.spawnTenant("cap-1");
+    await fm.spawnTenant("cap-2");
+    await waitFor(() => fm.getTenantStatus("cap-1")?.status === "running");
+    await waitFor(() => fm.getTenantStatus("cap-2")?.status === "running");
+
+    let capacityError: unknown;
+    try {
+      await fm.spawnTenant("cap-3");
+    } catch (err) {
+      capacityError = err;
+    }
+    check("spawning past maxConcurrentTenants is rejected, not silently dropped", capacityError instanceof FleetCapacityError);
+    check("the capacity error names the offending clientId", (capacityError as FleetCapacityError)?.clientId === "cap-3");
+    check("the capacity error names the configured limit", (capacityError as FleetCapacityError)?.limit === 2);
+    check("cap-3 was never tracked (a rejected spawn leaves no dangling handle)", fm.getTenantStatus("cap-3") === undefined);
+
+    // Stopping one tenant must free a slot for a new spawn.
+    await fm.stopTenant("cap-1", true);
+    check("stopping cap-1 frees a slot (status is stopped)", fm.getTenantStatus("cap-1")?.status === "stopped");
+
+    let thirdSpawnOk = false;
+    try {
+      const h = await fm.spawnTenant("cap-3");
+      thirdSpawnOk = h.clientId === "cap-3";
+    } catch {
+      thirdSpawnOk = false;
+    }
+    check("after freeing a slot, a new tenant can be spawned", thirdSpawnOk);
+    await waitFor(() => fm.getTenantStatus("cap-3")?.status === "running");
+    check("the newly-spawned tenant reaches running", fm.getTenantStatus("cap-3")?.status === "running");
+
+    await fm.stopTenant("cap-2", true);
+    await fm.stopTenant("cap-3", true);
+  }
+
+  // ── TASK 3: crash-loop exponential backoff escalates, then gives up
+  // after maxConsecutiveCrashes and stops auto-restarting entirely ──────
+  {
+    process.env.FAKE_CRASH_AFTER_MS = "20";
+    process.env.FAKE_EXIT_CODE = "5";
+    const tenantsRoot = freshTempRoot();
+    const logsRoot = freshTempRoot();
+    const fm = new FleetManager({
+      engineInvocation: fakeInvocation(),
+      tenantsRoot,
+      logsRoot,
+      restartBackoffMs: 40,
+      maxRestartBackoffMs: 5000,
+      sustainedHealthyMs: 100000, // effectively "never" for this fast-crash test — no accidental reset
+      maxConsecutiveCrashes: 3,
+    });
+
+    await fm.spawnTenant("loop-tenant");
+
+    const firstCrash = await waitFor(() => fm.getTenantStatus("loop-tenant")?.status === "crashed", 2000);
+    check("first crash reaches crashed status", firstCrash);
+    check("consecutiveCrashes is 1 after the first crash", fm.getTenantStatus("loop-tenant")?.consecutiveCrashes === 1);
+
+    const secondCrash = await waitFor(
+      () => (fm.getTenantStatus("loop-tenant")?.consecutiveCrashes ?? 0) >= 2 && fm.getTenantStatus("loop-tenant")?.status === "crashed",
+      3000,
+    );
+    check("backoff doubles: second crash observed with consecutiveCrashes=2", secondCrash);
+    check("restartCount reflects one completed restart before the second crash", (fm.getTenantStatus("loop-tenant")?.restartCount ?? 0) >= 1);
+
+    const gaveUp = await waitFor(() => fm.getTenantStatus("loop-tenant")?.status === "failed", 4000);
+    check("after maxConsecutiveCrashes (3), tenant transitions to the terminal 'failed' status", gaveUp);
+    check("consecutiveCrashes reached the configured maxConsecutiveCrashes", fm.getTenantStatus("loop-tenant")?.consecutiveCrashes === 3);
+
+    // Must NOT keep restarting from here — confirm no further activity for
+    // several multiples of what the (already-capped) backoff would have been.
+    const restartCountAtGiveUp = fm.getTenantStatus("loop-tenant")?.restartCount;
+    await sleep(500);
+    check("status remains 'failed' (no further auto-restart attempts)", fm.getTenantStatus("loop-tenant")?.status === "failed");
+    check("restartCount did not change after giving up", fm.getTenantStatus("loop-tenant")?.restartCount === restartCountAtGiveUp);
+
+    // stopTenant on a 'failed' tenant is a safe no-op that leaves status as 'failed'.
+    let stopThrew = false;
+    try {
+      await fm.stopTenant("loop-tenant", true);
+    } catch {
+      stopThrew = true;
+    }
+    check("stopTenant on a 'failed' tenant does not throw", !stopThrew);
+    check("stopTenant on a 'failed' tenant leaves status as 'failed' (honest signal, not relabeled 'stopped')", fm.getTenantStatus("loop-tenant")?.status === "failed");
+
+    // Manual intervention: an explicit spawnTenant() on a 'failed' tenant
+    // is the documented way to give it a fresh attempt (see the runbook) —
+    // it must reset consecutiveCrashes so the new attempt gets the full
+    // backoff/give-up budget again, not an immediate re-give-up.
+    delete process.env.FAKE_CRASH_AFTER_MS;
+    delete process.env.FAKE_EXIT_CODE;
+    const retried = await fm.spawnTenant("loop-tenant");
+    check("spawnTenant on a 'failed' tenant is accepted (manual retry), not rejected", retried.clientId === "loop-tenant");
+    await waitFor(() => fm.getTenantStatus("loop-tenant")?.status === "running");
+    check("the manually-retried tenant reaches running", fm.getTenantStatus("loop-tenant")?.status === "running");
+    check("consecutiveCrashes was reset to 0 by the manual retry", fm.getTenantStatus("loop-tenant")?.consecutiveCrashes === 0);
+
+    await fm.stopTenant("loop-tenant", true);
+  }
+
+  // ── TASK 3: a sustained-healthy run resets consecutiveCrashes instead of
+  // continuing to escalate the backoff from an unrelated later crash ─────
+  {
+    process.env.FAKE_CRASH_AFTER_MS = "20";
+    process.env.FAKE_EXIT_CODE = "5";
+    const tenantsRoot = freshTempRoot();
+    const logsRoot = freshTempRoot();
+    const fm = new FleetManager({
+      engineInvocation: fakeInvocation(),
+      tenantsRoot,
+      logsRoot,
+      restartBackoffMs: 100,
+      sustainedHealthyMs: 150,
+      maxConsecutiveCrashes: 5,
+    });
+
+    await fm.spawnTenant("reset-tenant");
+    const firstCrash = await waitFor(() => fm.getTenantStatus("reset-tenant")?.status === "crashed", 2000);
+    check("reset-tenant: first crash observed", firstCrash);
+    check("reset-tenant: consecutiveCrashes is 1 after the first crash", fm.getTenantStatus("reset-tenant")?.consecutiveCrashes === 1);
+
+    // Before the scheduled restart fires (backoff=100ms gives us a window),
+    // reconfigure the fixture so the NEXT run survives well past
+    // sustainedHealthyMs (150ms) instead of crashing again immediately.
+    process.env.FAKE_CRASH_AFTER_MS = "400";
+    const restarted = await waitFor(() => fm.getTenantStatus("reset-tenant")?.status === "running", 2000);
+    check("reset-tenant: restarts after the first crash's backoff", restarted);
+
+    // Stay running past sustainedHealthyMs before it crashes again (~400ms mark).
+    await sleep(200);
+    check("reset-tenant: still running past sustainedHealthyMs (proves this run counts as healthy)", fm.getTenantStatus("reset-tenant")?.status === "running");
+
+    const secondCrash = await waitFor(() => fm.getTenantStatus("reset-tenant")?.status === "crashed", 2000);
+    check("reset-tenant: second crash observed after the sustained-healthy run", secondCrash);
+    check(
+      "consecutiveCrashes reset to 1 (not 2) because the prior run was sustained-healthy",
+      fm.getTenantStatus("reset-tenant")?.consecutiveCrashes === 1,
+    );
+
+    await fm.stopTenant("reset-tenant", false);
+    delete process.env.FAKE_CRASH_AFTER_MS;
+    delete process.env.FAKE_EXIT_CODE;
   }
 
   console.log(`\n${failures === 0 ? "✅ ALL PASSED" : `❌ ${failures} FAILED`}`);
