@@ -16,6 +16,7 @@
  * Run: npx tsx test/live-firewall.ts
  */
 import { generateKeyPairSync } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 
 const TEST_DB = "./data/live-firewall-test.db";
@@ -106,6 +107,7 @@ function validContext(overrides: Record<string, unknown> = {}) {
     policy: policy(),
     balance: { lamports: 50_000_000n, observedAt: NOW - 5_000 },
     openExposureLamports: 0n,
+    pendingExposureLamports: 0n,
     openPositionCount: 0,
     todayRealizedPnlLamports: realizedLamports(0n, { txSignature: "seed", slot: 1 }),
     lastIntentAtForMint: NOW - 120_000,
@@ -247,9 +249,37 @@ for (const [name, code, patch] of perGatePass2) {
       r.approved === false && r.code === code && r.evidence.uncertain === true);
   }
 
-  check("no gate in the table can return a default pass — every gate declares an explicit outcome",
+  // Structural shape only — this does NOT verify fail-closed behavior.
+  // Fail-closed behavior (does a gate actually reject on an uncertain
+  // input?) is covered by the per-gate T14 rejection tests above, one input
+  // at a time. This check only proves every declared gate has a well-formed
+  // id/code/passes shape.
+  check("every gate in the table has a well-formed declaration (id/code/passes shape only, NOT fail-closed behavior)",
     FIREWALL_GATES.every((g: { id: string; code: string; passes: number[] }) =>
       typeof g.id === "string" && (FIREWALL_REJECTION_CODES as readonly string[]).includes(g.code) && g.passes.length > 0));
+
+  // D3/D1 regression: a STATIC check over the firewall's own input type,
+  // the kind of check that would plausibly have caught D1 before it shipped.
+  // Any field in FirewallContext (or a type it inlines) that is declared
+  // OPTIONAL (`?:`) while its type also admits `| null` is exactly D1's
+  // shape: "uncertain" is representable by silent omission instead of by a
+  // forced explicit `null`, so a caller can skip it and the gate falls back
+  // to a hardcoded default instead of rejecting. No such field should exist
+  // anywhere in the firewall's input surface.
+  {
+    const source = fs.readFileSync("./src/live/transaction-firewall.ts", "utf8");
+    const contextBlockMatch = source.match(/export interface FirewallContext \{[\s\S]*?\n\}/);
+    check("FirewallContext interface block is found in source (test is not vacuous)", contextBlockMatch !== null);
+
+    const contextBlock = contextBlockMatch ? contextBlockMatch[0] : "";
+    // Strip comments so a docblock mentioning "?:" or "| null" cannot hide
+    // (or fake) a violation.
+    const codeOnly = contextBlock.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const optionalNullableFields = [...codeOnly.matchAll(/^\s*(\w+)\?:\s*[^;]*\bnull\b[^;]*;/gm)].map((m) => m[1]);
+
+    check("no field on FirewallContext is optional AND null-typed (the exact D1 shape)",
+      optionalNullableFields.length === 0);
+  }
 }
 
 // ── F8 counts PENDING intents, not only reconciled positions (T18) ──────
@@ -263,6 +293,39 @@ for (const [name, code, patch] of perGatePass2) {
 
   const uncertainPending = evaluate({ pendingExposureLamports: null });
   check("T18: unknown pending exposure rejects", uncertainPending.approved === false && uncertainPending.code === "EXPOSURE_EXCEEDED");
+}
+
+// ── D1 regression: pendingExposureLamports is REQUIRED, not optional ────
+{
+  // Compile-time half: proven by test/negative-types/required-uncertain-fields.ts
+  // (compiled by the check below), which asserts that a FirewallContext
+  // object literal OMITTING pendingExposureLamports entirely is a TYPE
+  // ERROR — the actual fix for D1 IS the type becoming required, so this is
+  // the real regression test, not a formality.
+  const FIXTURE = "test/negative-types/d1-pending-exposure-required.ts";
+  check("the D1 negative fixture exists", fs.existsSync(FIXTURE));
+
+  let compiled = true;
+  let output = "";
+  try {
+    execFileSync("npx", ["tsc", "--noEmit", "--strict", "--target", "ES2022", "--module", "NodeNext",
+      "--moduleResolution", "NodeNext", "--skipLibCheck", FIXTURE], { encoding: "utf8", shell: true });
+  } catch (err) {
+    compiled = false;
+    const e = err as { stdout?: string; stderr?: string };
+    output = `${e.stdout ?? ""}${e.stderr ?? ""}`;
+  }
+  check("D1: omitting pendingExposureLamports from a FirewallContext literal does NOT compile",
+    compiled === false && /error TS\d+/.test(output));
+
+  // Runtime half (defense in depth): even if someone forces an
+  // omitted/undefined value through at runtime via `as any`, the gate must
+  // still treat it as UNCERTAIN → REJECT, never silently default to 0n.
+  const forced = { ...validContext() } as Record<string, unknown>;
+  delete forced.pendingExposureLamports;
+  const r = evaluateFirewall(forced as never);
+  check("D1 runtime defense-in-depth: an omitted-at-runtime pendingExposureLamports rejects as EXPOSURE_EXCEEDED/uncertain, never a silent pass",
+    r.approved === false && r.code === "EXPOSURE_EXCEEDED" && r.evidence.uncertain === true);
 }
 
 // ── No failed gate is ever silently swallowed ───────────────────────────

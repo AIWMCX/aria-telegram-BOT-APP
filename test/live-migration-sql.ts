@@ -28,6 +28,11 @@ function check(name: string, condition: boolean) {
 }
 
 const MIGRATION = "migrations/1758240000000_create-trading-accounts.js";
+// D4/D5 follow-up migration: adds the spec §2.4/§3 account_id binding to
+// wallet_ownership_proofs and live_consents that the original migration
+// omitted. A NEW migration, per this repo's "never edit an applied
+// migration" rule.
+const FOLLOWUP_MIGRATION = "migrations/1758250000000_add-account-id-to-ownership-and-consents.js";
 
 /**
  * The migrations/ directory is CommonJS (`exports.up = ...`) inside a
@@ -45,14 +50,14 @@ function loadMigration(path: string): { up: (pgm: unknown) => void; down: (pgm: 
   return module_.exports as unknown as { up: (pgm: unknown) => void; down: (pgm: unknown) => void };
 }
 
-function generate(direction: "up" | "down"): string {
-  const migration = loadMigration(MIGRATION);
+function generate(migrationPath: string, direction: "up" | "down"): string {
+  const migration = loadMigration(migrationPath);
   const fakeDb = { query: async () => ({ rows: [] }), select: async () => [] };
   const builder = new MigrationBuilder(
     fakeDb as never,
     { typeShorthands: {}, logger: console } as never,
     false,
-    MIGRATION as never,
+    migrationPath as never,
   );
   migration[direction](builder);
   return builder.getSql();
@@ -60,11 +65,15 @@ function generate(direction: "up" | "down"): string {
 
 let upSql = "";
 let downSql = "";
+let followupUpSql = "";
+let followupDownSql = "";
 try {
-  upSql = generate("up");
-  downSql = generate("down");
+  upSql = generate(MIGRATION, "up");
+  downSql = generate(MIGRATION, "down");
+  followupUpSql = generate(FOLLOWUP_MIGRATION, "up");
+  followupDownSql = generate(FOLLOWUP_MIGRATION, "down");
 } catch (err) {
-  console.log(`❌ the migration threw while generating SQL: ${(err as Error).message}`);
+  console.log(`❌ a migration threw while generating SQL: ${(err as Error).message}`);
   process.exit(1);
 }
 
@@ -130,6 +139,20 @@ check("the ownership-proof nonce is UNIQUE — single-use is a database fact",
   check("no generated column name matches /secret|private|seed|mnemonic|keypair/i",
     columnNames.length > 50 && !columnNames.some((c) => /secret|private|seed|mnemonic|keypair/i.test(c)));
 }
+
+// ── D4/D5 follow-up migration: account_id binding (spec §2.4/§3) ────────
+check("followup up() generates SQL without throwing", followupUpSql.length > 100);
+check("followup down() generates SQL without throwing", followupDownSql.length > 20);
+
+check("wallet_ownership_proofs.account_id is added, NOT NULL, FK to trading_accounts",
+  /ALTER TABLE "wallet_ownership_proofs"[\s\S]{0,400}ADD[\s\S]{0,80}"account_id"[\s\S]{0,120}NOT NULL/i.test(followupUpSql)
+  && /"account_id"[\s\S]{0,200}REFERENCES "trading_accounts"/i.test(followupUpSql));
+check("live_consents.account_id is added, NOT NULL, FK to trading_accounts",
+  /ALTER TABLE "live_consents"[\s\S]{0,400}ADD[\s\S]{0,80}"account_id"[\s\S]{0,120}NOT NULL/i.test(followupUpSql)
+  && /"account_id"[\s\S]{0,200}REFERENCES "trading_accounts"/i.test(followupUpSql));
+check("followup down() drops both account_id columns",
+  /ALTER TABLE "live_consents"[\s\S]{0,20}DROP[\s\S]{0,10}"account_id"/i.test(followupDownSql)
+  && /ALTER TABLE "wallet_ownership_proofs"[\s\S]{0,20}DROP[\s\S]{0,10}"account_id"/i.test(followupDownSql));
 
 // ── Honest scope statement ──────────────────────────────────────────────
 console.log("\nℹ️  This suite proves the migration is WELL-FORMED, not that it APPLIES.");

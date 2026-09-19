@@ -222,7 +222,12 @@ export function computeIdempotencyKey(input: IdempotencyKeyInput): string {
     String(input.marketObservationSlot),
     input.candidateId,
   ];
-  return createHash("sha256").update(parts.join(" "), "utf8").digest("hex");
+  // D6 fix: the string escape "\u0000", not a literal embedded NUL byte —
+  // a literal byte here makes this source file register as binary to
+  // git/grep and risks silent corruption on an editor round-trip. The
+  // produced separator byte value is identical either way, so existing
+  // idempotency-key values are unchanged.
+  return createHash("sha256").update(parts.join("\u0000"), "utf8").digest("hex");
 }
 
 // ── The engine's proposal (spec §5.1: the engine proposes, never authorizes) ──

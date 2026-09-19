@@ -146,7 +146,8 @@ export type OwnershipVerificationFailure =
   | "SIGNATURE_MALFORMED"
   | "SIGNATURE_INVALID"
   | "NONCE_EXPIRED"
-  | "NONCE_ALREADY_USED";
+  | "NONCE_ALREADY_USED"
+  | "CHALLENGE_BINDING_MISMATCH";
 
 export type OwnershipVerificationResult =
   | { verified: true }
@@ -156,25 +157,39 @@ export type OwnershipVerificationResult =
  * Re-verifies a pasted signature. Every failure path returns a specific
  * reason; none throws, and none falls through to a permissive default.
  *
- * `storedProof` is the persisted row for this nonce when the caller has
- * one. Supplying it enables the single-use and TTL checks, which run
- * BEFORE the cryptography so an expired or already-spent nonce is refused
- * even with a perfectly valid signature.
+ * `storedProof` is the persisted row for this nonce, REQUIRED (not
+ * optional) so a caller cannot accidentally bypass the single-use and TTL
+ * checks by omitting it — the caller must always look the row up and pass
+ * either the real row or explicit `null` if it must intentionally be
+ * skipped is not representable; there is no such intentional skip. Those
+ * checks run BEFORE the cryptography so an expired or already-spent nonce
+ * is refused even with a perfectly valid signature.
+ *
+ * `expectedAccountId` and `expectedNonce` are checked against the
+ * plaintext `challengeMessage` BEFORE verifying the signature, so a
+ * challenge message that does not actually carry the binding it claims to
+ * (wrong account, wrong nonce) is rejected even if it happens to be
+ * correctly signed — the binding must be enforced, not merely present as
+ * free text nobody validates.
  */
 export function verifyOwnershipSignature(input: {
   solanaPubkey: string;
   challengeMessage: string;
+  expectedAccountId: string;
+  expectedNonce: string;
   signature: string;
   signatureEncoding: "base64" | "base58";
-  storedProof?: { verifiedAt: number | null; expiresAt: number };
+  storedProof: { verifiedAt: number | null; expiresAt: number };
   now?: number;
 }): OwnershipVerificationResult {
-  if (input.storedProof) {
-    if (input.storedProof.verifiedAt !== null) return { verified: false, reason: "NONCE_ALREADY_USED" };
-    const now = input.now ?? Date.now();
-    if (now > input.storedProof.expiresAt) return { verified: false, reason: "NONCE_EXPIRED" };
-  }
+  if (input.storedProof.verifiedAt !== null) return { verified: false, reason: "NONCE_ALREADY_USED" };
+  const now = input.now ?? Date.now();
+  if (now > input.storedProof.expiresAt) return { verified: false, reason: "NONCE_EXPIRED" };
 
+  // Format checks (malformed pubkey/signature) run BEFORE the binding
+  // check: a malformed pubkey is its own, more specific failure, and should
+  // not be masked by a binding-mismatch verdict that merely follows from
+  // the malformed value never having appeared in the challenge text.
   let rawPubkey: Buffer;
   try {
     rawPubkey = base58Decode(input.solanaPubkey);
@@ -192,6 +207,14 @@ export function verifyOwnershipSignature(input: {
     return { verified: false, reason: "SIGNATURE_MALFORMED" };
   }
   if (rawSignature.length !== 64) return { verified: false, reason: "SIGNATURE_MALFORMED" };
+
+  if (
+    !input.challengeMessage.includes(`account:${input.expectedAccountId}`)
+    || !input.challengeMessage.includes(`wallet:${input.solanaPubkey}`)
+    || !input.challengeMessage.includes(`nonce:${input.expectedNonce}`)
+  ) {
+    return { verified: false, reason: "CHALLENGE_BINDING_MISMATCH" };
+  }
 
   try {
     const publicKey = createPublicKey({

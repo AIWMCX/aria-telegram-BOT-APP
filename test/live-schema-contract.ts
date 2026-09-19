@@ -139,10 +139,28 @@ const { rows: [account] } = await pool.query<{ id: string }>(
     (await pool.query<{ live_enabled: boolean }>(`SELECT live_enabled FROM trading_accounts WHERE id = $1`, [account!.id]))
       .rows[0]!.live_enabled === false);
 
-  check("founder_allowlisted defaults to FALSE", (await pool.query<{ f: boolean }>(
+  // D2 fix: this must genuinely be able to fail if the default were ever
+  // wrong. The previous version inserted a SECOND row for the SAME user,
+  // which the very next check below proves is refused by
+  // trading_accounts_one_live_per_user — so both branches of its
+  // .then()/.catch() were hardcoded to {f:false} and the INSERT never even
+  // reached the column-default logic under test. Fixed by using a
+  // completely distinct user/wallet pair (unconstrained by that unique
+  // index) so the INSERT actually succeeds and the real returned value is
+  // asserted, not a hardcoded stand-in.
+  const { rows: [otherUser] } = await pool.query<{ id: number }>(
+    `INSERT INTO users (telegram_user_id, first_name) VALUES ($1, 'NotFounder') RETURNING id`, [FOUNDER_TG + 1],
+  );
+  const { rows: [otherWallet] } = await pool.query<{ id: number }>(
+    `INSERT INTO wallet_accounts (user_id, solana_pubkey, authority_model, authority_ref)
+     VALUES ($1, 'So11111111111111111111111111111111111111113', 'self_custody', 'self') RETURNING id`, [otherUser!.id],
+  );
+  const { rows: [freshAccount] } = await pool.query<{ f: boolean }>(
     `INSERT INTO trading_accounts (user_id, wallet_account_id) VALUES ($1,$2) RETURNING founder_allowlisted AS f`,
-    [user!.id, wallet!.id],
-  ).then(() => ({ rows: [{ f: false }] })).catch(() => ({ rows: [{ f: false }] }))).rows[0]!.f === false);
+    [otherUser!.id, otherWallet!.id],
+  );
+  check("founder_allowlisted defaults to FALSE (genuinely inserted and read back, not a hardcoded stand-in)",
+    freshAccount!.f === false);
 
   check("only ONE non-STOPPED trading account per user is possible",
     await refused(`INSERT INTO trading_accounts (user_id, wallet_account_id) VALUES ($1, $2)`, [user!.id, wallet!.id]));
@@ -158,6 +176,46 @@ const { rows: [account] } = await pool.query<{ id: string }>(
 
   await pool.query(`UPDATE trading_accounts SET state='ARMED', armed_until = now() + interval '1 hour', live_enabled = true WHERE id=$1`, [account!.id]);
   check("a properly-windowed ARM is accepted", true);
+}
+
+// ── D4/D5: wallet_ownership_proofs and live_consents are bound to the
+// ── trading_accounts row per spec §2.4/§3, not merely to the user ────────
+{
+  check("wallet_ownership_proofs.account_id is REQUIRED — omitting it is refused by the database",
+    await refused(
+      `INSERT INTO wallet_ownership_proofs (user_id, wallet_account_id, solana_pubkey, nonce, challenge_message, expires_at)
+       VALUES ($1, $2, 'So11111111111111111111111111111111111111112', 'nonce-no-account', 'msg', now() + interval '5 minutes')`,
+      [user!.id, wallet!.id],
+    ));
+
+  const { rows: [proof] } = await pool.query<{ id: string }>(
+    `INSERT INTO wallet_ownership_proofs (user_id, account_id, wallet_account_id, solana_pubkey, nonce, challenge_message, expires_at)
+     VALUES ($1, $2, $3, 'So11111111111111111111111111111111111111112', 'nonce-with-account', 'msg', now() + interval '5 minutes')
+     RETURNING id`,
+    [user!.id, account!.id, wallet!.id],
+  );
+  check("a wallet_ownership_proofs row correctly bound to account_id is accepted", proof !== undefined);
+
+  check("wallet_ownership_proofs.account_id pointing at a nonexistent trading account is REFUSED (real FK)",
+    await refused(
+      `INSERT INTO wallet_ownership_proofs (user_id, account_id, wallet_account_id, solana_pubkey, nonce, challenge_message, expires_at)
+       VALUES ($1, '99999999-9999-9999-9999-999999999999', $2, 'So11111111111111111111111111111111111111112', 'nonce-bad-account', 'msg', now() + interval '5 minutes')`,
+      [user!.id, wallet!.id],
+    ));
+
+  check("live_consents.account_id is REQUIRED — omitting it is refused by the database",
+    await refused(
+      `INSERT INTO live_consents (user_id, consent_version, text_sha256, initdata_telegram_user_id)
+       VALUES ($1, 'live-0.1-2026-09-19', repeat('a', 64), $2)`,
+      [user!.id, FOUNDER_TG],
+    ));
+
+  const { rows: [consent] } = await pool.query<{ id: string }>(
+    `INSERT INTO live_consents (user_id, account_id, consent_version, text_sha256, initdata_telegram_user_id)
+     VALUES ($1, $2, 'live-0.1-2026-09-19', repeat('a', 64), $3) RETURNING id`,
+    [user!.id, account!.id, FOUNDER_TG],
+  );
+  check("a live_consents row correctly bound to account_id is accepted", consent !== undefined);
 }
 
 // ── live_risk_policies bounds are a DATABASE fact, not only an app check ─

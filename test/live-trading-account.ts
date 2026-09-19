@@ -12,6 +12,8 @@
  * Run: npx tsx test/live-trading-account.ts
  */
 import { generateKeyPairSync, sign as edSign, randomBytes } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 
 const {
   deriveAccountState,
@@ -306,8 +308,9 @@ function armableEvidence(overrides: Record<string, unknown> = {}) {
     try { base58Decode(pubkeyB58.slice(0, -1) + "0"); return false; } catch { return true; }
   })());
 
+  const ACCOUNT_ID = "11111111-1111-1111-1111-111111111111";
   const challenge = issueOwnershipChallenge({
-    accountId: "11111111-1111-1111-1111-111111111111",
+    accountId: ACCOUNT_ID,
     solanaPubkey: pubkeyB58,
     nonce: randomBytes(24).toString("base64url"),
     issuedAt: NOW,
@@ -323,26 +326,34 @@ function armableEvidence(overrides: Record<string, unknown> = {}) {
 
   const sigBytes = edSign(null, Buffer.from(challenge.message, "utf8"), privateKey);
 
+  const freshProof = () => ({ verifiedAt: null as number | null, expiresAt: challenge.expiresAt });
+
   check("a genuine signature over the exact challenge verifies (base64)", verifyOwnershipSignature({
     solanaPubkey: pubkeyB58, challengeMessage: challenge.message,
+    expectedAccountId: ACCOUNT_ID, expectedNonce: challenge.nonce,
     signature: sigBytes.toString("base64"), signatureEncoding: "base64",
+    storedProof: freshProof(), now: NOW,
   }).verified === true);
 
   check("the same signature verifies when pasted as base58 (Phantom's own output encoding)", verifyOwnershipSignature({
     solanaPubkey: pubkeyB58, challengeMessage: challenge.message,
+    expectedAccountId: ACCOUNT_ID, expectedNonce: challenge.nonce,
     signature: base58Encode(sigBytes), signatureEncoding: "base58",
+    storedProof: freshProof(), now: NOW,
   }).verified === true);
 
   // T3 from the spec's RED matrix.
   check("T3: a signature over a DIFFERENT nonce fails verification", (() => {
     const other = issueOwnershipChallenge({
-      accountId: "11111111-1111-1111-1111-111111111111", solanaPubkey: pubkeyB58,
+      accountId: ACCOUNT_ID, solanaPubkey: pubkeyB58,
       nonce: randomBytes(24).toString("base64url"), issuedAt: NOW,
     });
     const otherSig = edSign(null, Buffer.from(other.message, "utf8"), privateKey);
     const r = verifyOwnershipSignature({
       solanaPubkey: pubkeyB58, challengeMessage: challenge.message,
+      expectedAccountId: ACCOUNT_ID, expectedNonce: challenge.nonce,
       signature: otherSig.toString("base64"), signatureEncoding: "base64",
+      storedProof: freshProof(), now: NOW,
     });
     return r.verified === false && r.reason === "SIGNATURE_INVALID";
   })());
@@ -352,32 +363,41 @@ function armableEvidence(overrides: Record<string, unknown> = {}) {
     const otherSig = edSign(null, Buffer.from(challenge.message, "utf8"), other);
     return verifyOwnershipSignature({
       solanaPubkey: pubkeyB58, challengeMessage: challenge.message,
+      expectedAccountId: ACCOUNT_ID, expectedNonce: challenge.nonce,
       signature: otherSig.toString("base64"), signatureEncoding: "base64",
+      storedProof: freshProof(), now: NOW,
     }).verified === false;
   })());
 
   check("one flipped byte in the challenge fails verification", verifyOwnershipSignature({
     solanaPubkey: pubkeyB58, challengeMessage: challenge.message.replace(/.$/, "X"),
+    expectedAccountId: ACCOUNT_ID, expectedNonce: challenge.nonce,
     signature: sigBytes.toString("base64"), signatureEncoding: "base64",
+    storedProof: freshProof(), now: NOW,
   }).verified === false);
 
   check("a malformed pubkey is rejected without throwing", (() => {
     const r = verifyOwnershipSignature({
       solanaPubkey: "not-a-real-pubkey!!", challengeMessage: challenge.message,
+      expectedAccountId: ACCOUNT_ID, expectedNonce: challenge.nonce,
       signature: sigBytes.toString("base64"), signatureEncoding: "base64",
+      storedProof: freshProof(), now: NOW,
     });
     return r.verified === false && r.reason === "PUBKEY_MALFORMED";
   })());
 
   check("a garbage signature is rejected without throwing", verifyOwnershipSignature({
     solanaPubkey: pubkeyB58, challengeMessage: challenge.message,
+    expectedAccountId: ACCOUNT_ID, expectedNonce: challenge.nonce,
     signature: "@@@not-base64@@@", signatureEncoding: "base64",
+    storedProof: freshProof(), now: NOW,
   }).verified === false);
 
   // T4 from the spec's RED matrix — single-use nonce, checked at the pure layer.
   check("T4: an already-verified challenge is refused on a second presentation", (() => {
     const r = verifyOwnershipSignature({
       solanaPubkey: pubkeyB58, challengeMessage: challenge.message,
+      expectedAccountId: ACCOUNT_ID, expectedNonce: challenge.nonce,
       signature: sigBytes.toString("base64"), signatureEncoding: "base64",
       storedProof: { verifiedAt: NOW - 10, expiresAt: challenge.expiresAt }, now: NOW,
     });
@@ -387,11 +407,58 @@ function armableEvidence(overrides: Record<string, unknown> = {}) {
   check("an expired challenge is refused even with a perfectly good signature", (() => {
     const r = verifyOwnershipSignature({
       solanaPubkey: pubkeyB58, challengeMessage: challenge.message,
+      expectedAccountId: ACCOUNT_ID, expectedNonce: challenge.nonce,
       signature: sigBytes.toString("base64"), signatureEncoding: "base64",
       storedProof: { verifiedAt: null, expiresAt: challenge.expiresAt }, now: challenge.expiresAt + 1,
     });
     return r.verified === false && r.reason === "NONCE_EXPIRED";
   })());
+
+  // D5 regression: replay is proven separately from expiry above. Now prove
+  // the challenge BINDING itself is enforced, not just carried as free text.
+  check("T-BIND-1: a challenge message missing the expected account binding is rejected", (() => {
+    const r = verifyOwnershipSignature({
+      solanaPubkey: pubkeyB58, challengeMessage: challenge.message,
+      expectedAccountId: "22222222-2222-2222-2222-222222222222", expectedNonce: challenge.nonce,
+      signature: sigBytes.toString("base64"), signatureEncoding: "base64",
+      storedProof: freshProof(), now: NOW,
+    });
+    return r.verified === false && r.reason === "CHALLENGE_BINDING_MISMATCH";
+  })());
+
+  check("T-BIND-2: a challenge message that doesn't carry the expected nonce is rejected", (() => {
+    const r = verifyOwnershipSignature({
+      solanaPubkey: pubkeyB58, challengeMessage: challenge.message,
+      expectedAccountId: ACCOUNT_ID, expectedNonce: randomBytes(24).toString("base64url"),
+      signature: sigBytes.toString("base64"), signatureEncoding: "base64",
+      storedProof: freshProof(), now: NOW,
+    });
+    return r.verified === false && r.reason === "CHALLENGE_BINDING_MISMATCH";
+  })());
+}
+
+// ── D5 regression: storedProof is REQUIRED, not optional ────────────────
+{
+  // Compile-time half: test/negative-types/required-uncertain-fields.ts
+  // (CASE 2) calls verifyOwnershipSignature omitting storedProof entirely.
+  // Now that it's required (not `?:`), that must fail to compile — a
+  // caller can no longer accidentally skip replay/expiry protection by
+  // simply not passing the parameter.
+  const FIXTURE = "test/negative-types/d5-stored-proof-required.ts";
+  check("the D5 negative fixture exists", fs.existsSync(FIXTURE));
+
+  let compiled = true;
+  let output = "";
+  try {
+    execFileSync("npx", ["tsc", "--noEmit", "--strict", "--target", "ES2022", "--module", "NodeNext",
+      "--moduleResolution", "NodeNext", "--skipLibCheck", FIXTURE], { encoding: "utf8", shell: true });
+  } catch (err) {
+    compiled = false;
+    const e = err as { stdout?: string; stderr?: string };
+    output = `${e.stdout ?? ""}${e.stderr ?? ""}`;
+  }
+  check("D5: omitting storedProof from verifyOwnershipSignature does NOT compile",
+    compiled === false && /error TS\d+/.test(output));
 }
 
 // ── Key-custody boundary: the submission schema cannot carry a secret ────

@@ -118,8 +118,14 @@ export interface FirewallContext {
   balance: { lamports: bigint; observedAt: number } | null;
   /** Reconciled, landed exposure only. */
   openExposureLamports: bigint | null;
-  /** Intents at or past APPROVED in a non-terminal state — see F8's note. */
-  pendingExposureLamports?: bigint | null;
+  /**
+   * Intents at or past APPROVED in a non-terminal state — see F8's note.
+   * REQUIRED, like every other uncertain-capable firewall input: a caller
+   * must explicitly pass `null` for "unknown" rather than silently omitting
+   * the field, which would otherwise default the gate's view of pending
+   * exposure to zero and let it fail open.
+   */
+  pendingExposureLamports: bigint | null;
   openPositionCount: number | null;
   /** Realized, never a mark or a quote — the type enforces it. */
   todayRealizedPnlLamports: RealizedLamports | null;
@@ -253,7 +259,7 @@ export const FIREWALL_GATES: FirewallGate[] = [
       if (!c.policy) return "uncertain";
       const open = presence(c.openExposureLamports);
       if (open === null) return "uncertain";
-      const pending = "pendingExposureLamports" in c ? presence(c.pendingExposureLamports) : 0n;
+      const pending = presence(c.pendingExposureLamports);
       if (pending === null) return "uncertain";
       return open + pending + c.intent.amountLamports <= c.policy.maxTotalExposureLamports ? "pass" : "reject";
     },
