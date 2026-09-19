@@ -198,3 +198,34 @@ export async function rotateClientDeviceIdentity(id: string, newPublicKey: strin
   const pool = requirePool();
   await pool.query(`UPDATE engine_clients SET device_public_key = $2 WHERE id = $1`, [id, newPublicKey]);
 }
+
+/**
+ * Hosted PAPER Engine, Task 4 SECOND REVIEW FIX (2026-09-18) — atomic
+ * combination of `rotateClientDeviceIdentity` + `setHostingMode(..., "hosted")`
+ * into ONE UPDATE statement, used by `bot.ts`'s `convertClientToHosted`.
+ *
+ * Why this needs to be one statement rather than the two sequential calls
+ * `convertClientToHosted` used to make: the caller's crash-safety contract
+ * depends on the DB commit being a single indivisible "point of no return"
+ * that happens strictly AFTER the identity file is genuinely written to
+ * disk. Two separate UPDATE calls leave a real gap between them — a crash
+ * between `rotateClientDeviceIdentity` committing and `setHostingMode`
+ * committing would leave the row with a ROTATED key but `hosting_mode`
+ * still `"local"`, which is a real (if narrower) inconsistency: the row's
+ * local pairing is already broken (key changed) but the row doesn't yet
+ * say "hosted" either. A single UPDATE touching both columns is atomic by
+ * Postgres's own single-statement guarantee — it commits both changes
+ * together or neither, so there is no intermediate state to reason about
+ * at all, and the retry-from-`/paper_start` self-healing story (see
+ * `convertClientToHosted`'s docblock in bot.ts) only has ONE boundary to
+ * cross: before this call (row still fully `"local"` with its original
+ * key — retry re-runs the whole conversion from scratch) or after it (row
+ * fully `"hosted"` with the new key, matching what's already on disk).
+ */
+export async function rotateClientDeviceIdentityAndSetHosted(id: string, newPublicKey: string): Promise<void> {
+  const pool = requirePool();
+  await pool.query(
+    `UPDATE engine_clients SET device_public_key = $2, hosting_mode = 'hosted' WHERE id = $1`,
+    [id, newPublicKey],
+  );
+}

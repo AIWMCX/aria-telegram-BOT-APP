@@ -33,18 +33,33 @@ export interface HostedCommandsDeps {
    * runtime directory would make the real `aria-engine` CLI silently
    * generate an unrelated keypair there, permanently breaking that
    * tenant's `/api/engine/sync` signature verification with no visible
-   * error. The real implementation (bot.ts) must, for the SAME client:
+   * error.
+   *
+   * Task 4 SECOND REVIEW FIX (2026-09-18): the fix above still had a real
+   * (if narrower) crash window — it committed the DB changes BEFORE writing
+   * the identity to disk, so a crash in between left `hosting_mode` durably
+   * "hosted" with no identity file to back it, permanently defeating the
+   * `else if (client.hosting_mode !== "hosted")` retry guard in
+   * `startHostedEngine`. The real implementation (bot.ts) must now, for the
+   * SAME client, in THIS order:
    *   1. generate a fresh Ed25519 keypair via `generateHostedDeviceIdentity()`
    *      (the same helper `registerHostedClient` uses for a brand-new row —
    *      reused, not duplicated);
-   *   2. write it to that tenant's runtime directory (same helper/path
-   *      `registerHostedClient` uses);
-   *   3. update THIS row's `device_public_key` to match (via
-   *      `rotateClientDeviceIdentity`) and flip `hosting_mode` to `"hosted"`.
+   *   2. write it to that tenant's runtime directory FIRST (same helper/path
+   *      `registerHostedClient` uses) — if this throws (disk full,
+   *      permissions), the DB must never be touched;
+   *   3. only THEN commit the DB side, as ONE atomic UPDATE
+   *      (`rotateClientDeviceIdentityAndSetHosted`, engine-clients.ts) that
+   *      rotates `device_public_key` and flips `hosting_mode` to `"hosted"`
+   *      together — never as two separate statements, which would
+   *      reintroduce an intermediate "rotated but still local" state.
    * This is a deliberate one-way identity rotation for that client_id, not a
    * dual-identity arrangement — see the ledger for why rotating the existing
    * row in place (rather than creating a second row) is the correct model
-   * for this product.
+   * for this product. It is also a DISCLOSED transition: `handlePaperStart`
+   * below adds a supersession notice to the success DM specifically for
+   * this path (never for a brand-new hosted-only client, which has no
+   * prior local identity to supersede).
    */
   convertClientToHosted: (clientId: string) => Promise<void>;
   isUserApproved: (userId: number) => Promise<boolean>;
@@ -69,7 +84,7 @@ export interface HandlerCtx {
 }
 
 export type StartResult =
-  | { ok: true; created: boolean; handle: TenantProcessHandle }
+  | { ok: true; created: boolean; converted: boolean; handle: TenantProcessHandle }
   | { ok: false; reason: "capacity" | "error"; message: string };
 
 /**
@@ -85,14 +100,16 @@ export async function startHostedEngine(deps: HostedCommandsDeps, userId: number
   try {
     let client = await deps.getLatestActiveClientForUser(userId);
     let created = false;
+    let converted = false;
     if (!client) {
       client = await deps.registerHostedClient(userId);
       created = true;
     } else if (client.hosting_mode !== "hosted") {
       await deps.convertClientToHosted(client.id);
+      converted = true;
     }
     const handle = await deps.fleetManager.spawnTenant(client.id);
-    return { ok: true, created, handle };
+    return { ok: true, created, converted, handle };
   } catch (err) {
     if (err instanceof FleetCapacityError) {
       return {
@@ -207,9 +224,23 @@ export async function handlePaperStart(deps: HostedCommandsDeps, ctx: HandlerCtx
     const verb = result.created
       ? "Your hosted PAPER engine was just created and is starting"
       : "Your hosted PAPER engine is starting";
+    // Problem 2 (Task 4 SECOND REVIEW FIX, 2026-09-18): a `converted` result
+    // means this client row was PREVIOUSLY paired via the local `aria pair
+    // <code>` CLI flow and is now being one-way rotated to a hosted-only
+    // identity (see `convertClientToHosted`'s docblock above). That local
+    // pairing's device identity is permanently superseded the moment this
+    // DM is sent — the user has no other way to find out, since nothing
+    // about the local CLI itself changes or errors until its NEXT sync
+    // attempt fails signature verification. Only fires for this specific
+    // transition — a brand-new hosted-only client (`created === true`) has
+    // no prior local identity to supersede, so no disclosure is needed or
+    // shown for it.
+    const supersessionNotice = result.converted
+      ? " Note: this replaces your existing local device pairing for this account — your local ARIA CLI will stop syncing after this. Run /pair again if you want to use the local CLI."
+      : "";
     await deps.notify(
       ctx.telegramUserId,
-      `✅ ${verb} — this runs on ARIA's infrastructure, no local process needed. Use /paper_status to check progress.`,
+      `✅ ${verb} — this runs on ARIA's infrastructure, no local process needed. Use /paper_status to check progress.${supersessionNotice}`,
     );
   } else {
     await deps.notify(ctx.telegramUserId, `⚠️ ${result.message}`);

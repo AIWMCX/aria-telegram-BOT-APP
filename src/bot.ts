@@ -12,7 +12,7 @@ import { createInvite, listInvites, redeemInvite, isUserApproved, getAttribution
 import { getNotifyPromotions, setNotifyPromotions } from "./leads.js";
 import { trackEvent, getFunnelCounts } from "./funnel.js";
 import { listRecentFeedback } from "./feedback.js";
-import { registerClient, getLatestActiveClientForUser, setHostingMode, rotateClientDeviceIdentity, type EngineClient } from "./engine-clients.js";
+import { registerClient, getLatestActiveClientForUser, setHostingMode, rotateClientDeviceIdentityAndSetHosted, type EngineClient } from "./engine-clients.js";
 import { fleetManager, tenantRuntimeDir } from "./fleet/instance.js";
 import { generateHostedDeviceIdentity, writeHostedDeviceIdentityToDisk } from "./fleet/hosted-device-identity.js";
 import { handlePaperStart, handlePaperStop, handlePaperStatus, formatHostedStatusMessage, type HostedCommandsDeps } from "./fleet/hosted-commands.js";
@@ -271,8 +271,20 @@ async function registerHostedClient(userId: number): Promise<EngineClient> {
     deviceName: "Hosted PAPER (ARIA-managed)",
     platform: "hosted",
   });
-  await setHostingMode(client.id, "hosted");
+  // Disk write BEFORE the hosting_mode commit — see the Task 4 SECOND REVIEW
+  // FIX (2026-09-18) docblock on convertClientToHosted below for the full
+  // crash-safety reasoning (the `registerClient` INSERT above is the
+  // exception among the two flows here: `hosting_mode` defaults to 'local'
+  // at INSERT time per the migration, so this INSERT alone can never put a
+  // half-provisioned row into `hosting_mode: 'hosted'` — only the
+  // `setHostingMode` call directly below can. If the process dies between
+  // the INSERT and here, the row exists with `hosting_mode: 'local'`, which
+  // is exactly the state `startHostedEngine`'s `!client` branch does NOT
+  // match — but its `else if (client.hosting_mode !== "hosted")` branch
+  // DOES, so a retry runs `convertClientToHosted` on this same row, not a
+  // second `registerHostedClient` — self-healing, not a duplicate row).
   writeHostedDeviceIdentityToDisk(tenantRuntimeDir(client.id), identity);
+  await setHostingMode(client.id, "hosted");
   return { ...client, hosting_mode: "hosted" };
 }
 
@@ -324,12 +336,59 @@ async function registerHostedClient(userId: number): Promise<EngineClient> {
  * asserts `spawnTenant` is called with the SAME client id across a hosting-
  * mode transition, not a newly minted one. A second row would silently
  * violate both.
+ *
+ * Task 4 SECOND REVIEW FIX (2026-09-18) — reordered to disk-write-THEN-
+ * DB-commit (was DB-write-then-disk-write). The original ordering committed
+ * `rotateClientDeviceIdentity` (new key) and `setHostingMode` (flip to
+ * "hosted") to the DB BEFORE `writeHostedDeviceIdentityToDisk` ran. If the
+ * process crashed in that window (after the DB commit, before the disk
+ * write landed), the row was left durably in `hosting_mode: "hosted"` with
+ * a `device_public_key` that had NO corresponding identity file anywhere on
+ * disk. The next `/paper_start` call's `else if (client.hosting_mode !==
+ * "hosted")` guard in `startHostedEngine` would then be FALSE for that row
+ * (it already reads "hosted"), so `convertClientToHosted` would never run
+ * again — `spawnTenant` would be called directly against an empty runtime
+ * dir, reintroducing the exact original P0 (silent, permanent sync
+ * failure) under a narrow crash window instead of guaranteeing it.
+ *
+ * The disk write is now genuinely first, and the DB update — the durable
+ * "point of no return" — happens LAST, only after `writeHostedDeviceIdentityToDisk`
+ * has returned successfully (a synchronous call; if it throws — disk full,
+ * permissions — this function throws before the DB call runs, so the DB is
+ * provably never touched in that case). The two DB writes the old code made
+ * separately (`rotateClientDeviceIdentity` then `setHostingMode`) are now
+ * ONE atomic `rotateClientDeviceIdentityAndSetHosted` UPDATE (engine-clients.ts)
+ * so there is no intermediate "key rotated but still local" state either —
+ * this makes the whole flow self-healing under a crash on either side of
+ * that single remaining boundary:
+ *   - Crash after the disk write but before the DB UPDATE commits: the row
+ *     is untouched — still `hosting_mode: "local"` with its ORIGINAL
+ *     `device_public_key`. The next `/paper_start` call takes the exact
+ *     same `else if` branch again and calls `convertClientToHosted` again
+ *     from scratch: `generateHostedDeviceIdentity()` produces a fresh
+ *     keypair, `writeHostedDeviceIdentityToDisk` OVERWRITES the incomplete
+ *     file from the crashed attempt (safe — that file was never referenced
+ *     by any committed DB row and never used for a real sync), and the one
+ *     atomic UPDATE then commits the new key together with the mode flip.
+ *     No leftover inconsistent state survives a retry.
+ *   - Crash during/after the DB UPDATE: by then the disk file is already
+ *     genuinely in place and the single UPDATE either fully committed or
+ *     didn't — there is no partial-commit state to reason about.
+ * See hosted-commands.test.ts's "crash-safety" block for a test that
+ * genuinely exercises the first scenario (forces the DB update to throw
+ * AFTER the disk write has really happened, then asserts a retry
+ * self-heals).
  */
 async function convertClientToHosted(clientId: string): Promise<void> {
   const identity = generateHostedDeviceIdentity();
-  await rotateClientDeviceIdentity(clientId, identity.publicKeyX);
-  await setHostingMode(clientId, "hosted");
+  // Disk write first: the durable DB commit below only ever runs once the
+  // identity genuinely exists on disk where spawnTenant() will look for it.
+  // The DB side is ONE atomic UPDATE (rotateClientDeviceIdentityAndSetHosted)
+  // rather than two sequential calls — see that function's docblock
+  // (engine-clients.ts) for why a single statement is required for the
+  // self-healing property to hold with no intermediate inconsistent state.
   writeHostedDeviceIdentityToDisk(tenantRuntimeDir(clientId), identity);
+  await rotateClientDeviceIdentityAndSetHosted(clientId, identity.publicKeyX);
 }
 
 /**

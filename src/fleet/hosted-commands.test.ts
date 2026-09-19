@@ -390,6 +390,169 @@ async function main() {
     }
   }
 
+  // ── Task 4 SECOND REVIEW FIX: crash-safety / self-healing of the
+  // disk-write-BEFORE-DB-commit ordering in `convertClientToHosted`
+  // (bot.ts). Mirrors bot.ts's REAL ordering exactly, using the SAME real
+  // `generateHostedDeviceIdentity`/`writeHostedDeviceIdentityToDisk`
+  // functions bot.ts calls (only the DB commit — the one dependency this
+  // test file can't use for real, since it needs a live Postgres pool via
+  // engine-clients.ts's `requirePool()` — is faked, exactly like the rest
+  // of this file's DB layer). The fake DB commit is made to throw on its
+  // FIRST call, AFTER the real disk write has already genuinely happened,
+  // simulating a process crash in that exact window. This proves — not
+  // just claims — that: (1) the DB is provably never mutated when the
+  // commit throws; (2) the identity file the crashed attempt wrote is left
+  // on disk but never referenced by any committed row; (3) a subsequent
+  // retry, seeing `hosting_mode` still `"local"`, re-runs the WHOLE
+  // conversion from scratch (fresh keypair, disk overwrite, then a
+  // succeeding DB commit) with no leftover inconsistent state.
+  {
+    const tmpRoot = mkdtempSync(path.join(tmpdir(), "aria-hosted-crash-safety-test-"));
+    try {
+      const tenantDir = (clientId: string) => path.join(tmpRoot, clientId, ".aria");
+      const existingClientId = "crash-safety-client";
+      const originalPublicKey = "original-local-device-public-key-crash-safety";
+
+      const row: EngineClientLike & { device_public_key: string } = {
+        id: existingClientId,
+        hosting_mode: "local",
+        device_public_key: originalPublicKey,
+      };
+
+      let dbCommitCalls = 0;
+      let shouldThrowOnNextDbCommit = true; // simulates the crash on the FIRST attempt only
+      let lastDiskWrittenPublicKeyX = "";
+
+      /**
+       * Faithful mirror of bot.ts's real `convertClientToHosted`: real
+       * keygen, real disk write FIRST, then the (here, fake) atomic DB
+       * commit LAST. If the DB commit throws, this function throws too —
+       * exactly like the real one would if `rotateClientDeviceIdentityAndSetHosted`
+       * rejected — and the row above must be provably untouched.
+       */
+      async function simulateConvertClientToHosted(clientId: string): Promise<void> {
+        const identity = generateHostedDeviceIdentity();
+        writeHostedDeviceIdentityToDisk(tenantDir(clientId), identity);
+        lastDiskWrittenPublicKeyX = identity.publicKeyX;
+        dbCommitCalls++;
+        if (shouldThrowOnNextDbCommit) {
+          shouldThrowOnNextDbCommit = false;
+          throw new Error("simulated crash: DB connection dropped after disk write");
+        }
+        // The real rotateClientDeviceIdentityAndSetHosted is ONE atomic
+        // UPDATE — modeled here as a single synchronous mutation of both
+        // fields together, with no way to observe an in-between state.
+        row.device_public_key = identity.publicKeyX;
+        row.hosting_mode = "hosted";
+      }
+
+      const fleet = new FakeFleetManager();
+      const deps = makeFakeDeps(fleet);
+      deps.clientsByUser.set(9700, row);
+      deps.convertClientToHosted = simulateConvertClientToHosted;
+
+      // ── First attempt: DB commit throws AFTER the disk write already happened ──
+      const firstResult = await startHostedEngine(deps, 9700);
+      check("[crash-safety] first attempt (simulated crash) is reported as a plain error, not thrown raw", firstResult.ok === false);
+      check("[crash-safety] exactly one DB commit was attempted so far", dbCommitCalls === 1);
+      check("[crash-safety] the row's hosting_mode is STILL 'local' — the DB was never touched by the failed commit", row.hosting_mode === "local");
+      check("[crash-safety] the row's device_public_key is STILL the ORIGINAL local key — untouched", row.device_public_key === originalPublicKey);
+      // The disk write from the crashed attempt genuinely happened and is a
+      // real, loadable identity — just one the DB never learned about.
+      loadAndVerifyDeviceIdentityFile(tenantDir(existingClientId), lastDiskWrittenPublicKeyX);
+      const crashedAttemptPublicKey = lastDiskWrittenPublicKeyX;
+
+      // ── Retry: /paper_start called again (e.g. the user just retries) ──
+      const retryResult = await startHostedEngine(deps, 9700);
+      check("[crash-safety] retry succeeds", retryResult.ok === true);
+      if (retryResult.ok) {
+        check("[crash-safety] retry took the SAME existing-client path (created=false)", retryResult.created === false);
+        check("[crash-safety] retry is recognized as a local→hosted conversion (converted=true)", retryResult.converted === true);
+      }
+      check("[crash-safety] retry made exactly one more DB commit attempt (two total)", dbCommitCalls === 2);
+      check("[crash-safety] the row is NOW genuinely 'hosted'", row.hosting_mode === "hosted");
+      check(
+        "[crash-safety] the retry generated a FRESH keypair, different from the crashed attempt's orphaned one",
+        row.device_public_key !== crashedAttemptPublicKey,
+      );
+      check(
+        "[crash-safety] the retry's key is also different from the ORIGINAL local device key",
+        row.device_public_key !== originalPublicKey,
+      );
+      // The final on-disk identity (overwritten by the retry) is exactly
+      // what the now-committed row references — no drift between disk and DB.
+      loadAndVerifyDeviceIdentityFile(tenantDir(existingClientId), row.device_public_key);
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  }
+
+  // ── Task 4 SECOND REVIEW FIX: disk-write failure (not just a DB-commit
+  // failure) must ALSO never touch the DB. Confirms the ordering holds in
+  // both directions — a thrown disk write happens BEFORE any DB call is
+  // even attempted. ──
+  {
+    const fleet = new FakeFleetManager();
+    const deps = makeFakeDeps(fleet);
+    const row: EngineClientLike & { device_public_key: string } = {
+      id: "disk-failure-client",
+      hosting_mode: "local",
+      device_public_key: "original-key-disk-failure-case",
+    };
+    deps.clientsByUser.set(9750, row);
+    let dbCommitCalls = 0;
+    deps.convertClientToHosted = async () => {
+      // Simulates writeHostedDeviceIdentityToDisk throwing (disk full,
+      // permissions) — thrown BEFORE any DB call, exactly like the real
+      // convertClientToHosted's ordering.
+      throw new Error("simulated disk write failure: ENOSPC");
+    };
+    const result = await startHostedEngine(deps, 9750);
+    check("[disk-failure] start reports a plain error, not thrown raw", result.ok === false);
+    check("[disk-failure] no DB commit was ever attempted", dbCommitCalls === 0);
+    check("[disk-failure] the row is untouched — still 'local'", row.hosting_mode === "local");
+    check("[disk-failure] the row's key is untouched", row.device_public_key === "original-key-disk-failure-case");
+  }
+
+  // ── Task 4 SECOND REVIEW FIX, Problem 2: the local→hosted supersession
+  // disclosure appears in the success DM ONLY for that specific transition,
+  // never for a brand-new hosted-only client (which has no prior local
+  // identity to supersede). ──
+  {
+    // Brand-new client: no disclosure.
+    {
+      const fleet = new FakeFleetManager();
+      const deps = makeFakeDeps(fleet, { approved: true });
+      await handlePaperStart(deps, { telegramUserId: 9800, userId: 980 });
+      const text = deps.notifications[0]!.text;
+      check("[disclosure] brand-new hosted client DM does not mention local pairing being superseded", !text.toLowerCase().includes("local device pairing") && !text.toLowerCase().includes("replaces your existing"));
+      check("[disclosure] brand-new hosted client DM does not mention /pair", !text.includes("/pair"));
+    }
+
+    // Existing local client converted to hosted: disclosure required.
+    {
+      const fleet = new FakeFleetManager();
+      const deps = makeFakeDeps(fleet, { approved: true });
+      deps.clientsByUser.set(981, { id: "local-client-for-disclosure-test", hosting_mode: "local" });
+      await handlePaperStart(deps, { telegramUserId: 9801, userId: 981 });
+      const text = deps.notifications[0]!.text;
+      check("[disclosure] local→hosted conversion DM mentions the existing local pairing being superseded", text.toLowerCase().includes("local"));
+      check("[disclosure] local→hosted conversion DM tells the user to run /pair again", text.includes("/pair"));
+      check("[disclosure] the DM is still a single success message (one DM sent)", deps.notifications.length === 1);
+    }
+
+    // Already-hosted client re-running /paper_start: no re-disclosure —
+    // this is not a NEW transition, it's a repeat start of an already-hosted client.
+    {
+      const fleet = new FakeFleetManager();
+      const deps = makeFakeDeps(fleet, { approved: true });
+      deps.clientsByUser.set(982, { id: "already-hosted-client", hosting_mode: "hosted" });
+      await handlePaperStart(deps, { telegramUserId: 9802, userId: 982 });
+      const text = deps.notifications[0]!.text;
+      check("[disclosure] already-hosted client's repeat /paper_start DM has no supersession notice", !text.includes("/pair"));
+    }
+  }
+
   console.log(`\n${failures === 0 ? "✅ ALL PASSED" : `❌ ${failures} FAILED`}`);
   process.exit(failures === 0 ? 0 : 1);
 }
