@@ -14,9 +14,15 @@
  * Two phases, run sequentially in one process invocation so the whole run
  * consumes real, continuous clock time as intended:
  *   Phase 1 (warmup):  N=5,  short duration, verify clean spawn/stop.
- *   Phase 2 (main soak): N=20, long duration, deliberate fault injection
- *                        partway through (direct SIGKILL bypassing
- *                        FleetManager's own stop path, plus tenants
+ *   Phase 2 (main soak): N=20 SPAWNED, long duration, deliberate fault
+ *                        injection partway through (direct SIGKILL
+ *                        bypassing FleetManager's own stop path, plus
+ *                        2 of the 20 DESIGNED to crash-loop to terminal
+ *                        `failed` early, so the SUSTAINED concurrent count
+ *                        for the bulk of the run is 18, not 20 — see
+ *                        docs/FLEET_MANAGER_RUNBOOK.md §9 for the real,
+ *                        measured numbers; N alone is not a concurrency
+ *                        claim). Tenants
  *                        configured to crash-loop until they hit the
  *                        documented give-up threshold).
  *
@@ -44,6 +50,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, "..");
 const FIXTURE = path.join(REPO_ROOT, "src", "fleet", "test-fixtures", "fake-engine.mjs");
 const CRASHLOOP_FIXTURE = path.join(__dirname, "fleet-soak-crashloop-fixture.mjs");
+const MARKER_FIXTURE = path.join(__dirname, "fleet-soak-marker-fixture.mjs");
+const CRASHLOOP_MARKER_FIXTURE = path.join(__dirname, "fleet-soak-crashloop-marker-fixture.mjs");
+
+/** Must match every EngineInvocation's `readyMarker` below — kept as one constant so the ready-marker-count check (P0-1 re-certification) can never silently drift from what the fixtures actually print. */
+const READY_MARKER = "paper engine started";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -61,7 +72,66 @@ function fakeInvocation(): EngineInvocation {
   return {
     buildStart: () => ({ command: process.execPath, args: [FIXTURE, "start"], cwd: __dirname }),
     buildStop: () => ({ command: process.execPath, args: [FIXTURE, "stop"], cwd: __dirname }),
-    readyMarker: "paper engine started",
+    readyMarker: READY_MARKER,
+  };
+}
+
+/**
+ * The distinctive per-tenant log marker used by markerInvocation()/
+ * crashLoopMarkerInvocation() below.
+ *
+ * REAL BUG found and fixed during this task's own dry-run/full-run
+ * discipline (disclosed, not silently patched): an earlier version of this
+ * function returned `SOAK-MARKER::${clientId}` with no closing delimiter,
+ * which is unbounded on the right — `SOAK-MARKER::soak-main-1` is a literal
+ * PREFIX of `SOAK-MARKER::soak-main-10` through `...-19`. At N=20 (but not
+ * at the smaller N used in earlier dry-runs, which never reached two-digit
+ * tenant indices), the contamination check's `content.includes(otherMarker)`
+ * matched tenant 1's marker as a substring of every one of tenants 10-19's
+ * OWN correctly-printed marker line, producing 10 false-positive
+ * "contamination" findings in an otherwise-clean run. The trailing `::END`
+ * closes the token on both sides (already delimited by `::` on the left),
+ * so no tenant's full marker string can ever be a substring of another
+ * tenant's — the character immediately after the id inside `::END` never
+ * coincides with a valid continuation of a different, longer id.
+ */
+function markerFor(clientId: string): string {
+  return `SOAK-MARKER::${clientId}::END`;
+}
+
+/**
+ * Per-tenant invocation used by the main soak's control and SIGKILL-target
+ * tenants: bakes `markerFor(clientId)` into argv (via
+ * fleet-soak-marker-fixture.mjs) so every one of that tenant's log lines is
+ * traceable to it specifically, and — critically — so the marker survives
+ * a FleetManager-internal auto-restart (e.g. the SIGKILL-target tenants'
+ * post-kill recovery), not just the tenant's first run. `buildStart`/
+ * `buildStop` take no `clientId` parameter, so getting a marker that's
+ * fixed-per-tenant-including-across-restarts requires a distinct closure
+ * per tenant, which in turn requires a distinct `FleetManager` instance per
+ * tenant (see runPhase2MainSoak) — `process.env.FAKE_EXTRA_LINE` set once
+ * before `spawnTenant()` (the pattern `fleet-manager.test.ts:330-337` uses)
+ * does NOT survive a later restart, because FleetManager's internal
+ * `setTimeout`-driven restart reads the soak script's `process.env` at
+ * restart time, long after the script's own spawn loop has moved on to
+ * (and overwritten that var for) other tenants.
+ */
+function markerInvocation(clientId: string): EngineInvocation {
+  const marker = markerFor(clientId);
+  return {
+    buildStart: () => ({ command: process.execPath, args: [MARKER_FIXTURE, "start", marker], cwd: __dirname }),
+    buildStop: () => ({ command: process.execPath, args: [MARKER_FIXTURE, "stop", marker], cwd: __dirname }),
+    readyMarker: READY_MARKER,
+  };
+}
+
+/** Same rationale as markerInvocation(), for the main soak's 2 crash-loop tenants — uses fleet-soak-crashloop-marker-fixture.mjs, which bakes in BOTH the marker and the crash timing (fleet-soak-crashloop-fixture.mjs itself is untouched). */
+function crashLoopMarkerInvocation(clientId: string): EngineInvocation {
+  const marker = markerFor(clientId);
+  return {
+    buildStart: () => ({ command: process.execPath, args: [CRASHLOOP_MARKER_FIXTURE, "start", marker], cwd: __dirname }),
+    buildStop: () => ({ command: process.execPath, args: [CRASHLOOP_MARKER_FIXTURE, "stop", marker], cwd: __dirname }),
+    readyMarker: READY_MARKER,
   };
 }
 
@@ -76,7 +146,7 @@ function crashLoopInvocation(): EngineInvocation {
   return {
     buildStart: () => ({ command: process.execPath, args: [CRASHLOOP_FIXTURE, "start"], cwd: __dirname }),
     buildStop: () => ({ command: process.execPath, args: [CRASHLOOP_FIXTURE, "stop"], cwd: __dirname }),
-    readyMarker: "paper engine started",
+    readyMarker: READY_MARKER,
   };
 }
 
@@ -300,43 +370,48 @@ async function runPhase2MainSoak(): Promise<void> {
   const sigkillIds = allIds.slice(CRASH_LOOP_COUNT, CRASH_LOOP_COUNT + SIGKILL_COUNT);
   const controlIds = allIds.slice(CRASH_LOOP_COUNT + SIGKILL_COUNT);
 
-  console.log(`main soak: N=${N} (crash-loop=${crashLoopIds.length}, sigkill-target=${sigkillIds.length}, control=${controlIds.length})`);
+  console.log(`main soak: N=${N} spawned (crash-loop=${crashLoopIds.length}, sigkill-target=${sigkillIds.length}, control=${controlIds.length}) -- the 2 crash-loop tenants are BY DESIGN expected to reach terminal 'failed' early, so the sustained concurrent count for the bulk of the run is N-2, not N (see the "sustained" fields recorded in evidence below -- do not read N alone as a concurrency claim).`);
 
-  // TWO FleetManager instances, sharing the same tenantsRoot/logsRoot (each
-  // tenant still gets its own <tenantsRoot>/<clientId>/.aria and
-  // <logsRoot>/<clientId>.log — the split is purely about which
-  // EngineInvocation spawns a given clientId, not about isolation, which is
-  // per-clientId regardless of which manager instance issued the spawn).
-  // The crash-loop tenants use fmCrashLoop (crashLoopInvocation, which bakes
-  // FAKE_CRASH_AFTER_MS into every fresh child's OWN env via
-  // fleet-soak-crashloop-fixture.mjs — see that file's docblock for the real
-  // bug this replaced: a shared, soak-script-cleared process.env var did NOT
-  // survive to FleetManager's internal auto-restart, so a first soak attempt
-  // saw the crash-loop tenants crash exactly once and then look "recovered"
-  // instead of correctly escalating). Everything else uses fm (plain
-  // fakeInvocation, never crashes on its own).
-  const fm = new FleetManager({ engineInvocation: fakeInvocation(), tenantsRoot, logsRoot, maxConcurrentTenants: N });
-  const fmCrashLoop = new FleetManager({ engineInvocation: crashLoopInvocation(), tenantsRoot, logsRoot, maxConcurrentTenants: CRASH_LOOP_COUNT });
+  // ONE FleetManager instance PER TENANT (re-certification fix, was 2
+  // shared instances -- see docs/FLEET_MANAGER_RUNBOOK.md Section 9's
+  // "re-certification" section for the independent-review finding this
+  // replaces). `EngineInvocation.buildStart()`/`buildStop()` take no
+  // `clientId` parameter, so a per-tenant marker that must survive every
+  // restart FleetManager ever performs for that tenant (not just its first
+  // run) requires a distinct closure, which requires a distinct instance.
+  // All instances share the same tenantsRoot/logsRoot (each tenant still
+  // gets its own <tenantsRoot>/<clientId>/.aria and
+  // <logsRoot>/<clientId>.log regardless of which manager instance issued
+  // the spawn -- the split is purely about which EngineInvocation applies).
+  // Cost: 20 in-memory FleetManager instances instead of 2 -- negligible.
+  const managerByTenant = new Map<string, FleetManager>();
+  for (const id of crashLoopIds) {
+    managerByTenant.set(id, new FleetManager({ engineInvocation: crashLoopMarkerInvocation(id), tenantsRoot, logsRoot, maxConcurrentTenants: 1 }));
+  }
+  for (const id of [...sigkillIds, ...controlIds]) {
+    managerByTenant.set(id, new FleetManager({ engineInvocation: markerInvocation(id), tenantsRoot, logsRoot, maxConcurrentTenants: 1 }));
+  }
 
-  const lookup: StatusLookup = (id) => fm.getTenantStatus(id) ?? fmCrashLoop.getTenantStatus(id);
-  const activeCount = () => fm.listActiveTenants().length + fmCrashLoop.listActiveTenants().length;
+  const lookup: StatusLookup = (id) => managerByTenant.get(id)?.getTenantStatus(id);
+  const activeCount = () => allIds.reduce((n, id) => n + (managerByTenant.get(id)?.listActiveTenants().length ?? 0), 0);
 
   const t0 = Date.now();
 
   delete process.env.FAKE_CRASH_AFTER_MS;
   delete process.env.FAKE_EXIT_CODE;
   delete process.env.FAKE_FAIL_ON_START;
+  delete process.env.FAKE_EXTRA_LINE;
   for (const id of crashLoopIds) {
-    await fmCrashLoop.spawnTenant(id);
+    await managerByTenant.get(id)!.spawnTenant(id);
     evidence.faultEvents.push({ atIso: nowIso(), elapsedMs: Date.now() - t0, clientId: id, action: "crash-loop-configured" });
   }
   const nonCrashLoop = [...sigkillIds, ...controlIds];
   for (const id of nonCrashLoop) {
-    await fm.spawnTenant(id);
+    await managerByTenant.get(id)!.spawnTenant(id);
   }
 
   const allNonCrashLoopRunning = await waitFor(
-    () => nonCrashLoop.every((id) => fm.getTenantStatus(id)?.status === "running"),
+    () => nonCrashLoop.every((id) => lookup(id)?.status === "running"),
     15_000,
   );
   console.log(`main soak: all ${nonCrashLoop.length} non-crash-loop tenants reached running = ${allNonCrashLoopRunning}`);
@@ -347,6 +422,12 @@ async function runPhase2MainSoak(): Promise<void> {
   let faultInjected = false;
   let preInjectionSnapshot: StatusSnapshot | null = null;
   const killedPids: Record<string, number> = {};
+  // P0-2 re-certification: real OS-level log-file stat for each control
+  // tenant, captured at the moment fault injection begins, so the
+  // post-run check can prove nothing touched a control tenant's log
+  // during the fault-injection window -- not just that FleetManager's own
+  // in-memory bookkeeping looks unchanged.
+  const controlLogStatAtInjection: Record<string, { size: number; mtimeMs: number } | null> = {};
 
   while (Date.now() - t0 < durationMs) {
     await sleep(Math.min(sampleIntervalMs, Math.max(0, durationMs - (Date.now() - t0))));
@@ -357,9 +438,17 @@ async function runPhase2MainSoak(): Promise<void> {
     if (!faultInjected && elapsed >= faultInjectAtMs) {
       faultInjected = true;
       preInjectionSnapshot = takeStatusSnapshot(lookup, controlIds, elapsed);
+      for (const id of controlIds) {
+        try {
+          const st = fs.statSync(path.join(logsRoot, `${id}.log`));
+          controlLogStatAtInjection[id] = { size: st.size, mtimeMs: st.mtimeMs };
+        } catch {
+          controlLogStatAtInjection[id] = null;
+        }
+      }
       console.log(`\n--- FAULT INJECTION @${Math.round(elapsed / 1000)}s: SIGKILL ${sigkillIds.length} tenants directly (bypassing stopTenant) ---`);
       for (const id of sigkillIds) {
-        const handle = fm.getTenantStatus(id);
+        const handle = lookup(id);
         if (handle?.pid) {
           killedPids[id] = handle.pid;
           try {
@@ -378,13 +467,42 @@ async function runPhase2MainSoak(): Promise<void> {
   takeMemSample(lookup, activeCount, allIds, totalElapsed);
   const finalSnapshot = takeStatusSnapshot(lookup, allIds, totalElapsed);
 
-  // Isolation check: control tenants must be COMPLETELY unaffected by the
-  // sigkill'd tenants throughout — same pid, same restartCount, still running.
-  const controlUnaffected = controlIds.every((id) => {
+  // Isolation check (in-memory half): control tenants must be COMPLETELY
+  // unaffected by the sigkill'd/crash-loop tenants throughout -- same pid,
+  // same restartCount, still running.
+  const controlUnaffectedInMemory = controlIds.every((id) => {
     const pre = preInjectionSnapshot?.tenants.find((t) => t.clientId === id);
     const post = finalSnapshot.tenants.find((t) => t.clientId === id);
     return pre && post && post.status === "running" && post.pid === pre.pid && post.restartCount === pre.restartCount && post.consecutiveCrashes === 0;
   });
+
+  // Isolation check (OS-level half -- P0-2 re-certification fix): the
+  // in-memory check above only proves FleetManager's own bookkeeping is
+  // consistent, which would also pass if the isolation logic itself were
+  // silently broken but happened to report identical numbers. Reuse
+  // isPidAlive() (already used for the shutdown-orphan check below) to
+  // confirm the ACTUAL OS process the control tenant had before injection
+  // is STILL the one running (not a coincidentally-same-status new
+  // process), and stat() each control tenant's log file to confirm no
+  // byte was written to it during the fault-injection window (size/mtime
+  // unchanged from the sample taken the instant injection began).
+  const controlOsLevelChecks = controlIds.map((id) => {
+    const pre = preInjectionSnapshot?.tenants.find((t) => t.clientId === id);
+    const prePid = pre?.pid;
+    const pidStillAliveSamePid = typeof prePid === "number" ? isPidAlive(prePid) : false;
+    const preStat = controlLogStatAtInjection[id] ?? null;
+    let postStat: { size: number; mtimeMs: number } | null = null;
+    try {
+      const st = fs.statSync(path.join(logsRoot, `${id}.log`));
+      postStat = { size: st.size, mtimeMs: st.mtimeMs };
+    } catch {
+      postStat = null;
+    }
+    const logUnchangedSinceInjection = !!preStat && !!postStat && preStat.size === postStat.size && preStat.mtimeMs === postStat.mtimeMs;
+    return { clientId: id, prePid, pidStillAliveSamePid, preStat, postStat, logUnchangedSinceInjection };
+  });
+  const controlOsLevelAllPass = controlOsLevelChecks.every((c) => c.pidStillAliveSamePid && c.logUnchangedSinceInjection);
+  const controlUnaffected = controlUnaffectedInMemory && controlOsLevelAllPass;
 
   const sigkilledRecovered = sigkillIds.every((id) => {
     const post = finalSnapshot.tenants.find((t) => t.clientId === id);
@@ -396,14 +514,32 @@ async function runPhase2MainSoak(): Promise<void> {
     return post && post.status === "failed" && post.consecutiveCrashes >= 5;
   });
 
-  console.log(`\nmain soak: control tenants (${controlIds.length}) completely unaffected = ${controlUnaffected}`);
+  console.log(`\nmain soak: control tenants (${controlIds.length}) completely unaffected (in-memory AND OS-level pid/log-file checks) = ${controlUnaffected} (in-memory=${controlUnaffectedInMemory}, OS-level=${controlOsLevelAllPass})`);
   console.log(`main soak: sigkilled tenants (${sigkillIds.length}) auto-recovered with NEW pids = ${sigkilledRecovered}`);
   console.log(`main soak: crash-loop tenants (${crashLoopIds.length}) correctly escalated to terminal 'failed' = ${crashLoopersFailed}`);
 
-  // Journal integrity: read every tenant's log file, confirm well-formed
-  // (readable UTF-8, contains the ready marker at least once for any tenant
-  // that ever reached running, no null bytes / no cross-tenant contamination
-  // of another tenant's clientId string).
+  // Journal integrity (P0-1 re-certification fix): read every tenant's log
+  // file and confirm (a) it's readable UTF-8 with no null bytes, (b) it
+  // contains its OWN distinctive marker (markerFor(id), baked into argv by
+  // markerInvocation()/crashLoopMarkerInvocation() -- see those functions'
+  // docblocks for why this survives every restart, unlike a plain
+  // process.env.FAKE_EXTRA_LINE set once before spawnTenant()), (c) it does
+  // NOT contain any OTHER tenant's marker (real cross-contamination check --
+  // the previous version of this check compared against sibling clientId
+  // strings that were never actually written to any log, so it could never
+  // fire), and (d) the ready-marker count matches that tenant's expected
+  // lifecycle (control=1 start, sigkill-target=2 starts [initial + the one
+  // post-SIGKILL auto-restart], crash-loop=5 starts [initial + 4 restarts
+  // before the 5th crash hits maxConsecutiveCrashes=5 and gives up]) -- this
+  // catches restart-path bugs (e.g. a tenant restarting more or fewer times
+  // than the state machine should allow) that a pure string-presence check
+  // would miss entirely.
+  const expectedReadyMarkerCount: Record<string, number> = {};
+  for (const id of crashLoopIds) expectedReadyMarkerCount[id] = 5;
+  for (const id of sigkillIds) expectedReadyMarkerCount[id] = 2;
+  for (const id of controlIds) expectedReadyMarkerCount[id] = 1;
+
+  const readyMarkerCounts: Record<string, number> = {};
   let journalIssues: string[] = [];
   for (const id of allIds) {
     const logPath = path.join(logsRoot, `${id}.log`);
@@ -412,13 +548,29 @@ async function runPhase2MainSoak(): Promise<void> {
       continue;
     }
     const content = fs.readFileSync(logPath, "utf8");
-    if (content.includes(" ")) journalIssues.push(`${id}: contains null byte(s)`);
-    const otherIds = allIds.filter((o) => o !== id);
-    for (const other of otherIds) {
-      if (content.includes(other)) journalIssues.push(`${id}: log contains sibling tenant id '${other}' (cross-contamination)`);
+    if (content.includes("\0")) journalIssues.push(`${id}: contains null byte(s)`);
+
+    const ownMarker = markerFor(id);
+    if (!content.includes(ownMarker)) {
+      journalIssues.push(`${id}: log is MISSING its own marker '${ownMarker}'`);
+    }
+    for (const other of allIds) {
+      if (other === id) continue;
+      const otherMarker = markerFor(other);
+      if (content.includes(otherMarker)) {
+        journalIssues.push(`${id}: log contains sibling tenant ${other}'s marker '${otherMarker}' (real cross-contamination)`);
+      }
+    }
+
+    const actualReadyCount = content.split(READY_MARKER).length - 1;
+    readyMarkerCounts[id] = actualReadyCount;
+    const expected = expectedReadyMarkerCount[id];
+    if (actualReadyCount !== expected) {
+      journalIssues.push(`${id}: ready-marker count ${actualReadyCount} != expected ${expected} for its lifecycle (restart-path mismatch)`);
     }
   }
   console.log(`main soak: journal integrity issues found = ${journalIssues.length}${journalIssues.length ? ": " + journalIssues.join("; ") : ""}`);
+  console.log(`main soak: ready-marker counts = ${JSON.stringify(readyMarkerCounts)}`);
 
   // Clean shutdown: stop everything, verify zero orphaned OS processes.
   console.log("\nmain soak: stopping all tenants...");
@@ -426,17 +578,34 @@ async function runPhase2MainSoak(): Promise<void> {
     .map((id) => lookup(id)?.pid)
     .filter((p): p is number => typeof p === "number");
   for (const id of nonCrashLoop) {
-    await fm.stopTenant(id, true);
+    await managerByTenant.get(id)!.stopTenant(id, true);
   }
   for (const id of crashLoopIds) {
     // A "failed" crash-loop tenant is a safe no-op for stopTenant (already
-    // terminal, no process/timer to cancel) — calling it anyway for symmetry
+    // terminal, no process/timer to cancel) -- calling it anyway for symmetry
     // and to cover the case where a crash-loop tenant happens to be mid-run
     // (not yet failed) when the soak's duration elapses.
-    await fmCrashLoop.stopTenant(id, true);
+    await managerByTenant.get(id)!.stopTenant(id, true);
   }
   const orphans = allPidsBeforeShutdown.filter(isPidAlive);
   console.log(`main soak: orphaned pids after full shutdown = [${orphans.join(", ")}]`);
+
+  // P1-3 re-certification fix: derive the ACTUAL sustained concurrent
+  // tenant count from the real memSamples timeline instead of asserting
+  // N throughout. The 2 crash-loop tenants are DESIGNED to reach terminal
+  // `failed` early, so activeTenantCount legitimately drops from N to
+  // N-2 shortly after t=0 and stays there for the rest of the run -- that
+  // drop is correct behavior, not a defect, and must be described as such
+  // rather than overstated as "N concurrent for the full duration".
+  const countsAfterT0 = evidence.memSamples.filter((s) => s.elapsedMs > 0).map((s) => s.activeTenantCount);
+  const sustainedTenantCount = countsAfterT0.length ? Math.min(...countsAfterT0) : N;
+  const stabilizedAtSample = evidence.memSamples.find((s) => s.elapsedMs > 0 && s.activeTenantCount === sustainedTenantCount);
+  const sustainedFromElapsedMs = stabilizedAtSample?.elapsedMs ?? 0;
+  const sustainedDurationMs = Math.max(0, totalElapsed - sustainedFromElapsedMs);
+  console.log(
+    `main soak: ${N} tenants spawned; ${sustainedTenantCount} sustained concurrently from t=${Math.round(sustainedFromElapsedMs / 1000)}s ` +
+      `to t=${Math.round(totalElapsed / 1000)}s (~${Math.round(sustainedDurationMs / 60000)} min) after the ${crashLoopIds.length} crash-loop tenants reached terminal 'failed' by design`,
+  );
 
   evidence.phase2MainSoak = {
     N,
@@ -446,10 +615,18 @@ async function runPhase2MainSoak(): Promise<void> {
     controlIds,
     allNonCrashLoopReachedRunning: allNonCrashLoopRunning,
     controlTenantsCompletelyUnaffected: controlUnaffected,
+    controlTenantsCompletelyUnaffectedInMemory: controlUnaffectedInMemory,
+    controlTenantsOsLevelChecks: controlOsLevelChecks,
     sigkilledTenantsAutoRecovered: sigkilledRecovered,
     crashLoopTenantsEscalatedToFailed: crashLoopersFailed,
     journalIntegrityIssues: journalIssues,
+    readyMarkerCounts,
+    expectedReadyMarkerCounts: expectedReadyMarkerCount,
     orphanedPidsAfterShutdown: orphans,
+    initialTenantCount: N,
+    sustainedTenantCount,
+    sustainedFromElapsedMs,
+    sustainedDurationMs,
     totalElapsedMs: totalElapsed,
   };
 
