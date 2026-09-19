@@ -1,5 +1,5 @@
 import { Bot, InlineKeyboard, type Context, type CommandContext } from "grammy";
-import { randomUUID, generateKeyPairSync } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { CONFIG, USERS_DOMAIN_ENABLED } from "./config.js";
 import { logger } from "./logger.js";
 import { totalLeads, getLatestLeadByTgUser } from "./leads.js";
@@ -12,9 +12,9 @@ import { createInvite, listInvites, redeemInvite, isUserApproved, getAttribution
 import { getNotifyPromotions, setNotifyPromotions } from "./leads.js";
 import { trackEvent, getFunnelCounts } from "./funnel.js";
 import { listRecentFeedback } from "./feedback.js";
-import { registerClient, getLatestActiveClientForUser, setHostingMode, type EngineClient } from "./engine-clients.js";
+import { registerClient, getLatestActiveClientForUser, setHostingMode, rotateClientDeviceIdentity, type EngineClient } from "./engine-clients.js";
 import { fleetManager, tenantRuntimeDir } from "./fleet/instance.js";
-import { writeHostedDeviceIdentityToDisk } from "./fleet/hosted-device-identity.js";
+import { generateHostedDeviceIdentity, writeHostedDeviceIdentityToDisk } from "./fleet/hosted-device-identity.js";
 import { handlePaperStart, handlePaperStop, handlePaperStatus, formatHostedStatusMessage, type HostedCommandsDeps } from "./fleet/hosted-commands.js";
 import type { Lead } from "./leads.js";
 import type { IssuedLicense } from "./licenses.js";
@@ -263,22 +263,73 @@ bot.command("pair", async (ctx) => {
  * `client.id` the Fleet Manager will use as that directory's name.
  */
 async function registerHostedClient(userId: number): Promise<EngineClient> {
-  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-  const pubJwk = publicKey.export({ format: "jwk" }) as { x: string };
-  const privPkcs8 = privateKey.export({ format: "der", type: "pkcs8" }) as Buffer;
+  const identity = generateHostedDeviceIdentity();
 
   const client = await registerClient({
     userId,
-    devicePublicKey: pubJwk.x,
+    devicePublicKey: identity.publicKeyX,
     deviceName: "Hosted PAPER (ARIA-managed)",
     platform: "hosted",
   });
   await setHostingMode(client.id, "hosted");
-  writeHostedDeviceIdentityToDisk(tenantRuntimeDir(client.id), {
-    publicKeyX: pubJwk.x,
-    privateKeyPkcs8Base64: privPkcs8.toString("base64"),
-  });
+  writeHostedDeviceIdentityToDisk(tenantRuntimeDir(client.id), identity);
   return { ...client, hosting_mode: "hosted" };
+}
+
+/**
+ * Hosted PAPER Engine, Task 4 REVIEW FIX (2026-09-18) — the real
+ * implementation behind `HostedCommandsDeps.convertClientToHosted` (see that
+ * interface field's docblock in hosted-commands.ts for the full bug writeup,
+ * and the ledger's Task 4 Log entry for the design-decision writeup on
+ * rotating this row in place rather than creating a second one).
+ *
+ * Fixes a real P0 in commit a0c5ff5: `startHostedEngine`'s
+ * `else if (client.hosting_mode !== "hosted")` branch used to call bare
+ * `setHostingMode(client.id, "hosted")` — flipping the DB flag but writing
+ * NOTHING to disk. That branch only runs for a client row that was
+ * originally paired via the LOCAL `aria pair <code>` CLI flow, which
+ * generates its keypair on the user's own machine and sends only the PUBLIC
+ * key to the server — the control plane never had, and can never recover,
+ * that row's private key. When `spawnTenant()` then boots the real
+ * `aria-engine` CLI into a fresh, empty per-tenant runtime directory,
+ * aria-engine's own `loadOrCreateDeviceIdentity()` finds no
+ * `state/device-identity.json` there and silently generates a BRAND-NEW,
+ * unrelated keypair — one that can never match the OLD `device_public_key`
+ * already stored in this row. `spawnTenant()` succeeds and reports
+ * "running", but every subsequent `/api/engine/sync` call from that hosted
+ * process fails signature verification: permanently, silently, with no
+ * visible error at the point of failure.
+ *
+ * The fix mirrors `registerHostedClient` above exactly — same
+ * `generateHostedDeviceIdentity()` keypair generation, same
+ * `writeHostedDeviceIdentityToDisk` call into the SAME tenant runtime
+ * directory `spawnTenant()` will point `ARIA_RUNTIME_DIR` at — with one
+ * difference: instead of INSERTing a new row (`registerClient`), it UPDATEs
+ * this EXISTING row's `device_public_key` to match the freshly generated key
+ * (`rotateClientDeviceIdentity` — `registerClient`/`registerHostedClient`
+ * only ever INSERT; there was no existing UPDATE-a-key primitive).
+ *
+ * This is a deliberate, disclosed, one-way identity rotation: the user's
+ * ORIGINAL local device identity for THIS client_id is intentionally
+ * superseded. If they later run the local CLI again on their own machine
+ * with that original identity, its signatures will no longer match this
+ * row and it will need to re-pair via `/pair` to get a fresh row — the same
+ * "no automatic path back to local" limitation `setHostingMode`'s own
+ * docstring already discloses for the mode flip itself. Rotating THIS row
+ * in place (rather than creating a second engine_clients row for the hosted
+ * identity) was chosen because the rest of this codebase already commits to
+ * "one row per user's active client, mutated in place across hosting-mode
+ * transitions" — `getLatestActiveClientForUser` returns exactly one row per
+ * user, and hosted-commands.test.ts's existing security-isolation contract
+ * asserts `spawnTenant` is called with the SAME client id across a hosting-
+ * mode transition, not a newly minted one. A second row would silently
+ * violate both.
+ */
+async function convertClientToHosted(clientId: string): Promise<void> {
+  const identity = generateHostedDeviceIdentity();
+  await rotateClientDeviceIdentity(clientId, identity.publicKeyX);
+  await setHostingMode(clientId, "hosted");
+  writeHostedDeviceIdentityToDisk(tenantRuntimeDir(clientId), identity);
 }
 
 /**
@@ -293,7 +344,7 @@ const hostedDeps: HostedCommandsDeps = {
   fleetManager,
   getLatestActiveClientForUser,
   registerHostedClient,
-  setHostingMode,
+  convertClientToHosted,
   isUserApproved,
   notify: async (telegramUserId, text) => {
     try {

@@ -1,4 +1,3 @@
-import path from "node:path";
 import { CONFIG } from "../config.js";
 import { FleetManager, realEngineInvocation } from "./fleet-manager.js";
 
@@ -25,12 +24,18 @@ export const fleetManager = new FleetManager({
 });
 
 /**
- * Mirrors FleetManager's own private `runtimeDirFor()` convention
- * (`<tenantsRoot>/<clientId>/.aria`) so a hosted-client-creation flow can
- * pre-seed a device identity file into the SAME directory the Fleet
- * Manager will later point `ARIA_RUNTIME_DIR` at, without either module
- * needing to import the other's private internals.
+ * Delegates to the ONE `FleetManager` instance's own `runtimeDirFor()` (see
+ * that method's docblock in fleet-manager.ts) so a hosted-client-creation or
+ * hosted-conversion flow can pre-seed a device identity file into the SAME
+ * directory the Fleet Manager will later point `ARIA_RUNTIME_DIR` at.
+ *
+ * Task 4 review fix (2026-09-18): this used to independently recompute
+ * `path.join(tenantsRoot, clientId, ".aria")` itself, duplicating
+ * FleetManager's private `runtimeDirFor()` — two copies of the same path
+ * convention in two files with nothing enforcing they stay identical.
+ * Delegating here means a future change to the convention only has one
+ * place to change.
  */
 export function tenantRuntimeDir(clientId: string): string {
-  return path.join(CONFIG.FLEET_TENANTS_ROOT, clientId, ".aria");
+  return fleetManager.runtimeDirFor(clientId);
 }

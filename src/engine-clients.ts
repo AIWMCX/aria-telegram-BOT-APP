@@ -163,3 +163,38 @@ export async function setHostingMode(id: string, mode: EngineHostingMode): Promi
   const pool = requirePool();
   await pool.query(`UPDATE engine_clients SET hosting_mode = $2 WHERE id = $1`, [id, mode]);
 }
+
+/**
+ * Hosted PAPER Engine, Task 4 REVIEW FIX (2026-09-18) — rotates an EXISTING
+ * row's `device_public_key` in place. `registerClient`/`registerHostedClient`
+ * only ever INSERT a fresh row; there was no primitive for updating the key
+ * on a row that already exists, which is exactly what converting a
+ * previously-'local' client to 'hosted' needs.
+ *
+ * Why this is needed at all: a client row that was paired via the LOCAL
+ * `aria pair <code>` flow has a `device_public_key` whose private half only
+ * ever existed on the user's own machine — the control plane never had it.
+ * If that same row is later converted to 'hosted' (see bot.ts's
+ * `convertClientToHosted`), the Fleet Manager spawns a real `aria-engine`
+ * CLI into a brand-new, empty per-tenant runtime directory; that process's
+ * own `loadOrCreateDeviceIdentity()` would otherwise silently generate an
+ * unrelated keypair there (no `state/device-identity.json` to find), which
+ * could never match the OLD key already stored in this row — every
+ * subsequent `/api/engine/sync` call would then fail signature verification,
+ * permanently and silently. The caller generates a fresh, real Ed25519
+ * keypair (via `generateHostedDeviceIdentity()`, the SAME helper
+ * `registerHostedClient` uses for a brand-new row) and writes it to the
+ * tenant's runtime directory BEFORE calling this — this function's only job
+ * is to make the DB row agree with what's now on disk.
+ *
+ * This is a deliberate, one-way identity rotation, not a bug being papered
+ * over: the row's original (locally-paired) identity is intentionally
+ * superseded. If the user later runs the local CLI again with that original
+ * identity, it will no longer match this row and will need to re-pair via
+ * `/pair` — see the ledger's Task 4 Log entry for the full design-decision
+ * writeup (rotate this row in place vs. a separate row per hosting mode).
+ */
+export async function rotateClientDeviceIdentity(id: string, newPublicKey: string): Promise<void> {
+  const pool = requirePool();
+  await pool.query(`UPDATE engine_clients SET device_public_key = $2 WHERE id = $1`, [id, newPublicKey]);
+}

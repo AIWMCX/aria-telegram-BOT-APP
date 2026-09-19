@@ -12,7 +12,12 @@
  *
  * Run: npx tsx src/fleet/hosted-commands.test.ts
  */
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { createPrivateKey, createPublicKey } from "node:crypto";
 import { FleetCapacityError, type TenantProcessHandle } from "./fleet-manager.js";
+import { generateHostedDeviceIdentity, writeHostedDeviceIdentityToDisk } from "./hosted-device-identity.js";
 import {
   startHostedEngine,
   stopHostedEngine,
@@ -86,9 +91,9 @@ function makeFakeDeps(fleet: FakeFleetManager, opts: { approved?: boolean } = {}
       clientsByUser.set(userId, client);
       return client;
     },
-    setHostingMode: async (id, mode) => {
+    convertClientToHosted: async (id) => {
       for (const client of clientsByUser.values()) {
-        if (client.id === id) (client as any).hosting_mode = mode;
+        if (client.id === id) (client as any).hosting_mode = "hosted";
       }
     },
     isUserApproved: async () => opts.approved ?? true,
@@ -96,6 +101,36 @@ function makeFakeDeps(fleet: FakeFleetManager, opts: { approved?: boolean } = {}
       notifications.push({ telegramUserId, text });
     },
   };
+}
+
+/**
+ * Reads `<runtimeDir>/state/device-identity.json` and verifies it's a REAL,
+ * genuinely loadable Ed25519 identity — not just "a file exists". Does the
+ * SAME thing aria-engine's own `loadDeviceIdentity()` (local-keystore.ts)
+ * does to load it (`createPrivateKey` from PKCS8 DER), then re-derives the
+ * public key from that reconstructed private key and confirms it round-trips
+ * to the SAME `publicKeyX` stored alongside it. That round-trip is what
+ * actually proves the file holds a real, internally-consistent keypair
+ * usable to sign a real `/api/engine/sync` request — a byte-for-byte format
+ * match against local-keystore.ts's real on-disk shape, not an assumption.
+ */
+function loadAndVerifyDeviceIdentityFile(runtimeDir: string, expectedPublicKeyX: string): void {
+  const filePath = path.join(runtimeDir, "state", "device-identity.json");
+  const stored = JSON.parse(readFileSync(filePath, "utf8")) as { publicKeyX?: string; privateKeyPkcs8Base64?: string };
+  check(`[${filePath}] identity file has publicKeyX`, typeof stored.publicKeyX === "string" && stored.publicKeyX.length > 0);
+  check(`[${filePath}] identity file has privateKeyPkcs8Base64`, typeof stored.privateKeyPkcs8Base64 === "string" && stored.privateKeyPkcs8Base64.length > 0);
+  check(`[${filePath}] stored publicKeyX matches the DB's device_public_key`, stored.publicKeyX === expectedPublicKeyX);
+
+  const privateKey = createPrivateKey({
+    key: Buffer.from(stored.privateKeyPkcs8Base64 ?? "", "base64"),
+    format: "der",
+    type: "pkcs8",
+  });
+  const derivedPublicKeyX = (createPublicKey(privateKey).export({ format: "jwk" }) as { x: string }).x;
+  check(
+    `[${filePath}] the private key genuinely loaded from the file re-derives the SAME public key stored alongside it`,
+    derivedPublicKeyX === stored.publicKeyX,
+  );
 }
 
 async function main() {
@@ -274,6 +309,85 @@ async function main() {
     const stopResultForA = await stopHostedEngine(deps, 800); // already stopped — safe no-op-ish path
     check("re-stopping A's own (already-stopped) engine doesn't touch B", stopResultForA.ok === true || stopResultForA.ok === false);
     check("B is still running after A's repeat stop call", (await getHostedStatus(deps, 900))?.status === "running");
+  }
+
+  // ── Task 4 REVIEW FIX: a REAL device identity is genuinely provisioned on
+  // disk for BOTH the brand-new-client path and the existing-local-client-
+  // converted-to-hosted path, and each is byte-for-byte loadable/usable the
+  // same way aria-engine's own loadOrCreateDeviceIdentity()
+  // (local-keystore.ts) would load it — not just "a file exists". This is
+  // the coverage for the real P0 the reviewer found in commit a0c5ff5:
+  // `startHostedEngine`'s `else if (client.hosting_mode !== "hosted")`
+  // branch used to flip only a DB flag, never touching the tenant's runtime
+  // directory — see hosted-commands.ts's `convertClientToHosted` docblock
+  // and the ledger's Task 4 Log entry for the full writeup.
+  {
+    const tmpRoot = mkdtempSync(path.join(tmpdir(), "aria-hosted-identity-test-"));
+    try {
+      const tenantDir = (clientId: string) => path.join(tmpRoot, clientId, ".aria");
+
+      // ── brand-new client (never paired locally) ──
+      {
+        const fleet = new FakeFleetManager();
+        const deps = makeFakeDeps(fleet);
+        let newClientId = "";
+        deps.registerHostedClient = async (userId) => {
+          const identity = generateHostedDeviceIdentity();
+          const client: EngineClientLike & { device_public_key?: string } = { id: deps.nextId(), hosting_mode: "hosted" };
+          newClientId = client.id;
+          client.device_public_key = identity.publicKeyX;
+          deps.clientsByUser.set(userId, client);
+          writeHostedDeviceIdentityToDisk(tenantDir(client.id), identity);
+          return client;
+        };
+
+        const result = await startHostedEngine(deps, 9500);
+        check("[real identity] new-client start succeeds", result.ok === true);
+        const client = deps.clientsByUser.get(9500) as (EngineClientLike & { device_public_key?: string }) | undefined;
+        check("[real identity] a device_public_key was recorded for the new row", typeof client?.device_public_key === "string" && client.device_public_key.length > 0);
+        loadAndVerifyDeviceIdentityFile(tenantDir(newClientId), client!.device_public_key!);
+      }
+
+      // ── existing LOCAL client converted to hosted (the review-fix path) ──
+      {
+        const fleet = new FakeFleetManager();
+        const deps = makeFakeDeps(fleet);
+        const existingClientId = "existing-local-client-rotate";
+        const originalPublicKey = "original-local-device-public-key-x-never-known-server-side";
+        const client: EngineClientLike & { device_public_key: string } = {
+          id: existingClientId,
+          hosting_mode: "local",
+          device_public_key: originalPublicKey,
+        };
+        deps.clientsByUser.set(9600, client);
+
+        // Real convertClientToHosted, wired the same way bot.ts's real
+        // implementation is: real keygen + real disk write + an update to
+        // this row's device_public_key (here, an in-memory fake standing in
+        // for the real Postgres UPDATE `rotateClientDeviceIdentity` issues).
+        deps.convertClientToHosted = async (clientId) => {
+          const identity = generateHostedDeviceIdentity();
+          const c = deps.clientsByUser.get(9600) as EngineClientLike & { device_public_key: string };
+          c.hosting_mode = "hosted";
+          c.device_public_key = identity.publicKeyX;
+          writeHostedDeviceIdentityToDisk(tenantDir(clientId), identity);
+        };
+
+        const result = await startHostedEngine(deps, 9600);
+        check("[real identity] converting an existing local client succeeds", result.ok === true);
+        if (result.ok) check("[real identity] created=false — the existing row is reused, not recreated", result.created === false);
+        check("[real identity] spawnTenant was called with the EXISTING client id", fleet.spawnCalls.includes(existingClientId));
+        check("[real identity] hosting_mode flipped to hosted", client.hosting_mode === "hosted");
+        check(
+          "[real identity] device_public_key was ROTATED away from the original local device's key (a real rotation happened, not a no-op)",
+          client.device_public_key !== originalPublicKey,
+        );
+
+        loadAndVerifyDeviceIdentityFile(tenantDir(existingClientId), client.device_public_key);
+      }
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    }
   }
 
   console.log(`\n${failures === 0 ? "✅ ALL PASSED" : `❌ ${failures} FAILED`}`);

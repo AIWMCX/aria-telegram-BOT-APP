@@ -20,7 +20,33 @@ export interface HostedCommandsDeps {
   getLatestActiveClientForUser: (userId: number) => Promise<EngineClientLike | undefined>;
   /** Creates a brand-new hosted-only engine_clients row (device identity + DB insert) — see hosted-device-identity.ts for why a REAL keypair is generated, not a placeholder string. */
   registerHostedClient: (userId: number) => Promise<EngineClientLike>;
-  setHostingMode: (id: string, mode: "hosted") => Promise<void>;
+  /**
+   * Converts an EXISTING client row (one originally paired via the LOCAL
+   * `aria pair <code>` flow) to `hosting_mode: "hosted"`.
+   *
+   * Task 4 REVIEW FIX (2026-09-18): this used to be a bare `setHostingMode`
+   * DB-flag flip with no disk write — see the P0 this replaced, documented
+   * in full on `rotateClientDeviceIdentity` (engine-clients.ts) and in the
+   * ledger's Task 4 Log entry. A row paired locally has a
+   * `device_public_key` whose private half never left the user's machine;
+   * spawning a hosted tenant for that row into a fresh, empty per-tenant
+   * runtime directory would make the real `aria-engine` CLI silently
+   * generate an unrelated keypair there, permanently breaking that
+   * tenant's `/api/engine/sync` signature verification with no visible
+   * error. The real implementation (bot.ts) must, for the SAME client:
+   *   1. generate a fresh Ed25519 keypair via `generateHostedDeviceIdentity()`
+   *      (the same helper `registerHostedClient` uses for a brand-new row —
+   *      reused, not duplicated);
+   *   2. write it to that tenant's runtime directory (same helper/path
+   *      `registerHostedClient` uses);
+   *   3. update THIS row's `device_public_key` to match (via
+   *      `rotateClientDeviceIdentity`) and flip `hosting_mode` to `"hosted"`.
+   * This is a deliberate one-way identity rotation for that client_id, not a
+   * dual-identity arrangement — see the ledger for why rotating the existing
+   * row in place (rather than creating a second row) is the correct model
+   * for this product.
+   */
+  convertClientToHosted: (clientId: string) => Promise<void>;
   isUserApproved: (userId: number) => Promise<boolean>;
   /**
    * Sends one DM to the given Telegram user id. `bot.ts`'s implementation
@@ -63,7 +89,7 @@ export async function startHostedEngine(deps: HostedCommandsDeps, userId: number
       client = await deps.registerHostedClient(userId);
       created = true;
     } else if (client.hosting_mode !== "hosted") {
-      await deps.setHostingMode(client.id, "hosted");
+      await deps.convertClientToHosted(client.id);
     }
     const handle = await deps.fleetManager.spawnTenant(client.id);
     return { ok: true, created, handle };

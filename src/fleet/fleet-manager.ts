@@ -182,7 +182,18 @@ export class FleetManager {
     return n;
   }
 
-  private runtimeDirFor(clientId: string): string {
+  /**
+   * `<tenantsRoot>/<clientId>/.aria` — the ONE place this path is computed.
+   * Public (not just used internally by `launch`/`stopTenant`) so
+   * `fleet/instance.ts`'s `tenantRuntimeDir()` helper can delegate here
+   * instead of independently recomputing the same join — Task 4 review
+   * finding: those two computations used to live in two separate files with
+   * no shared source, which could silently drift apart on a future change
+   * to either. There is exactly one FleetManager instance per process
+   * (`fleet/instance.ts`), so this is safe to call from outside before a
+   * tenant is ever spawned (e.g. to pre-seed a device identity file).
+   */
+  runtimeDirFor(clientId: string): string {
     return path.join(this.opts.tenantsRoot, clientId, ".aria");
   }
 
