@@ -15,6 +15,22 @@ COPY public ./public
 COPY scripts ./scripts
 COPY migrations ./migrations
 
+# Build/release identity (2026-09-19 release-integrity charter — see
+# src/release.ts). RAILWAY_GIT_COMMIT_SHA/RAILWAY_GIT_BRANCH are Railway's
+# own automatically-supplied git metadata, but for a Dockerfile build
+# they only reach the build as ARGs — an unnamed ARG is silently empty,
+# it never fails the build, so this is safe on any other host (plain
+# `docker build`, a future non-Railway target) too. Promoting to ENV
+# makes them readable by src/release.ts via process.env at runtime; the
+# .build-sha/.build-time files are a second, independent source so the
+# value survives even if Railway ever stops populating those ARGs.
+ARG RAILWAY_GIT_COMMIT_SHA
+ARG RAILWAY_GIT_BRANCH
+ENV APP_COMMIT_SHA=$RAILWAY_GIT_COMMIT_SHA
+ENV APP_GIT_BRANCH=$RAILWAY_GIT_BRANCH
+RUN echo -n "$RAILWAY_GIT_COMMIT_SHA" > .build-sha
+RUN date -u +"%Y-%m-%dT%H:%M:%SZ" > .build-time
+
 RUN mkdir -p /data
 ENV DB_PATH=/data/aria.db
 ENV NODE_ENV=production

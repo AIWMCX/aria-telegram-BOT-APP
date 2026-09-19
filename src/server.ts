@@ -25,6 +25,7 @@ import { getPendingCommands, ackCommand } from "./engine-commands.js";
 import { isUserApproved, markInvitePaired } from "./invites.js";
 import { trackEvent } from "./funnel.js";
 import { submitFeedback } from "./feedback.js";
+import { releaseInfo } from "./release.js";
 
 export const app = new Hono();
 
@@ -67,8 +68,25 @@ const CheckoutBody = z.object({
   website: z.string().max(200).optional(), // honeypot
 });
 
+/**
+ * `release` added per the 2026-09-19 release-integrity charter: a Railway
+ * deployment marked SUCCESS is not sufficient proof of currency on its own
+ * — this is the "running application's reported build SHA" a smoke test or
+ * a human compares against `git rev-parse origin/main` and the Railway
+ * deployment's source commit. `engineSha` is honestly `null` — see
+ * src/release.ts's docblock and docs/ARIA_PRODUCTION_RELEASE_MANIFEST.md
+ * for why no real value exists yet. Nothing under `release` is a secret:
+ * a commit SHA, a build timestamp, and a branch name are already public
+ * in the GitHub repo this deploys from.
+ */
 app.get("/healthz", (c) =>
-  c.json({ ok: true, uptime: process.uptime(), leads: totalLeads(), paymentsEnabled: PAYMENTS_ENABLED }),
+  c.json({
+    ok: true,
+    uptime: process.uptime(),
+    leads: totalLeads(),
+    paymentsEnabled: PAYMENTS_ENABLED,
+    release: releaseInfo(),
+  }),
 );
 
 /**
