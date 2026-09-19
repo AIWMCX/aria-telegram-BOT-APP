@@ -15,6 +15,7 @@ import { listRecentFeedback } from "./feedback.js";
 import { registerClient, getLatestActiveClientForUser, setHostingMode, rotateClientDeviceIdentityAndSetHosted, type EngineClient } from "./engine-clients.js";
 import { fleetManager, tenantRuntimeDir } from "./fleet/instance.js";
 import { generateHostedDeviceIdentity, writeHostedDeviceIdentityToDisk } from "./fleet/hosted-device-identity.js";
+import { seedHostedPairingState } from "./fleet/hosted-pairing-seed.js";
 import { handlePaperStart, handlePaperStop, handlePaperStatus, formatHostedStatusMessage, type HostedCommandsDeps } from "./fleet/hosted-commands.js";
 import type { Lead } from "./leads.js";
 import type { IssuedLicense } from "./licenses.js";
@@ -271,7 +272,7 @@ async function registerHostedClient(userId: number): Promise<EngineClient> {
     deviceName: "Hosted PAPER (ARIA-managed)",
     platform: "hosted",
   });
-  // Disk write BEFORE the hosting_mode commit — see the Task 4 SECOND REVIEW
+  // Disk writes BEFORE the hosting_mode commit — see the Task 4 SECOND REVIEW
   // FIX (2026-09-18) docblock on convertClientToHosted below for the full
   // crash-safety reasoning (the `registerClient` INSERT above is the
   // exception among the two flows here: `hosting_mode` defaults to 'local'
@@ -283,7 +284,16 @@ async function registerHostedClient(userId: number): Promise<EngineClient> {
   // match — but its `else if (client.hosting_mode !== "hosted")` branch
   // DOES, so a retry runs `convertClientToHosted` on this same row, not a
   // second `registerHostedClient` — self-healing, not a duplicate row).
-  writeHostedDeviceIdentityToDisk(tenantRuntimeDir(client.id), identity);
+  //
+  // P0 fix (2026-09-19, see hosted-pairing-seed.ts's docblock for the full
+  // writeup): device identity alone is not enough for the real `aria-engine`
+  // CLI's `cmdPaperStart` to run — it also hard-requires a real
+  // `pairing-state.json` (gate #1) carrying a real, verifiable ARIAE1
+  // entitlement token (gate #2). Seeded here, same runtime dir, same
+  // before-DB-commit ordering as the device identity write directly above.
+  const runtimeDir = tenantRuntimeDir(client.id);
+  writeHostedDeviceIdentityToDisk(runtimeDir, identity);
+  seedHostedPairingState(runtimeDir, client.id);
   await setHostingMode(client.id, "hosted");
   return { ...client, hosting_mode: "hosted" };
 }
@@ -381,13 +391,26 @@ async function registerHostedClient(userId: number): Promise<EngineClient> {
  */
 async function convertClientToHosted(clientId: string): Promise<void> {
   const identity = generateHostedDeviceIdentity();
-  // Disk write first: the durable DB commit below only ever runs once the
-  // identity genuinely exists on disk where spawnTenant() will look for it.
-  // The DB side is ONE atomic UPDATE (rotateClientDeviceIdentityAndSetHosted)
-  // rather than two sequential calls — see that function's docblock
-  // (engine-clients.ts) for why a single statement is required for the
-  // self-healing property to hold with no intermediate inconsistent state.
-  writeHostedDeviceIdentityToDisk(tenantRuntimeDir(clientId), identity);
+  // Disk writes first: the durable DB commit below only ever runs once the
+  // identity AND pairing state genuinely exist on disk where spawnTenant()
+  // (and, inside the spawned process, aria-engine's own cmdPaperStart) will
+  // look for them. The DB side is ONE atomic UPDATE
+  // (rotateClientDeviceIdentityAndSetHosted) rather than two sequential
+  // calls — see that function's docblock (engine-clients.ts) for why a
+  // single statement is required for the self-healing property to hold
+  // with no intermediate inconsistent state.
+  //
+  // P0 fix (2026-09-19, see hosted-pairing-seed.ts's docblock): a client row
+  // converted from local to hosted needs a fresh pairing-state.json + real
+  // entitlement token seeded here for exactly the same reason
+  // registerHostedClient does above — this row's PREVIOUS local pairing
+  // state (if the user ever ran `aria pair <CODE>` locally) lives only on
+  // their own machine, never on this server, so there is nothing to reuse;
+  // a brand-new hosted-scoped pairing state is minted instead, same as a
+  // brand-new hosted-only client gets.
+  const runtimeDir = tenantRuntimeDir(clientId);
+  writeHostedDeviceIdentityToDisk(runtimeDir, identity);
+  seedHostedPairingState(runtimeDir, clientId);
   await rotateClientDeviceIdentityAndSetHosted(clientId, identity.publicKeyX);
 }
 
