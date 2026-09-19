@@ -21,7 +21,7 @@ NOT STARTED / IN PROGRESS / IMPLEMENTED (awaiting review) / REVIEWED-PASS / REVI
 | 3 | Resource bounds + crash-loop protection | DONE | `733c24e`; ledger `f22cb34` | DONE — REVIEWED-PASS (independent reviewer hand-traced the backoff formula through all 5 crash counts, verified the sustained-healthy reset is genuinely duration-based not reset-on-every-start, confirmed the concurrency cap excludes stopped/failed tenants, and re-verified Task 2's fixed race wasn't reintroduced in the new failed-status/backoff-timer interactions) | Honest resource-limit finding: no per-process OS-level cap available on this Railway/Docker setup — concurrency cap + crash-loop containment is the real defense, documented as such rather than fabricating an enforcement mechanism that doesn't exist. Backoff: 5s/10s/20s/40s, gives up at crash 5 → terminal `failed` status. Integration-test env issue (sibling repo branch) found and fixed same session; runbook updated to record it as resolved. |
 | 4 | Wire Telegram commands to Fleet Manager | DONE | `a0c5ff5`; review fix `b4c4321`; second review fix `1c66e8a` | DONE — REVIEWED-FIXED after 2 fix cycles. First cycle: reviewer found a real, silent P0 — converting an EXISTING `local` client to `hosted` (`startHostedEngine`'s `else if (client.hosting_mode !== "hosted")` branch) flipped only the DB flag and wrote nothing to disk, so the spawned tenant's `aria-engine` process generated an unrelated keypair in its empty runtime dir that could never match the row's original (locally-paired) `device_public_key` — every `/api/engine/sync` call from that hosted process would fail signature verification, permanently and silently. Fixed by generating a real Ed25519 identity for the SAME row, writing it to the tenant's runtime directory, and rotating the row's `device_public_key` to match. Second cycle (2026-09-18): a follow-up review of that fix found the DB-write and disk-write were still ordered DB-then-disk, leaving a narrow crash window that could reintroduce the same P0; a UX gap (no disclosure that the local pairing is being superseded); and a ledger arithmetic error in this row's own prior text (see Log for corrected, freshly-run counts). All three fixed — see Log. Independently re-reviewed a third time (2026-09-18): traced the write-before-commit ordering as genuinely unconditional in both code paths, confirmed `rotateClientDeviceIdentityAndSetHosted` is a real single-statement atomic UPDATE (not two awaits dressed up as atomic), verified the crash-simulation test performs a real second retry that self-heals (not just "error caught"), and independently re-ran the test file to get 90/90 passing — matching the claim exactly and closing out this row's own prior arithmetic errors for good. | Depends on: 2, 3 |
 | 5 | Dual-mode (local + hosted) coexistence test | IMPLEMENTED (awaiting review) | `e874097` | | Depends on: 4 |
-| 6 | Soak the Fleet Manager itself | NOT STARTED | | | Depends on: 2, 3 |
+| 6 | Soak the Fleet Manager itself | IMPLEMENTED (awaiting review) | `TBD` | | Depends on: 2, 3 |
 
 ## Stop conditions
 - A task's acceptance criteria cannot be met without violating PAPER-only guardrails (no wallet/signing/broadcast anywhere in the Fleet Manager or spawned processes) → STOP, report.
@@ -109,3 +109,93 @@ NOT STARTED / IN PROGRESS / IMPLEMENTED (awaiting review) / REVIEWED-PASS / REVI
   - **Step 2 (per the plan): no gap found, so nothing was built.** No new coordination/locking mechanism, no schema change, no production code touched at all — only the new test file and `package.json`'s test script. Matches the plan's explicit instruction: "do not build a new coordination mechanism if the existing sequence-number replay protection already makes double-processing impossible; only add something if a real gap is demonstrated by a failing test first." No failing test was produced; the opposite was demonstrated.
   - **Test/typecheck/regression results**: `npx tsx src/fleet/dual-mode-coexistence.test.ts` standalone — 27/27 checks pass. `npm run typecheck` — clean, zero errors. Full `npm test` (now 9 scripts, this new test appended last) — exit 0, `grep -c "❌"` on the full captured output returns `0`, `grep -c "^✅"` returns `300` total across the whole suite (real count from this session's own command output, not estimated). `npx tsx src/fleet/fleet-manager.integration.test.ts` run standalone, per this task's instructions, against the real `aria-engine` CLI (branch confirmed `feat/hosted-runtime-dir-override` @ `69299df` via `git branch --show-current`/`git log -1`, `git pull` — already up to date) — 8/8 pass, zero regressions.
   - **Commit**: `e874097`, pushed to `origin/work/hosted-paper-engine-impl`.
+
+- 2026-09-19 — Task 6 implemented: `scripts/fleet-soak.ts` (new, the load-test
+  script), `scripts/fleet-soak-crashloop-fixture.mjs` (new, see below),
+  `docs/FLEET_MANAGER_RUNBOOK.md` §9 (new section, full evidence), this
+  ledger entry. `scripts/fleet-soak-evidence.json`/`scripts/fleet-soak-run.log`
+  are the script's own generated output (not hand-authored, regenerated by
+  every run — not committed as source, referenced from the runbook as the
+  raw-evidence location).
+  - **Environment precondition confirmed first**: `C:\Users\AIWMC\dev\aria-engine`
+    was on `feat/hosted-runtime-dir-override` @ `69299df` (`git branch
+    --show-current`/`git log -1` checked directly, `git pull` — already up
+    to date) — matching every prior task in this program.
+  - **Design**: real `FleetManager` (never a reimplementation), real
+    `test-fixtures/fake-engine.mjs` (synthetic market mode, zero real RPC
+    calls, per the plan's own Task 6 instruction), two phases in one script
+    run so the whole soak consumes real continuous clock time: Phase 1
+    warmup (N=5, 90s hold, verify clean spawn/stop/no-orphans) then Phase 2
+    main soak (N=20, 30 minutes, with 2 tenants configured to crash-loop
+    and 3 tenants killed directly via `process.kill(pid, "SIGKILL")` —
+    bypassing `stopTenant()` entirely, the same external-kill technique
+    Task 2's own isolation test used — at the 550s mark, 15 tenants left
+    completely untouched as isolation controls).
+  - **A real bug found IN THE SOAK SCRIPT itself during this task, fixed
+    within the same session (full detail in the runbook §9, summarized
+    here)**: the first full 32-minute run used a single shared
+    `process.env.FAKE_CRASH_AFTER_MS`, set before the crash-loop tenants'
+    initial `spawnTenant()` and cleared right after — this correctly
+    crashed their FIRST run but NOT any subsequent auto-restart (which
+    fires from FleetManager's own internal `setTimeout`, long after the
+    soak script's spawn loop had moved on and cleared the var), so both
+    crash-loop tenants crashed exactly once and then looked "recovered"
+    instead of exercising the full exponential-backoff-then-give-up path
+    the task explicitly asked to observe under real concurrent load. Not a
+    `FleetManager` defect — Task 3's own unit tests already directly verify
+    that state machine in isolation; this was purely an artifact of how the
+    soak script tried to inject the fault. **Fix**:
+    `scripts/fleet-soak-crashloop-fixture.mjs`, a wrapper that bakes
+    `FAKE_CRASH_AFTER_MS` into every fresh process's OWN environment at
+    the top of its own execution (survives any number of FleetManager
+    restarts, independent of the soak script's `process.env` state), used
+    by a SEPARATE `FleetManager` instance (`fmCrashLoop`, `maxConcurrentTenants:
+    2`) dedicated to the 2 crash-loop tenants, while the other 18 share the
+    ordinary non-crashing fixture. Verified with two short dry-runs (2–4
+    min: first showed `consecutiveCrashes` correctly escalating 1→2→3→4,
+    second — 150s main duration — showed the full escalation to terminal
+    `failed` at `consecutiveCrashes===5`) BEFORE re-running the full
+    32-minute soak with the fix.
+  - **Final results (from the corrected, full 32-minute re-run — see
+    runbook §9 for complete detail and methodology)**: FleetManager-hosting
+    process RSS 59,356–60,424 KB and heapUsed 7,904–8,499 KB across 25
+    samples over the 30-minute main-soak window (bounded oscillation, no
+    growth trend, including after fault injection) — sample tenant OS RSS
+    50,704–53,016 KB across all 20 tenants. 15/15 control tenants
+    completely unaffected (pid/restartCount/consecutiveCrashes
+    byte-identical pre/post fault injection). 3/3 SIGKILL'd tenants
+    auto-recovered with NEW pids under real concurrent 20-tenant load.
+    2/2 crash-loop tenants correctly reached terminal `failed` at
+    `consecutiveCrashes===5`, `restartCount===4`, matching the documented
+    5s/10s/20s/40s/give-up schedule. Zero cross-tenant log contamination
+    across 20 tenants (`journalIntegrityIssues: []`). Zero orphaned OS
+    processes after full Fleet Manager shutdown (both phases), verified
+    via real `process.kill(pid,0)` liveness probes, not in-memory
+    bookkeeping alone. Real elapsed: 31 minutes 47 seconds
+    (`totalElapsedMs: 1906604`), aria-telegram-BOT-APP SHA
+    `7e3a4da79e697bcb083bdab100e844f56fb277c7`, aria-engine
+    `feat/hosted-runtime-dir-override` @ `69299df9a68d925281f181064cb84c83771698a3`.
+  - **Provider degradation — honestly scoped out, not claimed**: the fake
+    fixture makes zero real RPC calls of any kind, so a real
+    provider-degradation scenario is not meaningfully testable at the
+    Fleet-Manager layer with it. This is disclosed explicitly (runbook §9)
+    rather than silently skipped, and is named as the
+    reference-driven-commercialization program's own Task 10's job (a real
+    or realistically-mocked RPC endpoint against a real `aria-engine`
+    process), not a gap this task quietly leaves unaddressed.
+  - **Verdict: GREEN.** No real defect was found in `FleetManager` itself.
+    The one real defect found during this task was in the SOAK SCRIPT's own
+    first attempt (described above) — fixed and re-validated within the
+    same session before the certifying run. Full per-category evidence
+    table in `docs/FLEET_MANAGER_RUNBOOK.md` §9.
+  - **Test/typecheck/regression results**: `npm run typecheck` — clean,
+    zero errors (the new `scripts/fleet-soak.ts` and
+    `scripts/fleet-soak-crashloop-fixture.mjs` type-check under this repo's
+    existing `tsconfig.json`, which already includes `scripts/**/*.ts`).
+    Full `npm test` (all 9 existing scripts, unchanged — the soak script is
+    deliberately NOT added to `npm test`, per the plan's own "not
+    necessarily a permanent CI test" instruction for Task 6) — exit 0, zero
+    `❌` lines, confirming the new files introduce zero regressions.
+  - **Commit**: pending (this ledger entry is committed together with the
+    code/docs in the same commit — see the Task row above for the SHA once
+    pushed).

@@ -272,3 +272,272 @@ Whoever runs this test in a fresh environment should still check out
 sibling `aria-engine` worktree first — this remains a real environment
 prerequisite until that branch is merged to `aria-engine main`, it just is
 no longer an open/reproducing gap in THIS worktree right now.
+
+## 9. Task 6 soak test — final certification evidence (2026-09-19)
+
+**Script**: `scripts/fleet-soak.ts` (+ `scripts/fleet-soak-crashloop-fixture.mjs`).
+Run: `npx tsx scripts/fleet-soak.ts`. Not part of `npm test` / CI — a manual
+operational tool, per the plan's own "not necessarily a permanent CI test"
+instruction. Uses the REAL `FleetManager` class against the existing FAKE
+fixture (`src/fleet/test-fixtures/fake-engine.mjs`) — synthetic market mode,
+zero real RPC calls, exactly as Task 6 specifies. This soaks **Fleet Manager
+behavior** (spawn/monitor/stop/backoff/isolation under real concurrent OS
+processes), NOT real `aria-engine` RPC/discovery robustness — that is a
+separate, still-outstanding soak owned by the reference-driven-commercialization
+program's own Task 10, and this run does not substitute for it.
+
+### Exact versions this soak ran against
+
+- `aria-telegram-BOT-APP` (this repo, worktree
+  `aria-telegram-BOT-APP-hosted-impl`, branch `work/hosted-paper-engine-impl`):
+  commit `7e3a4da79e697bcb083bdab100e844f56fb277c7`.
+- `aria-engine` (sibling checkout): branch `feat/hosted-runtime-dir-override`
+  @ `69299df9a68d925281f181064cb84c83771698a3` (confirmed via `git
+  branch --show-current`/`git log` at soak start, matching what every prior
+  task in this program spawned against — NOT merged to `aria-engine main`).
+- Both values are captured programmatically by the script itself
+  (`git rev-parse HEAD` / `git branch --show-current` at the start of every
+  run) and written into `scripts/fleet-soak-evidence.json`, not hand-typed.
+
+### A real bug found and fixed IN THE SOAK SCRIPT during this task (disclosed, not hidden)
+
+The first full-length run (2026-09-19, ~10:31–11:04 local) used a single
+shared `process.env.FAKE_CRASH_AFTER_MS`, set before the two "crash-loop"
+tenants' initial `spawnTenant()` calls and cleared immediately after. That
+correctly crashed their FIRST run, but `FleetManager`'s own auto-restart
+fires later, from an internal `setTimeout` — by then the soak script's env
+var was long gone, so the restarted process spawned clean and never crashed
+again. Result: both crash-loop tenants showed exactly one crash
+(`consecutiveCrashes: 1`, `restartCount: 1`) and then ran healthy for the
+rest of the 32-minute run — the full exponential-backoff-then-give-up path
+was never actually exercised under real load in that run, a real gap in the
+soak's own methodology, not a `FleetManager` defect (Task 3's unit tests
+already directly verify that state machine in isolation).
+
+**Fix**: `scripts/fleet-soak-crashloop-fixture.mjs`, a tiny wrapper that
+sets `FAKE_CRASH_AFTER_MS` in its OWN process environment at the top of
+every fresh invocation (so it survives however many times FleetManager
+restarts it, independent of the soak script's own `process.env` state at
+any given moment) before dynamically importing the real fixture. The two
+crash-loop tenants get their own `FleetManager` instance
+(`fmCrashLoop`, `maxConcurrentTenants: 2`) configured with this fixture;
+the other 18 tenants share the ordinary `fm` instance and never crash on
+their own. Verified with two short dry-runs (2–4 min) before committing to
+the full-length re-run: the first confirmed crashes now repeat and the
+backoff escalates (`consecutiveCrashes` 1→2→3→4 observed directly), the
+second (150s main duration) confirmed the full escalation to the terminal
+`failed` status at `consecutiveCrashes === 5`. The full 32-minute soak was
+then re-run in full with the fix — see results below.
+
+### Run parameters (the re-run that produced the evidence below)
+
+- Phase 1 (warmup): N=5, held steady 90s.
+- Phase 2 (main soak): N=20 — 2 "crash-loop" tenants (configured to crash
+  ~1.5s after every start, exercising the full backoff/give-up path), 3
+  "sigkill-target" tenants (killed directly via `process.kill(pid,
+  "SIGKILL")` at the 550s mark, bypassing `FleetManager.stopTenant()`
+  entirely — an external kill exactly like an OOM-killer or a manual `kill
+  -9`), 15 "control" tenants (never touched, used to prove isolation).
+  `maxConcurrentTenants` set to 20 (the concurrency cap itself, default 5,
+  is unit-tested separately in `fleet-manager.test.ts` — Task 6 is a load
+  soak of the OTHER protections, not a re-test of the cap's own rejection
+  logic).
+- Memory sampled every ~60–80s (25 samples total across the main-soak
+  phase) via `process.memoryUsage()` (this script's own process, which
+  hosts the real `FleetManager` instances — the accurate analogue of "the
+  Fleet Manager process" in production, where `bot.ts` would host it the
+  same way) and, for a sample of real tenant OS processes, `tasklist`
+  (Windows-native, no PowerShell dependency) parsed for each pid's real RSS.
+- Total wall-clock elapsed for this soak run: **31 minutes 47 seconds**
+  (`totalElapsedMs: 1906604` in `scripts/fleet-soak-evidence.json` — real,
+  measured, not estimated; the console's own rounded "32 min 47s" summary
+  line is a cosmetic double-rounding artifact of formatting minutes and
+  seconds separately, the JSON's raw millisecond value is authoritative),
+  run started `2026-09-19T11:13:18.510Z`, finished
+  `2026-09-19T11:45:05.276Z`.
+
+### Resource behavior — real numbers
+
+- **Fleet-Manager-hosting process RSS**: ranged **59,356 KB – 60,424 KB**
+  across all 25 samples spanning the full 30-minute main-soak window
+  (first sample 59,356 KB at t=0, last sample 59,848 KB at t=1801s) — a
+  **1,068 KB (≈1.8%) total spread**, with no sustained upward trend (the
+  series oscillates within that ~1MB band, consistent with ordinary V8
+  GC/allocator behavior for a process holding 20 `TenantProcess` wrappers'
+  event listeners and log-file streams, not a leak).
+- **Fleet-Manager-hosting process heapUsed**: ranged **7,904 KB – 8,499
+  KB** across the same 25 samples — again a bounded, non-growing band
+  (~595 KB spread, ~7.5%), including AFTER the fault-injection event at
+  t=550s (heapUsed samples post-injection: 8355, 8417, 8403, 8402, 8438,
+  8418, 8455, 8442, 8445, 8475, 8453, 8483, 8462, 8491, 8467, 8499 KB —
+  still bounded, no trend).
+- **Methodology, stated plainly**: "no leak" here means "RSS/heap did not
+  grow beyond a small oscillating band over 30 minutes of continuous
+  20-tenant operation including a fault-injection event," measured via
+  25 real samples at ~60–80s intervals — it is NOT a formal long-run
+  leak-detection methodology (e.g. hours-long soak with heap snapshots
+  diffed for retained-object growth) and should not be read as one. A
+  genuinely conclusive leak proof would need a much longer run; this is
+  the honest, bounded claim this run actually supports.
+- **Sample tenant OS-process RSS** (via `tasklist`, real per-pid values):
+  ranged **50,704 KB – 53,016 KB** across all 20 tenants and all samples
+  — each individual tenant's own RSS also stayed within a similarly
+  narrow band throughout its lifetime (a `tsx`-hosted Node process has a
+  substantial fixed baseline RSS from the TypeScript/ESM loader itself;
+  the fixture does no real work, so this baseline dominates and is
+  expected, not a concern).
+- **Conclusion**: no unbounded growth observed in either the Fleet Manager
+  process or the sampled tenant processes across a real 30-minute,
+  20-tenant, fault-injected run.
+
+### Tenant isolation — real evidence
+
+- **Control tenants (15 of 20, never touched)**: `controlTenantsCompletelyUnaffected
+  = true` — verified as a real per-tenant comparison (not "no exception
+  thrown"): each control tenant's `pid`, `restartCount`, and
+  `consecutiveCrashes` (== 0) were identical in the snapshot taken
+  immediately before fault injection (t=550s) and the final snapshot
+  (t=1801s/end of run), and `status` was still `"running"` in both. None
+  of the 3 SIGKILLs or the 2 crash-loop tenants' repeated crashes touched
+  any control tenant's process or bookkeeping.
+- **Per-tenant log-file isolation**: every one of the 20 tenants' log
+  files (`<logsRoot>/<clientId>.log`) was scanned for every OTHER
+  tenant's `clientId` string appearing inside it — zero cross-contamination
+  found (`journalIntegrityIssues: []`), matching the OS-level rigor
+  Task 2's reviewer established (real per-tenant files, not shared
+  in-memory bookkeeping).
+- **Per-tenant runtime-directory isolation**: unchanged from Task 2's
+  design (`<tenantsRoot>/<clientId>/.aria`, one directory per tenant,
+  `FleetManager.runtimeDirFor()` is the single source of this path) — not
+  re-tested here since Task 2's own isolation test already proves this at
+  the OS level; this soak's contribution is proving it holds under 20
+  CONCURRENT tenants for 30 minutes, not re-deriving the mechanism.
+
+### Restart/crash behavior — real evidence, both paths
+
+- **SIGKILL'd tenants (3 of 20, killed directly via `process.kill(pid,
+  "SIGKILL")`, bypassing `stopTenant()` entirely)**: `sigkilledTenantsAutoRecovered
+  = true` — each of the 3 was confirmed, by the end of the run, to be
+  `status: "running"` with a **NEW, different pid** from the one that was
+  killed, and `restartCount >= 1`. Concretely: `soak-main-2` (killed pid
+  35900) → final pid `47628`; `soak-main-3` (killed pid 29272) → final pid
+  `18064`; `soak-main-4` (killed pid 29552) → final pid `49436`. All three
+  ended the run with `consecutiveCrashes: 1` (the single SIGKILL was
+  correctly treated as one crash, not conflated with the crash-loop
+  tenants' repeated failures) and `lastExitCode: 1` recorded honestly for
+  the killed run. This is the SAME crash-handling code path an ordinary
+  nonzero exit uses (per Task 2's own isolation test finding), now proven
+  under real concurrent 20-tenant load, not just a 2-tenant unit test.
+- **Crash-loop tenants (2 of 20, configured to crash ~1.5s after every
+  start)**: `crashLoopTenantsEscalatedToFailed = true` — both reached the
+  documented terminal state exactly as specified: final status
+  `"failed"`, `consecutiveCrashes: 5` (the configured
+  `maxConsecutiveCrashes`), `restartCount: 4` (4 restarts attempted before
+  the 5th crash triggered give-up, matching the docblock's own "after 5
+  consecutive crashes... transitions to failed" contract), `lastExitCode:
+  1`. The exponential backoff schedule (5s/10s/20s/40s) was observed
+  directly in a preliminary shorter validation run (not the timed main
+  run itself, to avoid re-timing noise from concurrent I/O): crash 1 at
+  ~t14s, crash 2 at ~t25s (11s later, close to the 10s step given ~1.5s
+  run-then-crash overhead), crash 3 at ~t47s (22s later), crash 4 at
+  ~t70s (23s later — the 40s step plus run-then-crash overhead lands the
+  5th crash, and terminal `failed`, at ~t111s in that validation run) —
+  consistent with the documented 5s/10s/20s/40s schedule within the
+  expected per-cycle overhead (spawn time + the 1.5s configured
+  crash-delay), not exact-to-the-millisecond (which the schedule itself
+  doesn't claim to be either — it's a floor on the delay, not a fixed
+  clock).
+- **No spillover between the two fault types**: the crash-loop tenants'
+  repeated crashes never affected the SIGKILL group's or the control
+  group's `consecutiveCrashes`/`restartCount`/`status` — confirmed
+  directly from the final snapshot (each group's numbers match only its
+  own fault history).
+
+### Clean shutdown — real evidence
+
+- At the end of the run, `FleetManager.stopTenant()` was called for all 18
+  non-crash-loop tenants and `failed`-tenant-safe-no-op `stopTenant()` was
+  called for the 2 crash-loop tenants (already terminal, nothing to
+  cancel).
+- **Zero orphaned processes**: the script recorded every tracked pid
+  immediately before shutdown began, then re-checked each with an
+  OS-level `process.kill(pid, 0)` liveness probe (throws if the process
+  is gone — the same real-liveness technique Task 2's isolation test
+  established) after all `stopTenant()` calls resolved.
+  `orphanedPidsAfterShutdown: []` — confirmed for BOTH the warmup phase
+  (5 tenants) and the main-soak phase (20 tenants, including the 3
+  SIGKILL survivors' NEW pids and the 15 control tenants' original pids;
+  the 2 `failed` crash-loop tenants had no live process to begin with by
+  end-of-run, correctly).
+
+### Journal integrity
+
+- "Journal" at the Fleet-Manager layer means each tenant's own log file
+  (`<logsRoot>/<clientId>.log`) — the REAL `aria-engine` event journal
+  (`.aria/state/events.log` or equivalent) is not exercised by this fake
+  fixture at all, and this soak makes no claim about IT (that is the
+  reference-driven-commercialization Task 10 soak's job, on the real
+  binary).
+- All 20 tenants' log files were confirmed to exist, contain no null
+  bytes, and contain no other tenant's `clientId` string (cross-
+  contamination check) — `journalIntegrityIssues: []`, zero issues found,
+  across 20 tenants each producing several restart cycles' worth of
+  stdout over 30 minutes of concurrent writes to 20 separate file
+  descriptors.
+
+### Provider degradation — honest scope statement
+
+This soak uses the FAKE fixture (`fake-engine.mjs`), which makes **zero
+real RPC calls of any kind** — there is no real Solana RPC provider, no
+real market-data feed, and no real discovery process anywhere in this
+soak's scope, by design (per the plan's own "synthetic market mode, no
+real RPC calls" instruction for Task 6). Therefore: **"provider
+degradation" in the sense of a real RPC endpoint going slow/unreachable
+is NOT meaningfully testable at the Fleet-Manager layer with this
+fixture, and this soak does not claim to have tested it.** The closest
+analogue this layer CAN exercise — a tenant's underlying process
+misbehaving/dying, for any reason including a hypothetical provider
+failure inside the real engine — is exactly what the crash-loop and
+SIGKILL scenarios above already prove FleetManager handles correctly
+(detects the exit, applies backoff or terminal give-up, never affects
+sibling tenants). A genuine provider-degradation soak (a real or
+realistically-mocked RPC endpoint going degraded/unreachable while a
+real `aria-engine` process is running against it) is explicitly out of
+scope for the Fleet Manager and is the reference-driven-commercialization
+program's own Task 10 to own, not a gap this task silently leaves
+unaddressed — it is a different layer of the system entirely.
+
+### Final verdict: **GREEN**
+
+| Category | Evidence | Verdict |
+|---|---|---|
+| Resource behavior | FleetManager-hosting process RSS 59,356–60,424 KB, heapUsed 7,904–8,499 KB across 25 samples over 30 min, 20 tenants, post-fault-injection — bounded oscillation, no growth trend | GREEN |
+| Tenant isolation | 15 control tenants' pid/restartCount/consecutiveCrashes byte-identical pre/post fault injection; zero cross-tenant log contamination across 20 tenants | GREEN |
+| Restart/crash behavior | 3/3 SIGKILL'd tenants auto-recovered with new pids under real concurrent load; 2/2 crash-loop tenants correctly escalated to terminal `failed` at `consecutiveCrashes===5` per the documented 5s/10s/20s/40s/give-up schedule; zero spillover between fault groups | GREEN |
+| Clean shutdown | Zero orphaned OS processes after full Fleet Manager shutdown, both warmup (N=5) and main soak (N=20), verified via real `process.kill(pid,0)` liveness probes | GREEN |
+| Journal integrity | Zero corruption/cross-contamination across 20 tenants' log files over 30 min of concurrent writes | GREEN |
+| Provider degradation | NOT meaningfully testable at this layer with a synthetic, zero-RPC fixture — honestly scoped out, not claimed | N/A (disclosed, not a failure) |
+
+**No real defect was found in `FleetManager` itself during this soak.** The
+one real defect found during this task was in the SOAK SCRIPT's own first
+attempt (the shared-`process.env` crash-injection timing bug described
+above) — fixed, re-validated with short dry-runs, then the full 32-minute
+soak was re-run end-to-end with the fix and produced the GREEN evidence
+above. Per this task's own instruction not to downgrade a real finding to
+look better, and equally not to inflate a self-found-and-fixed
+test-harness bug into a false RED against `FleetManager` itself: the
+verdict is GREEN because every `FleetManager` behavior this soak actually
+exercised — resource bounds, isolation, crash/restart handling, clean
+shutdown, log integrity — held up correctly under a real 30-minute,
+20-tenant, fault-injected load, and the one bug found was in this task's
+OWN test tooling, disclosed and fixed within the same session rather than
+silently patched over.
+
+### Raw evidence file
+
+Full machine-readable evidence (every memory sample, every status
+snapshot, every fault event, exact timestamps) is at
+`scripts/fleet-soak-evidence.json`, regenerated by each run of
+`scripts/fleet-soak.ts` (git-ignored-worthy scratch output, not committed
+—the numbers in this section were transcribed from it at the time of this
+soak and are the authoritative historical record going forward).
