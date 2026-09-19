@@ -47,7 +47,7 @@ PAPER-only or architecture documents.
    `reconciled_at` only in RECONCILED, and a REJECTED row must carry its code.
    These are the schema half of "SUBMITTED is never CONFIRMED".
 
-### Tests (212 new checks, all passing; `npm test` and `npm run typecheck` clean)
+### Tests (244 new checks — 212 pure/generated + 32 real-Postgres schema-contract, all passing; `npm test` (349 total checks) and `npm run typecheck` clean)
 
 | Suite | Checks | Covers |
 |---|---|---|
@@ -56,9 +56,79 @@ PAPER-only or architecture documents.
 | `test/live-firewall.ts` | 63 | One test per gate failing only that gate; UNCERTAIN=REJECT on 14 distinct unavailable inputs; evidence on approval; pass 2 a strict superset of pass 1; **every rejection's exact code read back out of the audit log**. Spec T13–T16, T18. |
 | `test/live-type-boundary.ts` | 6 | Compiles a fixture of 7 quoted/realized confusions and asserts TypeScript rejects each one **on its own line**. |
 | `test/live-migration-sql.ts` | 44 | Generates the migration's DDL via node-pg-migrate's own builder: every table, enum, CHECK, unique index; all money columns bigint; no key-material column name. |
-| `test/live-schema-contract.ts` | (skipped) | See the honest gap below. |
+| `test/live-schema-contract.ts` | 32 | **Now actually run against real Postgres — see below.** |
 
-### The honest gap: the migration has NOT been applied to any database
+### UPDATE 2026-09-19 (later same day): the concurrency proof has now actually run
+
+The gap described below is closed. Docker Desktop's engine was still not
+usable (GUI processes were up but `docker info`/`version`/`ps` all hung for
+60s+, and the `docker-desktop` WSL distro reported `Stopped`), and this org's
+Supabase account was at its 2-active-free-project cap (both occupied by
+unrelated projects — `sun-city-moving-dev` and the production `AIWMC QUANTIS`,
+neither touched). With explicit product-owner approval, PostgreSQL was
+obtained a third way: the official portable EnterpriseDB Windows binaries
+(zip, no installer) run as an ordinary user process — no Windows service, no
+admin rights used — `pg_ctl` bound only to `127.0.0.1` on a non-default port,
+data directory under a scratch path outside this repo.
+
+Exact steps run:
+
+1. Downloaded `postgresql-17.6-1-windows-x64-binaries.zip` from
+   `get.enterprisedb.com`, extracted to a scratch directory.
+2. `initdb` a fresh data directory, `pg_ctl start` listening on
+   `127.0.0.1:55432` only.
+3. `createdb aria_live_test` — the name contains `test`, satisfying the
+   guard regex `/test|dev|ephemeral|local/i` in `live-schema-contract.ts`.
+4. Confirmed this repo's `.env` has **no `DATABASE_URL` set at all**, so the
+   test's "must not equal the configured `DATABASE_URL`" refusal is trivially
+   satisfied and no production database was anywhere in scope.
+5. Ran the real migration tool against it:
+   `npx node-pg-migrate up --database-url-var LIVE_TEST_DATABASE_URL -m migrations`
+   — all 13 migrations, including `1758240000000_create-trading-accounts`,
+   applied with **zero errors**.
+6. Ran `LIVE_TEST_DATABASE_URL=postgres://postgres:***@127.0.0.1:55432/aria_live_test npx tsx test/live-schema-contract.ts`
+   for real (not skipped — the guard passed, the suite executed against a live
+   Postgres 17.6 instance).
+
+**Result: all 32 checks passed, zero failures.** In particular:
+
+- **T11 (the critical one): two genuinely simultaneous `createTradeIntent()`
+  calls with the same idempotency key** (fired via `Promise.all`, both
+  in-flight before either commits) **produced exactly one row** —
+  `SELECT count(*) FROM trade_intents WHERE idempotency_key = $1` returned
+  `1`. Both callers received the identical row id. Exactly one of the two
+  (`created: true`) was told it created the row; the other received the
+  existing row with no exception thrown. This is the DB-level UNIQUE
+  constraint on `trade_intents.idempotency_key` doing the work — proven
+  under real concurrency, not asserted by application logic.
+- T12: the partial unique index blocking a second non-terminal intent for
+  the same `(account, mint, side)` — confirmed blocked, then confirmed
+  freed once the first intent reached a terminal state.
+- All CHECK constraints (ARMED requires `armed_until`, arm window bounds,
+  founder-naming, risk-policy sanity bounds, terminal-state signed-bytes
+  cleanup, confirmed/reconciled state guards, REJECTED-requires-code,
+  BUY/SELL amount shape) — each independently confirmed REFUSED or ACCEPTED
+  by real Postgres, matching the schema's intent.
+- T47: no column across all 6 LIVE tables matches
+  `/secret|private|seed|mnemonic|keypair/i` (mechanically inspected, not
+  assumed — 50+ columns actually enumerated via `information_schema`).
+
+Then ran the **full suite with `LIVE_TEST_DATABASE_URL` set**:
+`npm test` — **349 checks passed, 0 failed, 0 skipped** (schema-contract's
+32 checks are counted in that total and are no longer the "(skipped)" line
+above). `npm run typecheck` — clean, zero errors.
+
+**The idempotency guarantee is now demonstrated, not just designed.**
+
+Cleanup / disposal note: the disposable Postgres instance lives entirely
+under this machine's temp scratch directory as a plain user process (not a
+registered Windows service), and no connection string, password, or
+credential was committed anywhere in this repo — `LIVE_TEST_DATABASE_URL`
+was only ever set as a shell environment variable for these commands. It can
+be stopped and the data directory deleted at any time with no effect on any
+other system.
+
+### Original honest-gap note, superseded by the above (kept for history)
 
 No Postgres was reachable in this environment. `DATABASE_URL` is **unset** in
 this checkout (`.env` contains no such line), so **no production database was
@@ -66,26 +136,18 @@ touched, contacted, or could have been** — but equally, nothing was applied
 anywhere. Docker Desktop's engine would not start (`com.docker.service` stopped,
 both WSL distros stopped) and WSL has no Postgres and no passwordless sudo.
 
-What that means precisely:
+What that meant at the time:
 
-- The migration is **well-formed**, proven by `test/live-migration-sql.ts`
+- The migration was **well-formed**, proven by `test/live-migration-sql.ts`
   generating its full DDL through node-pg-migrate's real builder.
-- The migration is **not proven to apply**. Nothing has executed
-  `CREATE TABLE`. Postgres-only failures — an enum ordering problem, a CHECK
-  referencing a column typo, an index predicate Postgres rejects — would not
-  have been caught.
-- `test/live-schema-contract.ts` exists and is wired into `npm test`, but
-  **skips** (exit 0, loudly) without `LIVE_TEST_DATABASE_URL`. It refuses to run
-  against anything equal to `DATABASE_URL` or whose database name does not
-  contain test/dev/local/ephemeral.
-- **The real concurrency proof is therefore not yet run.** The "two
-  simultaneous creations produce exactly one row" test is written and ready but
-  has never executed. Treat the idempotency guarantee as *designed and
-  unit-consistent*, not *demonstrated*.
+- The migration was **not proven to apply**. Postgres-only failures — an enum
+  ordering problem, a CHECK referencing a column typo, an index predicate
+  Postgres rejects — would not have been caught.
+- `test/live-schema-contract.ts` was wired into `npm test`, but **skipped**
+  (exit 0, loudly) without `LIVE_TEST_DATABASE_URL`.
+- **The real concurrency proof had not yet run.**
 
-**Next implementer's first action: point `LIVE_TEST_DATABASE_URL` at a
-disposable Postgres and run `npx tsx test/live-schema-contract.ts`. Do not
-treat Milestone 1 as complete until it is green.**
+This has now been resolved — see the update above.
 
 ### Explicitly NOT built in Milestone 1
 
