@@ -90,6 +90,25 @@ const Env = z.object({
   // used for the legacy product's client-side verifier.
   ARIA_ENTITLEMENT_PRIVATE_D: z.string().optional(),
   ARIA_ENTITLEMENT_PUBLIC_X: z.string().optional(),
+
+  // ── LIVE 0.1 runtime switches (see docs/SPEC-LIVE-VERTICAL-SLICE-0.1.md
+  // and src/live/live-limits.ts). ONLY the deployment switches live here;
+  // every LIVE limit, cap and timing constant is a product fact and lives
+  // in src/live/live-limits.ts so it is identical in every environment.
+  //
+  // LIVE_ENABLED is the GLOBAL half of the two-key kill switch — the other
+  // half is each trading_accounts row's own live_enabled column, and
+  // firewall gate F3 requires BOTH. Exact-string-match rather than
+  // z.coerce.boolean() for the same reason as every other flag above:
+  // Boolean("false") is true, so coercion would make this impossible to
+  // turn off. Defaults OFF; nothing about LIVE turns itself on.
+  LIVE_ENABLED: z.string().optional().transform((v) => v === "true"),
+
+  // Comma-separated Telegram user ids permitted to hold a LIVE trading
+  // account at all. Milestone 1 is founder-only: an empty value (the
+  // default) admits NOBODY, which is the correct fail-closed behaviour —
+  // an unset allowlist must never mean "everyone".
+  LIVE_FOUNDER_TELEGRAM_IDS: z.string().optional().default(""),
 });
 
 const parsed = Env.safeParse(process.env);
@@ -106,6 +125,28 @@ export const CONFIG = parsed.data;
 
 if (CONFIG.PUBLIC_URL.endsWith("/")) {
   (CONFIG as any).PUBLIC_URL = CONFIG.PUBLIC_URL.replace(/\/+$/, "");
+}
+
+/**
+ * The two deployment-level LIVE gates, resolved in one place so the
+ * firewall's context is populated from a single source rather than each
+ * caller re-parsing the env var.
+ *
+ * Fails closed by construction: a malformed or empty
+ * LIVE_FOUNDER_TELEGRAM_IDS yields an EMPTY set, and an empty allowlist
+ * admits nobody. There is deliberately no "if the list is empty, allow
+ * all" branch — that shape is how founder-only systems quietly become
+ * open ones.
+ */
+export function liveRuntimeGates(): { globalLiveEnabled: boolean; founderTelegramIds: ReadonlySet<number> } {
+  const ids = new Set<number>();
+  for (const part of CONFIG.LIVE_FOUNDER_TELEGRAM_IDS.split(",")) {
+    const trimmed = part.trim();
+    if (trimmed === "") continue;
+    const id = Number(trimmed);
+    if (Number.isSafeInteger(id) && id > 0) ids.add(id);
+  }
+  return { globalLiveEnabled: CONFIG.LIVE_ENABLED, founderTelegramIds: ids };
 }
 
 // Fail closed, not silently degrade: webhook mode without a secret would
