@@ -55,7 +55,18 @@ export class TenantProcess {
 
   constructor(opts: TenantProcessSpawnOptions) {
     this.clientId = opts.clientId;
-    mkdirSync(opts.logDir, { recursive: true });
+    // `mode: 0o700` (Linux/Railway review, Task 7): this call previously used
+    // the default, which on Linux yields 0o777 & ~umask = 0o755 — a
+    // world-readable directory. Every OTHER tenant-scoped directory in this
+    // system is deliberately 0o700 (hosted-device-identity.ts here,
+    // local-keystore.ts / pairing-state.ts / paths.ts in aria-engine), and a
+    // tenant's log file holds that tenant's engine output, so 0o755 was an
+    // inconsistency, not a decision. It was invisible during development
+    // because Windows does not enforce these bits; Linux does. `recursive:
+    // true` applies the mode to directories this call CREATES only — an
+    // already-existing logs root keeps its current permissions, so this does
+    // not silently re-permission anything on an existing volume.
+    mkdirSync(opts.logDir, { recursive: true, mode: 0o700 });
     this.logPath = path.join(opts.logDir, `${opts.clientId}.log`);
     this.logStream = createWriteStream(this.logPath, { flags: "a" });
 

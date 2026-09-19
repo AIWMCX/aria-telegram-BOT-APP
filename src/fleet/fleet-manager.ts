@@ -1,5 +1,6 @@
 import path from "node:path";
 import { TenantProcess } from "./tenant-process.js";
+import { EngineIdentityError, type EngineIdentity } from "./engine-identity.js";
 
 /**
  * Fleet Manager core — Task 2 of the hosted-PAPER-engine program. Spawns,
@@ -135,6 +136,26 @@ export interface FleetManagerOptions {
    * rely on instead).
    */
   maxConcurrentTenants?: number;
+  /**
+   * Spawn-time engine build-identity gate (Task 7). Called on EVERY
+   * `spawnTenant()` — not cached at construction — so an engine tree that
+   * disappears or is swapped underneath a long-running process is caught on
+   * the next spawn rather than trusted forever from a startup-time snapshot.
+   *
+   * Contract: if this returns `available: false`, the spawn is REJECTED with
+   * an `EngineIdentityError` and no OS process is created. Silently proceeding
+   * would mean spawning into a nonexistent directory (the pre-Task-7 hosted
+   * failure mode) or, worse, running an engine version the control plane did
+   * not ship and cannot vouch for.
+   *
+   * Left optional so the existing unit/integration/soak tests can keep
+   * injecting their fake-engine fixture with no packaged engine on disk. That
+   * escape hatch is NOT available in production: when this is undefined and
+   * `NODE_ENV === "production"`, `spawnTenant()` refuses outright rather than
+   * running ungated — a caller that forgets to wire the gate must not be able
+   * to ship a production fleet with no verification at all.
+   */
+  verifyEngineIdentity?: () => EngineIdentity;
 }
 
 interface TenantEntry {
@@ -157,7 +178,12 @@ const DEFAULT_MAX_CONCURRENT_TENANTS = 5;
 
 export class FleetManager {
   private readonly tenants = new Map<string, TenantEntry>();
-  private readonly opts: Required<FleetManagerOptions>;
+  // `verifyEngineIdentity` is deliberately kept genuinely optional rather than
+  // defaulted to a no-op: a no-op default would be indistinguishable from a
+  // real gate that always passes, and `spawnTenant()`'s production refusal
+  // below depends on being able to tell "not wired" from "wired and passing".
+  private readonly opts: Required<Omit<FleetManagerOptions, "verifyEngineIdentity">> &
+    Pick<FleetManagerOptions, "verifyEngineIdentity">;
 
   constructor(opts: FleetManagerOptions) {
     this.opts = {
@@ -198,6 +224,35 @@ export class FleetManager {
   }
 
   /**
+   * Fail-closed engine gate. Throws `EngineIdentityError` (never returns a
+   * boolean the caller could forget to check) when the packaged engine is
+   * absent, unverifiable, or the wrong version.
+   */
+  private assertEngineUsable(clientId: string): void {
+    const verify = this.opts.verifyEngineIdentity;
+    if (!verify) {
+      // Not wired. Permitted in tests/local dev (the fake-engine fixture has
+      // no packaged tree to verify), refused in production — see the option's
+      // docblock for why this is not defaulted to a permissive no-op.
+      if ((process.env.NODE_ENV ?? "").trim() === "production") {
+        throw new EngineIdentityError(clientId, {
+          available: false,
+          sha: null,
+          mode: "paper",
+          compatible: false,
+          verified: false,
+          enginePath: "(unconfigured)",
+          reason:
+            "FleetManager was constructed without an engine build-identity verifier in a production container — refusing to spawn an unverified engine",
+        });
+      }
+      return;
+    }
+    const identity = verify();
+    if (!identity.available) throw new EngineIdentityError(clientId, identity);
+  }
+
+  /**
    * Spawning an already-running (`starting`/`running`) tenant is a NO-OP
    * that returns the existing handle, not a rejection. Rationale: the
    * caller (Task 4's Telegram command handler) is expected to call this
@@ -210,6 +265,16 @@ export class FleetManager {
    * restarting) to avoid a spawn racing a not-yet-released lock file.
    */
   async spawnTenant(clientId: string): Promise<TenantProcessHandle> {
+    // Engine build-identity gate (Task 7) — FIRST, before any bookkeeping or
+    // slot accounting. A spawn that cannot legitimately happen must not
+    // mutate crash counters, consume a capacity slot, or create a handle.
+    //
+    // Placed ahead of the already-running no-op too: returning an existing
+    // handle is fine, but this check is cheap and running it unconditionally
+    // means there is exactly one place in this method where engine
+    // verification can be reasoned about, rather than two paths that skip it.
+    this.assertEngineUsable(clientId);
+
     const existing = this.tenants.get(clientId);
     if (existing) {
       if (existing.handle.status === "starting" || existing.handle.status === "running") {

@@ -1,5 +1,24 @@
 import { CONFIG } from "../config.js";
 import { FleetManager, realEngineInvocation } from "./fleet-manager.js";
+import { resolveEngineIdentity, type EngineIdentity } from "./engine-identity.js";
+
+/**
+ * Task 7 — the engine path this process will actually spawn from. In a
+ * Railway container the Dockerfile sets `ARIA_ENGINE_REPO_PATH=/opt/aria-engine`
+ * (the tree baked in at build time at a pinned 40-char SHA); locally the env
+ * var is unset and CONFIG's existing `../aria-engine` sibling-checkout default
+ * applies unchanged. One code path, one env var, two directories.
+ */
+export const ENGINE_REPO_PATH = CONFIG.ARIA_ENGINE_REPO_PATH;
+
+/**
+ * Re-resolved on every call rather than snapshotted at module load: `/healthz`
+ * should report what is true NOW, and the spawn-time gate must not trust a
+ * startup-time reading of a tree that could have changed since.
+ */
+export function engineIdentity(): EngineIdentity {
+  return resolveEngineIdentity(ENGINE_REPO_PATH);
+}
 
 /**
  * Hosted PAPER Engine, Task 4 — the ONE `FleetManager` instance for this
@@ -15,7 +34,8 @@ import { FleetManager, realEngineInvocation } from "./fleet-manager.js";
  * its own.
  */
 export const fleetManager = new FleetManager({
-  engineInvocation: realEngineInvocation(CONFIG.ARIA_ENGINE_REPO_PATH),
+  engineInvocation: realEngineInvocation(ENGINE_REPO_PATH),
+  verifyEngineIdentity: engineIdentity,
   tenantsRoot: CONFIG.FLEET_TENANTS_ROOT,
   logsRoot: CONFIG.FLEET_LOGS_ROOT,
   ...(CONFIG.FLEET_MAX_CONCURRENT_TENANTS !== undefined

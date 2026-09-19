@@ -26,6 +26,7 @@ import { isUserApproved, markInvitePaired } from "./invites.js";
 import { trackEvent } from "./funnel.js";
 import { submitFeedback } from "./feedback.js";
 import { releaseInfo } from "./release.js";
+import { engineIdentity } from "./fleet/instance.js";
 
 export const app = new Hono();
 
@@ -73,21 +74,57 @@ const CheckoutBody = z.object({
  * deployment marked SUCCESS is not sufficient proof of currency on its own
  * — this is the "running application's reported build SHA" a smoke test or
  * a human compares against `git rev-parse origin/main` and the Railway
- * deployment's source commit. `engineSha` is honestly `null` — see
- * src/release.ts's docblock and docs/ARIA_PRODUCTION_RELEASE_MANIFEST.md
- * for why no real value exists yet. Nothing under `release` is a secret:
- * a commit SHA, a build timestamp, and a branch name are already public
- * in the GitHub repo this deploys from.
+ * deployment's source commit. Nothing under `release` is a secret: a commit
+ * SHA, a build timestamp, and a branch name are already public in the GitHub
+ * repo this deploys from.
+ *
+ * `controlPlane` / `engine` / `fleet` (2026-09-19, Task 7) split APPLICATION
+ * health from ENGINE readiness. The distinction is the entire point:
+ *
+ *   `ok: true` means only "this HTTP service is up". It is NOT, and must
+ *   never be presented as, evidence that hosted PAPER works. That claim
+ *   requires `engine.available === true` AND `engine.compatible === true`
+ *   AND `fleet.available === true`.
+ *
+ * Before the Dockerfile's engine packaging stage existed, this endpoint
+ * returned `ok: true` on a container with no aria-engine code in it at all
+ * and a FleetManager pointed at a dev-machine path (`../aria-engine`) that
+ * could never resolve. A reader had no field to tell them that. Now they do.
+ *
+ * ADDITIVE ONLY: `uptime`, `leads`, `paymentsEnabled` and the flat `release`
+ * block are unchanged, so anything already parsing this response (the Railway
+ * healthcheck at railway.json's `healthcheckPath`, deploy smoke checks) keeps
+ * working byte-compatibly.
+ *
+ * No secrets: a commit SHA and a boolean. `engine.reason` is a diagnostic
+ * string built only from SHAs and the configured engine path — see
+ * engine-identity.ts, which never puts a token or credential in it.
  */
-app.get("/healthz", (c) =>
-  c.json({
+app.get("/healthz", (c) => {
+  const engine = engineIdentity();
+  const release = releaseInfo();
+  return c.json({
     ok: true,
     uptime: process.uptime(),
     leads: totalLeads(),
     paymentsEnabled: PAYMENTS_ENABLED,
-    release: releaseInfo(),
-  }),
-);
+    release,
+    controlPlane: { sha: release.controlPlaneSha },
+    engine: {
+      available: engine.available,
+      sha: engine.sha,
+      mode: engine.mode,
+      compatible: engine.compatible,
+      // Present only when something is wrong, so a healthy response stays
+      // terse and a broken one explains itself without a log dive.
+      ...(engine.reason ? { reason: engine.reason } : {}),
+    },
+    // The fleet is only usable if the engine behind it is. Reporting
+    // `fleet.available: true` next to an unavailable engine would recreate
+    // the exact misleading signal this block exists to eliminate.
+    fleet: { available: engine.available },
+  });
+});
 
 /**
  * Unauthenticated product-state summary consumed by the Mini App's reality

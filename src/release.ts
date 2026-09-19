@@ -30,12 +30,20 @@ import path from "node:path";
  *   4. `"unknown"` — explicit, never fabricated. A missing/placeholder value
  *      must never be presented as a real SHA.
  *
- * IMPORTANT — this file intentionally has NO opinion on the ENGINE's build
- * identity (`engineSha`). As of this writing there is no mechanism that
- * provisions any `aria-engine` artifact into this service's container at
- * all (see the Task 1 finding in the release manifest doc), so there is
- * nothing honest to report there yet. Callers must pass `null`/"unknown"
- * for that field rather than inventing one.
+ * ENGINE identity (2026-09-19, Task 7 packaging): the note that previously
+ * stood here — "there is no mechanism that provisions any `aria-engine`
+ * artifact into this service's container at all", hence `engineSha: null` —
+ * described a real gap that the Dockerfile's `engine` builder stage now
+ * closes. The engine is fetched at an exact pinned 40-char SHA at image build
+ * time and its identity is verified from TWO independent sources at runtime
+ * (see src/fleet/engine-identity.ts).
+ *
+ * This module still refuses to invent that value. It does not read the engine
+ * tree itself — `releaseInfo()` keeps returning `engineSha: null` and the
+ * caller (src/server.ts's /healthz) supplies the real, separately-resolved
+ * identity. That separation is deliberate: `engineSha` must reflect a
+ * verified on-disk marker, never the `ARIA_ENGINE_COMMIT_SHA` env var alone,
+ * which is only what the control plane BELIEVES it shipped.
  */
 
 function readBuildFile(name: string): string | undefined {
@@ -81,11 +89,13 @@ export interface ReleaseInfo {
   releaseId: string;
   mode: "paper";
   /**
-   * Deliberately `null` — see the module docblock. There is currently no
-   * deployed mechanism that provisions or version-pins an `aria-engine`
-   * artifact into this service's container, so any non-null value here
-   * would be fabricated. Flip this once Task 1's P0 gap (see the release
-   * manifest) is actually closed.
+   * Always `null` FROM THIS MODULE — kept in the shape for backward
+   * compatibility with anything already reading the flat `release` block.
+   * The real, verified engine SHA is reported in /healthz's separate
+   * `engine` block (src/server.ts), sourced from the on-disk marker via
+   * src/fleet/engine-identity.ts. Reading it here would require this module
+   * to trust `ARIA_ENGINE_COMMIT_SHA` unverified, which is exactly the
+   * fabrication the original note refused.
    */
   engineSha: string | null;
 }
