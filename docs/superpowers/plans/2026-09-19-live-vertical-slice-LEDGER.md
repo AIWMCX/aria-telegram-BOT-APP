@@ -11,9 +11,10 @@ This is a **different program** from the hosted-engine work; its ledger
 
 ## Milestone 1: TradingAccount + TradeIntent + Firewall (backend only, no signing/submission)
 
-**Status: `IMPLEMENTED (awaiting review)`**
+**Status: `INDEPENDENT REVIEW PASS (round 2, post-fix)`**
 Branch: `impl/live-vertical-slice-0.1-milestone-1`
-Date: 2026-09-19 (review fixes applied same day — see "Review round 1 fixes" below)
+Date: 2026-09-19 (review fixes applied same day — see "Review round 1 fixes" below;
+second independent review PASS recorded at the bottom of this milestone)
 
 This is the first REAL code in this program. Everything before it was
 PAPER-only or architecture documents.
@@ -357,6 +358,69 @@ database was ever in scope.
 
 **Status set back to `IMPLEMENTED (awaiting review)` — a fresh independent
 review still needs to happen. This ledger entry does not self-certify.**
+
+### Review round 2 — independent post-fix review: **PASS** (2026-09-19)
+
+A second independent reviewer (not the implementer, not the round-1 reviewer)
+re-reviewed commit `3e88b96` against the round-1 FAIL. Verdict: **PASS** —
+Milestone 1 is sound to build Milestone 2 on. What was **personally
+reproduced** by that reviewer, not merely re-read:
+
+1. **D1 revert experiment, run independently.** `pendingExposureLamports` was
+   made `?: bigint | null` again and the `"pendingExposureLamports" in c ? … : 0n`
+   fallback restored. All three new guards failed as they should: the static
+   source check, the `tsc --noEmit` negative fixture
+   (`test/negative-types/d1-pending-exposure-required.ts`), and the runtime
+   defence-in-depth check. The file was then restored and `test/live-firewall.ts`
+   returned to green. The defect is genuinely closed, not renamed.
+2. **Independent grep of the whole firewall input surface.** No field in
+   `FirewallContext`, `FirewallIntentView` or `FirewallAccountView` is optional;
+   no `in c`/`in ctx` existence check survives anywhere under `src/live/`. The
+   round-1 claim that `pendingExposureLamports` was the only offender is correct.
+3. **D6 verified at the byte level.** `git show cd90217:src/live/trade-intent.ts | od -c`
+   confirms the old separator was a literal `\0` (0x20 was never involved), so
+   `" "` produces a byte-identical digest input. No idempotency key changed.
+4. **Migration SQL generated and read literally**, not inferred from the
+   regex assertions: `ADD "account_id" uuid NOT NULL REFERENCES "trading_accounts"
+   ON DELETE RESTRICT` on both `wallet_ownership_proofs` and `live_consents`,
+   with matching indexes and a symmetric `down()`. Real NOT NULL, real FK.
+5. **Regression sweep re-run locally**: `npm run typecheck` clean;
+   `npm test` 328/328 checks green with 0 failures (the remaining 40 are
+   `test/live-schema-contract.ts`, skipped without `LIVE_TEST_DATABASE_URL` —
+   328 + 40 = the 368 claimed above, which reconciles). Zero reachability
+   re-confirmed: `src/live/*` has no importer outside `src/live/` and `test/`,
+   so making `pendingExposureLamports`/`storedProof` required cannot have
+   broken an untested production caller — there are none.
+
+**Limit of this review, stated rather than papered over:** the 40
+Postgres-dependent schema-contract checks (including the D2 fix and the D4/D5
+`account_id` constraint enforcement) were **not** independently re-run. No
+Postgres was reachable in the reviewer's environment (Docker daemon not
+running) and downloading/executing vendor binaries was out of scope without a
+fresh explicit approval. Those claims rest on reading the generated SQL (item 4)
+and the test source, not on a second live run.
+
+**Non-blocking findings recorded for Milestone 2 (none of these fail-open):**
+
+- The D1 static source check in `test/live-firewall.ts` is a regex heuristic,
+  not an AST parse. It was empirically shown to **miss** a field written
+  `pendingExposureLamports ?: bigint | null` (a space before `?:`), and it
+  scans only the `FirewallContext` block — an optional-and-nullable field
+  planted in `FirewallIntentView` was not flagged, despite the check's own
+  comment claiming it covers "a type it inlines". A multi-line declaration
+  *is* caught. The compile-time fixture catches every one of these cases, so
+  the real guard holds; the comment overclaims and should be narrowed or the
+  check upgraded to an AST walk.
+- `verifyOwnershipSignature` validates the binding with three `String.includes()`
+  substring tests rather than comparing `challengeMessage` against the persisted
+  `wallet_ownership_proofs.challenge_message` — the very column this ledger's
+  "Additions beyond the approved schema proposal" item 2 says exists to avoid
+  re-derivation drift. `storedProof`'s type does not carry it, so it cannot.
+  Pass the stored message and compare exactly when the verifier gets a real caller.
+- The `storedProof` docblock in `src/live/wallet-ownership.ts` is garbled and
+  factually wrong: it says a caller may "pass either the real row or explicit
+  `null`", but the type is `{ verifiedAt; expiresAt }` with no `| null`. Comment
+  only; the code is correct.
 
 ### Standing rules this milestone was built under
 
