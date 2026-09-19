@@ -21,7 +21,7 @@ NOT STARTED / IN PROGRESS / IMPLEMENTED (awaiting review) / REVIEWED-PASS / REVI
 | 3 | Resource bounds + crash-loop protection | DONE | `733c24e`; ledger `f22cb34` | DONE — REVIEWED-PASS (independent reviewer hand-traced the backoff formula through all 5 crash counts, verified the sustained-healthy reset is genuinely duration-based not reset-on-every-start, confirmed the concurrency cap excludes stopped/failed tenants, and re-verified Task 2's fixed race wasn't reintroduced in the new failed-status/backoff-timer interactions) | Honest resource-limit finding: no per-process OS-level cap available on this Railway/Docker setup — concurrency cap + crash-loop containment is the real defense, documented as such rather than fabricating an enforcement mechanism that doesn't exist. Backoff: 5s/10s/20s/40s, gives up at crash 5 → terminal `failed` status. Integration-test env issue (sibling repo branch) found and fixed same session; runbook updated to record it as resolved. |
 | 4 | Wire Telegram commands to Fleet Manager | DONE | `a0c5ff5`; review fix `b4c4321`; second review fix `1c66e8a` | DONE — REVIEWED-FIXED after 2 fix cycles. First cycle: reviewer found a real, silent P0 — converting an EXISTING `local` client to `hosted` (`startHostedEngine`'s `else if (client.hosting_mode !== "hosted")` branch) flipped only the DB flag and wrote nothing to disk, so the spawned tenant's `aria-engine` process generated an unrelated keypair in its empty runtime dir that could never match the row's original (locally-paired) `device_public_key` — every `/api/engine/sync` call from that hosted process would fail signature verification, permanently and silently. Fixed by generating a real Ed25519 identity for the SAME row, writing it to the tenant's runtime directory, and rotating the row's `device_public_key` to match. Second cycle (2026-09-18): a follow-up review of that fix found the DB-write and disk-write were still ordered DB-then-disk, leaving a narrow crash window that could reintroduce the same P0; a UX gap (no disclosure that the local pairing is being superseded); and a ledger arithmetic error in this row's own prior text (see Log for corrected, freshly-run counts). All three fixed — see Log. Independently re-reviewed a third time (2026-09-18): traced the write-before-commit ordering as genuinely unconditional in both code paths, confirmed `rotateClientDeviceIdentityAndSetHosted` is a real single-statement atomic UPDATE (not two awaits dressed up as atomic), verified the crash-simulation test performs a real second retry that self-heals (not just "error caught"), and independently re-ran the test file to get 90/90 passing — matching the claim exactly and closing out this row's own prior arithmetic errors for good. | Depends on: 2, 3 |
 | 5 | Dual-mode (local + hosted) coexistence test | IMPLEMENTED (awaiting review) | `e874097` | | Depends on: 4 |
-| 6 | Soak the Fleet Manager itself | IMPLEMENTED (awaiting review) | `54ca099`; re-certification fix `1123008` | FAILED (first soak) — vacuous isolation checks, see Log for the fix and the new certifying run | Depends on: 2, 3 |
+| 6 | Soak the Fleet Manager itself | IMPLEMENTED (awaiting review) | `54ca099`; first re-certification fix `1123008`/`5f92185`; second re-certification fix (this commit — see Log) | FAILED x2 — first soak: vacuous isolation checks (fixed). Second review: first fix's per-tenant-FleetManager-instance topology made the in-memory isolation channel structurally unable to detect the bug class it exists to catch (fixed by restoring one shared instance). A THIRD independent review of this second fix still needs to happen. | Depends on: 2, 3 |
 
 ## Stop conditions
 - A task's acceptance criteria cannot be met without violating PAPER-only guardrails (no wallet/signing/broadcast anywhere in the Fleet Manager or spawned processes) → STOP, report.
@@ -299,3 +299,149 @@ NOT STARTED / IN PROGRESS / IMPLEMENTED (awaiting review) / REVIEWED-PASS / REVI
     - **Status stays `IMPLEMENTED (awaiting review)`** — this fix has not
       yet had its own independent review; do not mark Task 6 fully
       reviewed-pass until that happens.
+  - **2026-09-19 — SECOND RE-CERTIFICATION after a second independent-review
+    FAIL (status stays `IMPLEMENTED (awaiting review)` — a THIRD
+    independent review of THIS fix still needs to happen).** A second
+    independent reviewer failed the first re-certification fix above
+    (commits `1123008`/`5f92185`) on one finding, and it invalidated the
+    fix's own central design decision, not just a peripheral detail:
+    - **The finding**: to make each tenant's marker survive every
+      FleetManager-internal auto-restart, the first fix gave each tenant a
+      distinct `EngineInvocation` closure (baking the marker into argv),
+      and because `EngineInvocation` is configured once per `FleetManager`
+      instance rather than per spawn call, that required **20 separate
+      `FleetManager` instances** (`scripts/fleet-soak.ts:387-393` in that
+      commit) — one per tenant, each `maxConcurrentTenants: 1`. But
+      `FleetManager` keeps ALL cross-tenant bookkeeping in a private
+      per-instance `Map` (`src/fleet/fleet-manager.ts:159`). With 20
+      separate instances, a control tenant and a crash-looping/SIGKILLed
+      tenant shared NO state — so the in-memory half of the isolation
+      check could no longer detect the exact bug class it exists to catch
+      (a shared-Map/restart-scheduler defect where handling tenant A's
+      crash perturbs tenant B's bookkeeping). The reviewer proved this was
+      structurally unreachable, not just theoretically weaker: only the
+      OS-level probe (an externally-injected kill the reviewer performed
+      manually) remained capable of detecting anything under that
+      topology.
+    - **The reviewer also proved the per-instance split was never
+      necessary.** `FleetManager.launch()` already computes
+      `runtimeDirFor(clientId) = path.join(tenantsRoot, clientId, ".aria")`
+      and `TenantProcess` sets this exact path as `ARIA_RUNTIME_DIR` on
+      EVERY launch it performs for that tenant, initial or restart
+      (`src/fleet/tenant-process.ts:68`), regardless of how many
+      `FleetManager` instances exist. A marker fixture can read
+      `process.env.ARIA_RUNTIME_DIR` and derive
+      `path.basename(path.dirname(ARIA_RUNTIME_DIR))` as its own clientId —
+      zero need for a per-tenant closure, therefore zero need for a
+      per-tenant instance.
+    - **Fix applied**:
+      1. `scripts/fleet-soak.ts`'s main-soak phase now uses ONE shared
+         `FleetManager` instance for all 20 tenants, `maxConcurrentTenants:
+         20` genuinely engaged — restoring the original, first-reviewed
+         topology from commit `54ca099`.
+      2. The three per-purpose fixture files
+         (`fleet-soak-marker-fixture.mjs`,
+         `fleet-soak-crashloop-marker-fixture.mjs`,
+         `fleet-soak-crashloop-fixture.mjs`) were deleted and replaced with
+         ONE shared fixture, `scripts/fleet-soak-fixture.mjs`, used by
+         every main-soak tenant. It derives its marker from
+         `process.env.ARIA_RUNTIME_DIR` (via
+         `path.basename(path.dirname(...))`) and decides crash-loop
+         behavior purely from its own clientId's naming convention
+         (`soak-crashloop-*`, assigned by the soak script) — no argv
+         parameter needed. The `::END` marker-delimiter fix from the FIRST
+         re-certification cycle (closes the unbounded-prefix collision
+         risk at two-digit tenant indices) is unchanged and still
+         load-bearing.
+      3. Corrected the three places that asserted a per-tenant
+         `FleetManager` instance was REQUIRED for the marker mechanism —
+         this claim was factually wrong: `scripts/fleet-soak.ts`'s own
+         comments (rewritten to explain why ONE shared instance is correct
+         instead), `docs/FLEET_MANAGER_RUNBOOK.md` §9 (rewritten wholesale
+         for this cycle — see below), and this ledger (this entry
+         supersedes the prior cycle's now-incorrect topology claims,
+         though that entry is left in place above as the historical record
+         of what was tried and why it was later found wrong).
+      4. **Re-verified empirically, before the full run**, that both
+         isolation channels are genuinely exercised again under the
+         restored shared topology (ad hoc verification script, not
+         committed — output transcribed here and in the runbook since it
+         is evidence about the mechanism): two tenants spawned under ONE
+         shared instance showed zero cross-contamination in the clean
+         case; a marker COLLISION was then deliberately injected into one
+         tenant's log and confirmed the real contamination check's
+         `content.includes(otherMarker)` logic correctly evaluates `true`
+         against it (proving the check CAN fire, not just that it hadn't);
+         reverted. Separately, a control tenant sharing the SAME
+         `FleetManager` instance as an untouched sibling was SIGKILLed
+         directly — confirmed BOTH channels caught it independently:
+         in-memory (`getTenantStatus()` transitioned `running` → `crashed`,
+         proving the SHARED bookkeeping Map actually observed the kill —
+         the exact channel the second review found unreachable under the
+         20-instance topology) and OS-level (`process.kill(pid, 0)`
+         confirmed the original pid was gone); the killed tenant then
+         auto-recovered with a new pid via the normal backoff path, and
+         the untouched sibling's status/pid were completely unaffected
+         throughout.
+      5. **Ran the full soak** (N=5 warmup, N=20 main phase, real fault
+         injection: 3 tenants SIGKILLed directly at t≈535s, 2 tenants
+         driven into crash-loop escalation, all under the restored ONE
+         shared `FleetManager` instance with `maxConcurrentTenants: 20`
+         genuinely engaged) and regenerated
+         `scripts/fleet-soak-evidence.json` from this real run — the prior
+         evidence file had already been overwritten by the second
+         reviewer's own break-testing runs, so this is fresh real data.
+    - **New real evidence from this run** (full detail, all real numbers
+      not estimated, in `docs/FLEET_MANAGER_RUNBOOK.md` §9): started
+      `2026-09-19T18:41:10.422Z`, finished `2026-09-19T19:13:26.017Z`,
+      total elapsed `1935445ms` (≈32m15s); main-soak phase alone
+      `1819930ms` (≈30.3 min). `aria-telegram-BOT-APP` SHA
+      `5f9218585b44e18e65a0c04336b6db0e739849f5` at soak start; `aria-engine`
+      unchanged at `feat/hosted-runtime-dir-override` @
+      `69299df9a68d925281f181064cb84c83771698a3`. Phase 1 warmup: all 5
+      reached running, all 5 stayed running/OS-alive through the 90s hold,
+      all 5 stopped cleanly, zero orphaned pids. Phase 2: 20 tenants
+      spawned under the ONE shared instance; `allNonCrashLoopReachedRunning:
+      true`. FleetManager-hosting process RSS ranged 60,872–61,736 KB,
+      heapUsed 7,956–8,555 KB across 25 samples (no growth trend, including
+      through fault injection). **20 spawned; 18 sustained concurrently
+      from t≈79s to t≈1820s (≈29.0 minutes)** after the 2 crash-loop
+      tenants reached terminal `failed` by design — computed directly from
+      `memSamples`. Tenant isolation: `controlTenantsCompletelyUnaffected:
+      true` (`controlTenantsCompletelyUnaffectedInMemory: true` AND all 15
+      `controlTenantsOsLevelChecks` entries pass — pid-still-alive-same-pid
+      AND log-file-unchanged, both real OS-level probes, for every control
+      tenant). Zero cross-tenant log-marker contamination
+      (`journalIntegrityIssues: []`) on a check independently proven able
+      to fire (see item 4 above). All 20 tenants' ready-marker counts
+      exactly match expected lifecycle (control=1×15, SIGKILL-recovered=
+      2×3, crash-loop=5×2) — zero restart-path mismatches. 3/3 SIGKILL'd
+      tenants (`soak-sigkill-0/1/2`) auto-recovered with new pids
+      (`consecutiveCrashes: 1`, `restartCount: 1` each). 2/2 crash-loop
+      tenants (`soak-crashloop-0/1`) correctly reached terminal `failed`
+      (`consecutiveCrashes: 5`, `restartCount: 4` each). Zero orphaned OS
+      processes after full shutdown (both phases).
+    - **Framing correction, per the second reviewer's specific note that
+      "GREEN" language in the prior cycle's summary table invited an
+      inference the evidence didn't support**: the runbook's §9 summary
+      table for this cycle states what each row's evidence actually shows
+      (e.g. "15/15 control tenants' status/pid/restartCount/
+      consecutiveCrashes bit-for-bit unchanged... under a topology where
+      all 20 tenants share ONE FleetManager instance's bookkeeping Map")
+      rather than appending a bare "GREEN"/pass-fail word, and the section
+      opens with an explicit caveat that this evidence has not yet been
+      independently reviewed and that passing checks on one run do not
+      constitute a general defect-free guarantee. No `FleetManager` defect
+      was found on this run — every defect found across this program's
+      three soak cycles to date (the original crash-loop timing bug, the
+      first re-certification's vacuous checks and marker-prefix-collision
+      bug, and this cycle's per-instance-topology defect) was in this
+      task's OWN tooling, not in `FleetManager` itself — stated as an
+      observation about this tooling's history, not a general
+      defect-free claim.
+    - **Test/typecheck/regression results**: `npm run typecheck` — clean,
+      zero errors. Full `npm test` (unchanged, 9 scripts) — exit 0, zero
+      `❌` markers, 300 `✅` lines.
+    - **Status stays `IMPLEMENTED (awaiting review)`** — a THIRD
+      independent review of this fix still needs to happen before Task 6
+      can be marked reviewed-pass.

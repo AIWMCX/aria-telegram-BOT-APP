@@ -49,9 +49,18 @@ import { FleetManager, FleetCapacityError, type EngineInvocation } from "../src/
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, "..");
 const FIXTURE = path.join(REPO_ROOT, "src", "fleet", "test-fixtures", "fake-engine.mjs");
-const CRASHLOOP_FIXTURE = path.join(__dirname, "fleet-soak-crashloop-fixture.mjs");
-const MARKER_FIXTURE = path.join(__dirname, "fleet-soak-marker-fixture.mjs");
-const CRASHLOOP_MARKER_FIXTURE = path.join(__dirname, "fleet-soak-crashloop-marker-fixture.mjs");
+/**
+ * Single shared fixture for the main soak's crash-loop, SIGKILL-target, AND
+ * control tenants alike (second re-certification fix, 2026-09-19) — derives
+ * its per-tenant marker AND its crash-loop-or-not behavior entirely from
+ * `ARIA_RUNTIME_DIR` (set by TenantProcess on every launch) and the
+ * clientId's own naming convention, respectively. See its own docblock for
+ * the full rationale for why this replaced the previous per-tenant-
+ * FleetManager-instance design. Phase 1 (warmup) is unaffected and still
+ * uses the plain `fakeInvocation()`/`FIXTURE` below — it never needed
+ * per-tenant markers or crash-loop behavior.
+ */
+const MAIN_SOAK_FIXTURE = path.join(__dirname, "fleet-soak-fixture.mjs");
 
 /** Must match every EngineInvocation's `readyMarker` below — kept as one constant so the ready-marker-count check (P0-1 re-certification) can never silently drift from what the fixtures actually print. */
 const READY_MARKER = "paper engine started";
@@ -77,75 +86,50 @@ function fakeInvocation(): EngineInvocation {
 }
 
 /**
- * The distinctive per-tenant log marker used by markerInvocation()/
- * crashLoopMarkerInvocation() below.
+ * The distinctive per-tenant log marker, derived identically here (for the
+ * post-run journal check) and inside fleet-soak-fixture.mjs itself (for what
+ * actually gets printed) — both derive it from the tenant's clientId, which
+ * fleet-soak-fixture.mjs reads back out of its own `ARIA_RUNTIME_DIR`.
  *
- * REAL BUG found and fixed during this task's own dry-run/full-run
- * discipline (disclosed, not silently patched): an earlier version of this
- * function returned `SOAK-MARKER::${clientId}` with no closing delimiter,
- * which is unbounded on the right — `SOAK-MARKER::soak-main-1` is a literal
- * PREFIX of `SOAK-MARKER::soak-main-10` through `...-19`. At N=20 (but not
- * at the smaller N used in earlier dry-runs, which never reached two-digit
- * tenant indices), the contamination check's `content.includes(otherMarker)`
- * matched tenant 1's marker as a substring of every one of tenants 10-19's
- * OWN correctly-printed marker line, producing 10 false-positive
+ * REAL BUG found and fixed during the first re-certification cycle's own
+ * dry-run/full-run discipline (disclosed, not silently patched): an earlier
+ * version of this function returned `SOAK-MARKER::${clientId}` with no
+ * closing delimiter, which is unbounded on the right — e.g.
+ * `SOAK-MARKER::soak-control-1` is a literal PREFIX of
+ * `SOAK-MARKER::soak-control-10` through `...-19`. At N=20 (but not at the
+ * smaller N used in earlier dry-runs, which never reached two-digit tenant
+ * indices), the contamination check's `content.includes(otherMarker)`
+ * matched a short id's marker as a substring of every longer id sharing that
+ * prefix's OWN correctly-printed marker line, producing false-positive
  * "contamination" findings in an otherwise-clean run. The trailing `::END`
- * closes the token on both sides (already delimited by `::` on the left),
- * so no tenant's full marker string can ever be a substring of another
- * tenant's — the character immediately after the id inside `::END` never
- * coincides with a valid continuation of a different, longer id.
+ * closes the token on both sides (already delimited by `::` on the left), so
+ * no tenant's full marker string can ever be a substring of another
+ * tenant's.
  */
 function markerFor(clientId: string): string {
   return `SOAK-MARKER::${clientId}::END`;
 }
 
 /**
- * Per-tenant invocation used by the main soak's control and SIGKILL-target
- * tenants: bakes `markerFor(clientId)` into argv (via
- * fleet-soak-marker-fixture.mjs) so every one of that tenant's log lines is
- * traceable to it specifically, and — critically — so the marker survives
- * a FleetManager-internal auto-restart (e.g. the SIGKILL-target tenants'
- * post-kill recovery), not just the tenant's first run. `buildStart`/
- * `buildStop` take no `clientId` parameter, so getting a marker that's
- * fixed-per-tenant-including-across-restarts requires a distinct closure
- * per tenant, which in turn requires a distinct `FleetManager` instance per
- * tenant (see runPhase2MainSoak) — `process.env.FAKE_EXTRA_LINE` set once
- * before `spawnTenant()` (the pattern `fleet-manager.test.ts:330-337` uses)
- * does NOT survive a later restart, because FleetManager's internal
- * `setTimeout`-driven restart reads the soak script's `process.env` at
- * restart time, long after the script's own spawn loop has moved on to
- * (and overwritten that var for) other tenants.
+ * ONE shared invocation for every main-soak tenant (crash-loop, SIGKILL-
+ * target, and control alike) — second re-certification fix, 2026-09-19,
+ * replacing the per-tenant-closure/per-tenant-FleetManager-instance design a
+ * second independent review found both unnecessary and actively harmful (see
+ * fleet-soak-fixture.mjs's own docblock for the full finding). `buildStart`/
+ * `buildStop` take no `clientId` parameter — and don't need one anymore: the
+ * fixture itself derives its clientId from `ARIA_RUNTIME_DIR` (which
+ * `TenantProcess` sets on every launch, initial or restart, regardless of
+ * how many `FleetManager` instances exist) and decides its own marker AND
+ * its own crash-loop-or-not behavior from that, purely by naming convention
+ * (`soak-crashloop-*`). This lets ALL main-soak tenants share ONE
+ * `FleetManager` instance and therefore ONE shared in-memory bookkeeping
+ * `Map` — restoring the isolation channel a real cross-tenant bug would
+ * actually have to corrupt to go undetected.
  */
-function markerInvocation(clientId: string): EngineInvocation {
-  const marker = markerFor(clientId);
+function mainSoakInvocation(): EngineInvocation {
   return {
-    buildStart: () => ({ command: process.execPath, args: [MARKER_FIXTURE, "start", marker], cwd: __dirname }),
-    buildStop: () => ({ command: process.execPath, args: [MARKER_FIXTURE, "stop", marker], cwd: __dirname }),
-    readyMarker: READY_MARKER,
-  };
-}
-
-/** Same rationale as markerInvocation(), for the main soak's 2 crash-loop tenants — uses fleet-soak-crashloop-marker-fixture.mjs, which bakes in BOTH the marker and the crash timing (fleet-soak-crashloop-fixture.mjs itself is untouched). */
-function crashLoopMarkerInvocation(clientId: string): EngineInvocation {
-  const marker = markerFor(clientId);
-  return {
-    buildStart: () => ({ command: process.execPath, args: [CRASHLOOP_MARKER_FIXTURE, "start", marker], cwd: __dirname }),
-    buildStop: () => ({ command: process.execPath, args: [CRASHLOOP_MARKER_FIXTURE, "stop", marker], cwd: __dirname }),
-    readyMarker: READY_MARKER,
-  };
-}
-
-/**
- * Invocation for the "crash-loop" tenants: uses fleet-soak-crashloop-fixture.mjs,
- * which bakes FAKE_CRASH_AFTER_MS into every fresh process's OWN environment
- * (see that file's docblock for why: a plain shared-process.env approach does
- * not survive to FleetManager's internal auto-restart, which fires long after
- * this script's own spawn loop has moved on and cleared the var).
- */
-function crashLoopInvocation(): EngineInvocation {
-  return {
-    buildStart: () => ({ command: process.execPath, args: [CRASHLOOP_FIXTURE, "start"], cwd: __dirname }),
-    buildStop: () => ({ command: process.execPath, args: [CRASHLOOP_FIXTURE, "stop"], cwd: __dirname }),
+    buildStart: () => ({ command: process.execPath, args: [MAIN_SOAK_FIXTURE, "start"], cwd: __dirname }),
+    buildStop: () => ({ command: process.execPath, args: [MAIN_SOAK_FIXTURE, "stop"], cwd: __dirname }),
     readyMarker: READY_MARKER,
   };
 }
@@ -365,35 +349,40 @@ async function runPhase2MainSoak(): Promise<void> {
 
   const CRASH_LOOP_COUNT = 2;
   const SIGKILL_COUNT = 3;
-  const allIds = Array.from({ length: N }, (_, i) => `soak-main-${i}`);
-  const crashLoopIds = allIds.slice(0, CRASH_LOOP_COUNT);
-  const sigkillIds = allIds.slice(CRASH_LOOP_COUNT, CRASH_LOOP_COUNT + SIGKILL_COUNT);
-  const controlIds = allIds.slice(CRASH_LOOP_COUNT + SIGKILL_COUNT);
+  // Naming convention carries the per-tenant behavior now (read by
+  // fleet-soak-fixture.mjs itself, purely from its own ARIA_RUNTIME_DIR) --
+  // "soak-crashloop-*" ids are what trigger FAKE_CRASH_AFTER_MS inside the
+  // fixture. See mainSoakInvocation()'s and fleet-soak-fixture.mjs's
+  // docblocks.
+  const crashLoopIds = Array.from({ length: CRASH_LOOP_COUNT }, (_, i) => `soak-crashloop-${i}`);
+  const sigkillIds = Array.from({ length: SIGKILL_COUNT }, (_, i) => `soak-sigkill-${i}`);
+  const controlIds = Array.from({ length: N - CRASH_LOOP_COUNT - SIGKILL_COUNT }, (_, i) => `soak-control-${i}`);
+  const allIds = [...crashLoopIds, ...sigkillIds, ...controlIds];
 
   console.log(`main soak: N=${N} spawned (crash-loop=${crashLoopIds.length}, sigkill-target=${sigkillIds.length}, control=${controlIds.length}) -- the 2 crash-loop tenants are BY DESIGN expected to reach terminal 'failed' early, so the sustained concurrent count for the bulk of the run is N-2, not N (see the "sustained" fields recorded in evidence below -- do not read N alone as a concurrency claim).`);
 
-  // ONE FleetManager instance PER TENANT (re-certification fix, was 2
-  // shared instances -- see docs/FLEET_MANAGER_RUNBOOK.md Section 9's
-  // "re-certification" section for the independent-review finding this
-  // replaces). `EngineInvocation.buildStart()`/`buildStop()` take no
-  // `clientId` parameter, so a per-tenant marker that must survive every
-  // restart FleetManager ever performs for that tenant (not just its first
-  // run) requires a distinct closure, which requires a distinct instance.
-  // All instances share the same tenantsRoot/logsRoot (each tenant still
-  // gets its own <tenantsRoot>/<clientId>/.aria and
-  // <logsRoot>/<clientId>.log regardless of which manager instance issued
-  // the spawn -- the split is purely about which EngineInvocation applies).
-  // Cost: 20 in-memory FleetManager instances instead of 2 -- negligible.
-  const managerByTenant = new Map<string, FleetManager>();
-  for (const id of crashLoopIds) {
-    managerByTenant.set(id, new FleetManager({ engineInvocation: crashLoopMarkerInvocation(id), tenantsRoot, logsRoot, maxConcurrentTenants: 1 }));
-  }
-  for (const id of [...sigkillIds, ...controlIds]) {
-    managerByTenant.set(id, new FleetManager({ engineInvocation: markerInvocation(id), tenantsRoot, logsRoot, maxConcurrentTenants: 1 }));
-  }
+  // ONE shared FleetManager instance for the ENTIRE main soak (second
+  // re-certification fix, 2026-09-19 -- restores the ORIGINAL, first-
+  // reviewed topology from commit 54ca099: all main-soak tenants under one
+  // instance with a real maxConcurrentTenants cap). The prior fix
+  // (commit 1123008) split this into 20 separate per-tenant instances
+  // (each maxConcurrentTenants:1) solely so each tenant could get its own
+  // marker-baking EngineInvocation closure that survived restarts -- a
+  // second independent review found this both unnecessary (the fixture can
+  // derive its own restart-stable marker from ARIA_RUNTIME_DIR, which
+  // TenantProcess sets on every launch regardless of instance topology --
+  // see fleet-soak-fixture.mjs) and actively harmful: with 20 separate
+  // instances, no two tenants share FleetManager's private per-instance
+  // bookkeeping Map, so a REAL cross-tenant isolation bug inside
+  // FleetManager itself would produce zero signal in that topology -- only
+  // an externally-injected OS-level kill was still detectable. Restoring
+  // one shared instance means the in-memory isolation channel is actually
+  // exercised again: a control tenant and a crash-looping/sigkilled tenant
+  // now genuinely share the same Map a real bug could corrupt.
+  const fm = new FleetManager({ engineInvocation: mainSoakInvocation(), tenantsRoot, logsRoot, maxConcurrentTenants: N });
 
-  const lookup: StatusLookup = (id) => managerByTenant.get(id)?.getTenantStatus(id);
-  const activeCount = () => allIds.reduce((n, id) => n + (managerByTenant.get(id)?.listActiveTenants().length ?? 0), 0);
+  const lookup: StatusLookup = (id) => fm.getTenantStatus(id);
+  const activeCount = () => fm.listActiveTenants().length;
 
   const t0 = Date.now();
 
@@ -402,12 +391,12 @@ async function runPhase2MainSoak(): Promise<void> {
   delete process.env.FAKE_FAIL_ON_START;
   delete process.env.FAKE_EXTRA_LINE;
   for (const id of crashLoopIds) {
-    await managerByTenant.get(id)!.spawnTenant(id);
+    await fm.spawnTenant(id);
     evidence.faultEvents.push({ atIso: nowIso(), elapsedMs: Date.now() - t0, clientId: id, action: "crash-loop-configured" });
   }
   const nonCrashLoop = [...sigkillIds, ...controlIds];
   for (const id of nonCrashLoop) {
-    await managerByTenant.get(id)!.spawnTenant(id);
+    await fm.spawnTenant(id);
   }
 
   const allNonCrashLoopRunning = await waitFor(
@@ -518,12 +507,14 @@ async function runPhase2MainSoak(): Promise<void> {
   console.log(`main soak: sigkilled tenants (${sigkillIds.length}) auto-recovered with NEW pids = ${sigkilledRecovered}`);
   console.log(`main soak: crash-loop tenants (${crashLoopIds.length}) correctly escalated to terminal 'failed' = ${crashLoopersFailed}`);
 
-  // Journal integrity (P0-1 re-certification fix): read every tenant's log
-  // file and confirm (a) it's readable UTF-8 with no null bytes, (b) it
-  // contains its OWN distinctive marker (markerFor(id), baked into argv by
-  // markerInvocation()/crashLoopMarkerInvocation() -- see those functions'
-  // docblocks for why this survives every restart, unlike a plain
-  // process.env.FAKE_EXTRA_LINE set once before spawnTenant()), (c) it does
+  // Journal integrity (P0-1 first re-certification fix, marker-derivation
+  // mechanism replaced in the second re-certification fix): read every
+  // tenant's log file and confirm (a) it's readable UTF-8 with no null
+  // bytes, (b) it contains its OWN distinctive marker (markerFor(id) here;
+  // fleet-soak-fixture.mjs derives the identical string from its own
+  // ARIA_RUNTIME_DIR at runtime -- see that file's docblock for why this
+  // survives every restart, initial or auto-restart, with zero need for a
+  // per-tenant closure or FleetManager instance), (c) it does
   // NOT contain any OTHER tenant's marker (real cross-contamination check --
   // the previous version of this check compared against sibling clientId
   // strings that were never actually written to any log, so it could never
@@ -578,14 +569,14 @@ async function runPhase2MainSoak(): Promise<void> {
     .map((id) => lookup(id)?.pid)
     .filter((p): p is number => typeof p === "number");
   for (const id of nonCrashLoop) {
-    await managerByTenant.get(id)!.stopTenant(id, true);
+    await fm.stopTenant(id, true);
   }
   for (const id of crashLoopIds) {
     // A "failed" crash-loop tenant is a safe no-op for stopTenant (already
     // terminal, no process/timer to cancel) -- calling it anyway for symmetry
     // and to cover the case where a crash-loop tenant happens to be mid-run
     // (not yet failed) when the soak's duration elapses.
-    await managerByTenant.get(id)!.stopTenant(id, true);
+    await fm.stopTenant(id, true);
   }
   const orphans = allPidsBeforeShutdown.filter(isPidAlive);
   console.log(`main soak: orphaned pids after full shutdown = [${orphans.join(", ")}]`);
