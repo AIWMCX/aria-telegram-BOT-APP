@@ -1,5 +1,5 @@
 import { Bot, InlineKeyboard, type Context, type CommandContext } from "grammy";
-import { randomUUID } from "node:crypto";
+import { randomUUID, generateKeyPairSync } from "node:crypto";
 import { CONFIG, USERS_DOMAIN_ENABLED } from "./config.js";
 import { logger } from "./logger.js";
 import { totalLeads, getLatestLeadByTgUser } from "./leads.js";
@@ -12,6 +12,10 @@ import { createInvite, listInvites, redeemInvite, isUserApproved, getAttribution
 import { getNotifyPromotions, setNotifyPromotions } from "./leads.js";
 import { trackEvent, getFunnelCounts } from "./funnel.js";
 import { listRecentFeedback } from "./feedback.js";
+import { registerClient, getLatestActiveClientForUser, setHostingMode, type EngineClient } from "./engine-clients.js";
+import { fleetManager, tenantRuntimeDir } from "./fleet/instance.js";
+import { writeHostedDeviceIdentityToDisk } from "./fleet/hosted-device-identity.js";
+import { handlePaperStart, handlePaperStop, handlePaperStatus, formatHostedStatusMessage, type HostedCommandsDeps } from "./fleet/hosted-commands.js";
 import type { Lead } from "./leads.js";
 import type { IssuedLicense } from "./licenses.js";
 
@@ -239,6 +243,129 @@ bot.command("pair", async (ctx) => {
   }
 });
 
+/**
+ * Hosted PAPER Engine, Task 4 — creates a brand-new hosted-only
+ * `engine_clients` row for a user who has NEVER run `aria pair <code>`
+ * locally. Per the wider product direction (no terminal, no local pairing
+ * step required for hosted PAPER), `/paper_start` must be able to work for
+ * such a user on its own.
+ *
+ * `device_public_key` is NOT NULL UNIQUE — see
+ * src/fleet/hosted-device-identity.ts's docblock for the full reasoning on
+ * why a REAL Ed25519 keypair is generated here (matching aria-engine's own
+ * local-keystore.ts contract) rather than a synthetic placeholder string:
+ * a placeholder can't ever produce a valid device signature, which would
+ * silently break the hosted engine's very first sync call. The keypair is
+ * generated here (not inside hosted-device-identity.ts) so the SAME
+ * `publicKeyX` is used for both the DB row and the pre-seeded identity
+ * file, with the DB insert happening first — the identity file is written
+ * to the tenant's runtime directory only once we have the real
+ * `client.id` the Fleet Manager will use as that directory's name.
+ */
+async function registerHostedClient(userId: number): Promise<EngineClient> {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubJwk = publicKey.export({ format: "jwk" }) as { x: string };
+  const privPkcs8 = privateKey.export({ format: "der", type: "pkcs8" }) as Buffer;
+
+  const client = await registerClient({
+    userId,
+    devicePublicKey: pubJwk.x,
+    deviceName: "Hosted PAPER (ARIA-managed)",
+    platform: "hosted",
+  });
+  await setHostingMode(client.id, "hosted");
+  writeHostedDeviceIdentityToDisk(tenantRuntimeDir(client.id), {
+    publicKeyX: pubJwk.x,
+    privateKeyPkcs8Base64: privPkcs8.toString("base64"),
+  });
+  return { ...client, hosting_mode: "hosted" };
+}
+
+/**
+ * Single `HostedCommandsDeps` object shared by all three hosted-PAPER
+ * commands below — real Fleet Manager, real DB lookups, and the ONE place
+ * the existing `try { await bot.api.sendMessage(...) } catch { logger.warn(...) }`
+ * pattern (matching every `notify*` function elsewhere in this file) is
+ * implemented for these commands, rather than duplicating it in each
+ * handler.
+ */
+const hostedDeps: HostedCommandsDeps = {
+  fleetManager,
+  getLatestActiveClientForUser,
+  registerHostedClient,
+  setHostingMode,
+  isUserApproved,
+  notify: async (telegramUserId, text) => {
+    try {
+      await bot.api.sendMessage(telegramUserId, text, { parse_mode: "Markdown" });
+    } catch (err) {
+      logger.warn({ err }, "hosted PAPER command DM failed — they may not have started the bot chat");
+    }
+  },
+};
+
+/**
+ * `/paper_start` — hosted-PAPER start. Chosen over extending `/pair`
+ * (which is specifically the LOCAL-device pairing flow — a hosted tenant
+ * has no local device at all) and over extending `/status` (which today
+ * is the license-status view, a different concept from engine process
+ * state). `paper_` prefix matches aria-engine's own `aria paper start`
+ * CLI vocabulary from the design spec's Task 4 section, so a user who's
+ * seen either surface recognizes the other.
+ */
+bot.command("paper_start", async (ctx) => {
+  const tgId = ctx.from?.id;
+  if (!tgId) return;
+  if (!USERS_DOMAIN_ENABLED) { await ctx.reply("Hosted PAPER isn't available yet."); return; }
+  try {
+    const user = await upsertUserFromTelegram({
+      id: tgId, username: ctx.from?.username, first_name: ctx.from?.first_name, last_name: ctx.from?.last_name,
+    });
+    await handlePaperStart(hostedDeps, { telegramUserId: tgId, userId: user.id });
+  } catch (err) {
+    logger.error({ err }, "paper_start command failed");
+    await ctx.reply("Something went wrong starting your hosted PAPER engine. Try again shortly.");
+  }
+});
+
+/** `/paper_stop` — hosted-PAPER stop, wired to FleetManager.stopTenant(). */
+bot.command("paper_stop", async (ctx) => {
+  const tgId = ctx.from?.id;
+  if (!tgId) return;
+  if (!USERS_DOMAIN_ENABLED) { await ctx.reply("Hosted PAPER isn't available yet."); return; }
+  try {
+    const user = await getUserByTelegramId(tgId);
+    if (!user) { await ctx.reply("No account found yet — use /start first."); return; }
+    await handlePaperStop(hostedDeps, { telegramUserId: tgId, userId: user.id });
+  } catch (err) {
+    logger.error({ err }, "paper_stop command failed");
+    await ctx.reply("Something went wrong stopping your hosted PAPER engine. Try again shortly.");
+  }
+});
+
+/**
+ * `/paper_status` — real `TenantProcessHandle` state, never a fabricated
+ * "all good". A user who never ran /paper_start gets an honest "never
+ * started" (no DB lookup even needed for that case) rather than the same
+ * message a stopped tenant would show.
+ */
+bot.command("paper_status", async (ctx) => {
+  const tgId = ctx.from?.id;
+  if (!tgId) return;
+  if (!USERS_DOMAIN_ENABLED) { await ctx.reply("Hosted PAPER isn't available yet."); return; }
+  try {
+    const user = await getUserByTelegramId(tgId);
+    if (!user) {
+      await hostedDeps.notify(tgId, formatHostedStatusMessage(undefined));
+      return;
+    }
+    await handlePaperStatus(hostedDeps, { telegramUserId: tgId, userId: user.id });
+  } catch (err) {
+    logger.error({ err }, "paper_status command failed");
+    await ctx.reply("Something went wrong checking your hosted PAPER engine status. Try again shortly.");
+  }
+});
+
 bot.command("support", async (ctx) => {
   // Was pointing at PUBLIC_URL + "/docs", a route that has never existed —
   // every tap 404'd. Points at the real Terms/Privacy/Risk/Refund/Support
@@ -318,6 +445,9 @@ bot.command("help", async (ctx) => {
       `/start — open the terminal, get access`,
       `/license (or /status) — your current plan and expiry`,
       `/pair — get a code to connect your local ARIA engine`,
+      `/paper_start — start your PAPER engine on ARIA's infrastructure (no local install needed)`,
+      `/paper_stop — stop your hosted PAPER engine`,
+      `/paper_status — check your hosted PAPER engine's status`,
       `/support — contact us, terms & risk disclosure`,
       `/notifications — manage promo/engine-alert preferences`,
       `/help — this message`, ``,

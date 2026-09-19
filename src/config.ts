@@ -90,6 +90,25 @@ const Env = z.object({
   // used for the legacy product's client-side verifier.
   ARIA_ENTITLEMENT_PRIVATE_D: z.string().optional(),
   ARIA_ENTITLEMENT_PUBLIC_X: z.string().optional(),
+
+  // ── Hosted PAPER Fleet Manager (Task 4, 2026-09-18) ──────────────────────
+  // Absolute path to a checkout of the sibling `aria-engine` repo the Fleet
+  // Manager spawns as a child process. Defaults to the same sibling-checkout
+  // convention this whole program's plan/ledger already assumes for local
+  // dev (`C:\Users\AIWMC\dev\aria-engine` next to this worktree) — MUST be
+  // set explicitly in any deployed environment where aria-engine isn't
+  // checked out at that relative path (e.g. Railway), which is a real,
+  // separate deployment-topology decision this task does not solve.
+  ARIA_ENGINE_REPO_PATH: z.string().optional().default("../aria-engine"),
+  // Root directory each tenant gets `<root>/<clientId>/.aria` under —
+  // default lives next to DB_PATH's own `./data` convention so both are
+  // covered by the same Railway volume mount without a second one.
+  FLEET_TENANTS_ROOT: z.string().default("./data/tenants"),
+  FLEET_LOGS_ROOT: z.string().default("./data/tenant-logs"),
+  // Left unset by default so FleetManager's own documented default
+  // (5 concurrent tenants, see fleet-manager.ts) applies — only overridden
+  // here if an operator explicitly wants a different cap.
+  FLEET_MAX_CONCURRENT_TENANTS: z.coerce.number().int().positive().optional(),
 });
 
 const parsed = Env.safeParse(process.env);

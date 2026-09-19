@@ -11,6 +11,8 @@ import { pgPool } from "./db-pg.js";
  * signing credential.
  */
 export type EngineClientStatus = "active" | "revoked";
+/** Added by the hosting-mode migration (1789169021631) — see that file's docblock. 'local' is the default for every pre-existing row. */
+export type EngineHostingMode = "local" | "hosted";
 
 export interface EngineClient {
   id: string; // uuid
@@ -25,6 +27,7 @@ export interface EngineClient {
   paired_at: string;
   revoked_at: string | null;
   offline_notified_at: string | null;
+  hosting_mode: EngineHostingMode;
 }
 
 function requirePool() {
@@ -146,4 +149,17 @@ export async function revokeClient(id: string): Promise<void> {
     `UPDATE engine_clients SET status = 'revoked', revoked_at = now() WHERE id = $1`,
     [id],
   );
+}
+
+/**
+ * Hosted PAPER Engine, Task 4 — flips a client's `hosting_mode`. Used by the
+ * new hosted-start command handler to mark a client as Fleet-Manager-owned
+ * (either a freshly created hosted-only row, or an existing local-CLI-paired
+ * row the user is now also choosing to run hosted). Never flips a client
+ * BACK to 'local' automatically — that would need its own explicit
+ * "run locally instead" UX this task doesn't build.
+ */
+export async function setHostingMode(id: string, mode: EngineHostingMode): Promise<void> {
+  const pool = requirePool();
+  await pool.query(`UPDATE engine_clients SET hosting_mode = $2 WHERE id = $1`, [id, mode]);
 }
