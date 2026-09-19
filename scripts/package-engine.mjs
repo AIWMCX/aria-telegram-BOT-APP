@@ -54,7 +54,16 @@ function arg(name) {
 }
 
 function run(cmd, args, cwd) {
-  return execFileSync(cmd, args, { cwd, stdio: ["ignore", "pipe", "inherit"], encoding: "utf8" });
+  return execFileSync(cmd, args, { cwd, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
+}
+
+// Redact any occurrence of the (secret) token from text before it is ever
+// printed or thrown. Some git failure modes (TLS/proxy/curl errors) echo the
+// full authenticated remote URL to stderr, unlike the common auth-failure
+// case GitHub itself redacts — so this must not rely on git/GitHub behavior.
+function redact(text, secret) {
+  if (!secret) return text;
+  return text.split(secret).join("***REDACTED***");
 }
 
 const sha = (arg("sha") ?? process.env.ARIA_ENGINE_COMMIT_SHA ?? "").trim();
@@ -93,9 +102,20 @@ try {
   run("git", ["checkout", "-q", "FETCH_HEAD"], dest);
   run("git", ["remote", "remove", "origin"], dest);
 } catch (err) {
-  // Deliberately does NOT print `err` verbatim — a git transport error can
-  // echo the remote URL, which here carries the token.
-  fatal(`git fetch of ${sha} from ${url} failed (transport or auth error; details suppressed to avoid echoing credentials)`);
+  // git's stderr is captured (piped, not inherited) rather than let through
+  // raw: some git failure modes (TLS/proxy/curl errors) echo the full
+  // authenticated URL — including the token — to stderr, even in modes where
+  // GitHub's own auth-failure redaction doesn't kick in. Redact the token out
+  // of whatever came back before it is printed anywhere.
+  const rawStderr = typeof err.stderr === "string" ? err.stderr : (err.stderr ?? "").toString("utf8");
+  const safeStderr = redact(rawStderr, token);
+  if (safeStderr.trim()) console.error(safeStderr.trim());
+  // Remove the partial/failed destination BEFORE exiting: dest may already
+  // contain a .git/config with the token embedded in the remote URL
+  // (authUrl), and fatal() below calls process.exit(1) with no cleanup of
+  // its own — leaving that credential-bearing directory on disk otherwise.
+  rmSync(dest, { recursive: true, force: true });
+  fatal(`git fetch of ${sha} from ${url} failed (transport or auth error; details above, if any, have been redacted of credentials)`);
 }
 
 // ── Post-checkout verification ──────────────────────────────────────────────

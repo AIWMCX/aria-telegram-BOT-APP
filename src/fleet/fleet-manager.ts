@@ -138,9 +138,20 @@ export interface FleetManagerOptions {
   maxConcurrentTenants?: number;
   /**
    * Spawn-time engine build-identity gate (Task 7). Called on EVERY
-   * `spawnTenant()` — not cached at construction — so an engine tree that
-   * disappears or is swapped underneath a long-running process is caught on
-   * the next spawn rather than trusted forever from a startup-time snapshot.
+   * `spawnTenant()` — not cached at construction — so a MANUAL (re-)start
+   * always re-checks rather than trusting a startup-time snapshot forever.
+   *
+   * NOT called on the auto-restart path: the restart timer scheduled after a
+   * crash (see `entry.restartTimer` above) calls `this.launch(entry, true)`
+   * directly, bypassing `spawnTenant()` and therefore `assertEngineUsable()`
+   * entirely. An engine tree that disappeared or was swapped underneath a
+   * long-running process would NOT be caught by this gate on auto-restart.
+   * This is considered acceptable, not an oversight to route around here:
+   * the packaged image is immutable for the lifetime of a deployment (Task 7
+   * packaging bakes one pinned, verified engine into the image at build
+   * time), so the on-disk engine tree cannot actually change out from under
+   * a running container between one restart and the next. Re-gating the
+   * restart path is out of scope for this fix.
    *
    * Contract: if this returns `available: false`, the spawn is REJECTED with
    * an `EngineIdentityError` and no OS process is created. Silently proceeding

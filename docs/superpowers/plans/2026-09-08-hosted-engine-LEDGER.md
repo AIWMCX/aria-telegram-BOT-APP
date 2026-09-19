@@ -22,6 +22,7 @@ NOT STARTED / IN PROGRESS / IMPLEMENTED (awaiting review) / REVIEWED-PASS / REVI
 | 4 | Wire Telegram commands to Fleet Manager | DONE | `a0c5ff5`; review fix `b4c4321`; second review fix `1c66e8a` | DONE — REVIEWED-FIXED after 2 fix cycles. First cycle: reviewer found a real, silent P0 — converting an EXISTING `local` client to `hosted` (`startHostedEngine`'s `else if (client.hosting_mode !== "hosted")` branch) flipped only the DB flag and wrote nothing to disk, so the spawned tenant's `aria-engine` process generated an unrelated keypair in its empty runtime dir that could never match the row's original (locally-paired) `device_public_key` — every `/api/engine/sync` call from that hosted process would fail signature verification, permanently and silently. Fixed by generating a real Ed25519 identity for the SAME row, writing it to the tenant's runtime directory, and rotating the row's `device_public_key` to match. Second cycle (2026-09-18): a follow-up review of that fix found the DB-write and disk-write were still ordered DB-then-disk, leaving a narrow crash window that could reintroduce the same P0; a UX gap (no disclosure that the local pairing is being superseded); and a ledger arithmetic error in this row's own prior text (see Log for corrected, freshly-run counts). All three fixed — see Log. Independently re-reviewed a third time (2026-09-18): traced the write-before-commit ordering as genuinely unconditional in both code paths, confirmed `rotateClientDeviceIdentityAndSetHosted` is a real single-statement atomic UPDATE (not two awaits dressed up as atomic), verified the crash-simulation test performs a real second retry that self-heals (not just "error caught"), and independently re-ran the test file to get 90/90 passing — matching the claim exactly and closing out this row's own prior arithmetic errors for good. | Depends on: 2, 3 |
 | 5 | Dual-mode (local + hosted) coexistence test | IMPLEMENTED (awaiting review) | `e874097` | | Depends on: 4 |
 | 6 | Soak the Fleet Manager itself | IMPLEMENTED (awaiting review) | `54ca099`; first re-certification fix `1123008`/`5f92185`; second re-certification fix `ed1db8c` | FAILED x2 — first soak: vacuous isolation checks (fixed). Second review: first fix's per-tenant-FleetManager-instance topology made the in-memory isolation channel structurally unable to detect the bug class it exists to catch (fixed by restoring one shared instance). A THIRD independent review of this second fix still needs to happen. | Depends on: 2, 3 |
+| 7 | Package a pinned, verified aria-engine into the Railway image | REVIEWED-FIXED | `4a8104e`; defect fix (this cycle) TBD | PASS with 3 minor defects (D1 token-bearing temp dir survives a failed fetch, D2 git stderr could echo the token in some transports, D3 fleet-manager.ts docblock overclaimed the identity gate's coverage on the auto-restart path) — all fixed this cycle, see Log. One blocking OPERATIONAL (not code) condition also raised: `ARIA_ENGINE_COMMIT_SHA` and a scoped fetch credential must be set in Railway's Variables before this can deploy — an owner action item, not tracked as a code defect. | Depends on: 2, 3, 4 |
 
 ## Stop conditions
 - A task's acceptance criteria cannot be met without violating PAPER-only guardrails (no wallet/signing/broadcast anywhere in the Fleet Manager or spawned processes) → STOP, report.
@@ -448,3 +449,145 @@ NOT STARTED / IN PROGRESS / IMPLEMENTED (awaiting review) / REVIEWED-PASS / REVI
     - **Commit**: `ed1db8c` (code + runbook + this ledger entry); this
       exact SHA recorded in a small follow-up ledger-only commit, matching
       this program's own established two-commit pattern.
+- 2026-09-19 — Task 7 implemented: `Dockerfile` (new), `scripts/package-engine.mjs`
+  (new), `scripts/packaged-engine-integration-test.mts` (new), `src/fleet/
+  engine-identity.ts` (new), plus modifications to `src/fleet/fleet-manager.ts`,
+  `src/fleet/instance.ts`, `src/fleet/tenant-process.ts`, `src/release.ts`,
+  `src/server.ts`.
+  - **P0 closed**: nothing had ever put aria-engine code into the Railway
+    container. `FleetManager` spawned `node --import tsx src/cli.ts paper
+    start` with `cwd = CONFIG.ARIA_ENGINE_REPO_PATH`, defaulting to the
+    dev-machine sibling checkout `../aria-engine`; the Dockerfile COPYed only
+    this repo's own `package.json`/`tsconfig.json`/`src`/`public`/`scripts`/
+    `migrations`. Hosted `/paper_start` could never have worked in production
+    — this was the P0 already visible in `/healthz`'s honest `engineSha:
+    null` before this task.
+  - **Mechanism chosen**: a Docker multi-stage build with a dedicated `engine`
+    builder stage that fetches `aria-engine` by an EXACT 40-char lowercase hex
+    commit SHA (`git fetch origin <sha>`, never a branch/tag/"latest"),
+    re-verifies the checked-out `HEAD` against that pin post-checkout, checks
+    for `src/cli.ts`/`src/runtime/paths.ts`/`package.json` and the
+    `ARIA_RUNTIME_DIR` multi-tenant override, runs `npm ci --include=dev`
+    (aria-engine has zero runtime `dependencies` — `tsx`, which executes
+    `src/cli.ts`, is a devDependency, so `--include=dev` is required, not an
+    optimization), writes a `.engine-sha` marker next to the code, and deletes
+    `.git` before the final image stage copies the tree to
+    `/opt/aria-engine`. This packaging logic lives in ONE shared script,
+    `scripts/package-engine.mjs`, called by BOTH the Dockerfile and the local
+    `scripts/packaged-engine-integration-test.mts` production-equivalent test
+    — so the artifact the test exercises is produced by the SAME code that
+    produces the shipped image's artifact, not a hand-maintained copy that
+    could silently drift. Spawn-time identity verification
+    (`src/fleet/engine-identity.ts`) compares two independent sources — the
+    image's `ARIA_ENGINE_COMMIT_SHA` env var and the on-disk `.engine-sha`
+    marker — so control-plane/engine drift is detectable rather than assumed
+    away; `FleetManager.assertEngineUsable()` (called from `spawnTenant()`)
+    rejects with `EngineIdentityError` before any OS process is created if
+    the engine is absent, unverifiable, or the wrong version, and refuses
+    outright with no verifier wired in a production container. `/healthz`
+    gained additive `controlPlane`/`engine`/`fleet` blocks (`src/release.ts`,
+    `src/server.ts`) so `ok: true` no longer implies a working engine.
+  - **Real P0 persistence bug found and fixed along the way (not the
+    headline P0, found during the same Linux/Railway review)**: tenant state
+    was being written under image-layer storage, not the Railway-mounted
+    persistent volume. `CONFIG.FLEET_TENANTS_ROOT`/`FLEET_LOGS_ROOT` default
+    to `./data/tenants`/`./data/tenant-logs`, which resolve to
+    `/app/data/*` inside the container — ordinary image-layer filesystem,
+    wiped on every redeploy. Every tenant's `state/paper-snapshot.json` and
+    append-only `state/events.jsonl` would have been silently lost on the
+    next deploy, with no error at the point of loss. Fixed by pinning
+    `FLEET_TENANTS_ROOT`/`FLEET_LOGS_ROOT` in the Dockerfile to paths under
+    `/data` (the actual mounted-volume root this repo's own `DB_PATH`
+    convention already uses for SQLite), so tenant state now survives
+    redeploys the same way the license DB already does. Also fixed in the
+    same pass: `tenant-process.ts` created its per-tenant logs root `0o755`
+    instead of `0o700` — every other tenant-scoped directory was already
+    `0o700`; the inconsistency was invisible in local development because
+    Windows does not enforce POSIX mode bits.
+  - **Independent review — PASS with 3 minor defects, this cycle's fix
+    work**: an independent reviewer PASSED this task's engine-packaging work
+    overall (the mechanism, the identity gate, the persistence fix, and the
+    integration test were all confirmed sound), but found three minor
+    defects, all fixed in this same session:
+    - **D1 (token-bearing temp dir survives a failed fetch)**: the reviewer
+      triggered a REAL auth failure using a canary token and confirmed
+      `<dest>/.git/config` — holding that token in plaintext in the injected
+      `https://x-access-token:<token>@...` remote URL — survived on disk
+      after the failure, because the original catch block called `fatal()`
+      (which calls `process.exit(1)`) with no cleanup step. Fixed:
+      `scripts/package-engine.mjs`'s catch block now calls `rmSync(dest, {
+      recursive: true, force: true })` BEFORE `fatal()`, removing the
+      partial/failed destination so no credential-bearing artifact survives
+      a failed run. Verified by re-running the reviewer's exact reproduction
+      — a deliberately wrong/canary `ARIA_ENGINE_GIT_TOKEN` against a real
+      private-repo URL — and confirming `dest` (and therefore `dest/.git/
+      config`) no longer exists on disk after the script exits non-zero.
+    - **D2 (git's inherited stderr could echo the token in some failure
+      modes)**: the reviewer's specific reproduction didn't leak (GitHub's
+      auth-failure response happened to redact userinfo in that transport
+      path), but other git failure modes — TLS errors, proxy errors, raw
+      curl errors — DO echo the full authenticated URL, including the
+      token, to stderr; the original code passed git's stderr straight
+      through via `stdio: [..., "inherit"]`, uncontrolled. Fixed: all git
+      subprocess calls now capture stderr (`stdio: ["ignore", "pipe",
+      "pipe"]`) instead of inheriting it; on failure, the captured stderr
+      has every occurrence of the token value replaced with
+      `***REDACTED***` (a plain string `.split(token).join(...)`, no regex
+      needed since the token is a literal secret, not a pattern) before it
+      is ever printed. Verified directly: constructed a synthetic error
+      string containing a real-shaped fake token embedded in a URL (as a
+      TLS/curl-style transport error would produce), ran it through the new
+      `redact()` helper, and confirmed the token substring is gone from the
+      output and `***REDACTED***` appears in its place — the rest of the
+      diagnostic text (which transport step failed) is preserved so the
+      error remains useful for debugging.
+    - **D3 (`fleet-manager.ts` docblock overclaimed gate coverage)**: the
+      `verifyEngineIdentity` option's docblock claimed the gate catches "an
+      engine tree that disappears or is swapped underneath a long-running
+      process" — but the reviewer confirmed the restart-timer path (the
+      `setTimeout` callback scheduled after a crash) calls `this.launch(entry,
+      true)` DIRECTLY, bypassing `spawnTenant()` and therefore
+      `assertEngineUsable()` entirely; the gate only actually runs at
+      explicit `spawnTenant()` time (manual starts), never on auto-restart.
+      Judged low real-world impact (the packaged image is immutable for the
+      lifetime of a deployment, so the on-disk engine tree cannot actually
+      change out from under a running container between restarts) but the
+      comment was factually wrong regardless. Fixed by rewriting the
+      docblock to state plainly that the gate does NOT run on auto-restart,
+      name the immutable-image reasoning for why that's accepted rather than
+      fixed, and explicitly note that adding a gate call to the restart path
+      was judged out of scope for this fix — no behavior change, comment-only.
+  - **One blocking condition raised by the review — operational, not a code
+    gap**: this cannot deploy to Railway until `ARIA_ENGINE_COMMIT_SHA` and a
+    scoped fetch credential (`ARIA_ENGINE_GIT_TOKEN`, a read-only deploy
+    token/PAT scoped to the private `aria-engine` repo) are set in Railway's
+    Variables. Neither has been done as of this ledger entry — this is an
+    owner action item to track and complete before the next production
+    deploy, not something this session's code can satisfy on its own.
+  - **Separately-found-but-out-of-scope gap, flagged not silently fixed**:
+    even after packaging ships and the Railway credentials above are set,
+    the hosted flow as it exists today never seeds pairing state for a
+    brand-new hosted-only client in the one place `aria paper start` itself
+    checks for it — so `/paper_start` will still fail with `"Device is not
+    paired. Run \`aria pair <CODE>\` first."` immediately after a genuinely
+    successful spawn. This is tracked as a separate, real P0 (P0-2) for a
+    future task, not something this packaging/defect-fix cycle attempted to
+    close — packaging an engine and pairing a device are two different
+    problems, and conflating their fixes would have obscured which one this
+    cycle actually verified.
+  - **Test/typecheck results (this fix cycle)**: `npm run typecheck` —
+    clean, zero errors. Full `npm test` — exit 0, zero `❌` markers.
+    `scripts/packaged-engine-integration-test.mts` was NOT re-run this cycle:
+    producing a real packaged artifact requires fetching the actual private
+    `aria-engine` repo over the network with a working credential, which
+    this fix cycle did not have reason to re-acquire since none of D1/D2/D3
+    touch the integration test's own logic, the packaging mechanism's
+    control flow on the success path, or anything the integration test
+    exercises differently from before — D1/D2 only change what happens on
+    the FAILURE path (which the integration test's happy-path run never
+    hits) and D3 is a comment-only change in a different file. Flagged
+    honestly as a skipped re-run, not silently omitted.
+  - **Commit**: fix commit + this ledger entry in one commit (this defect
+    cycle did not warrant a separate ledger-only follow-up commit, since the
+    ledger entry was written as part of the same fix work rather than after
+    an already-landed code commit); exact SHA to be recorded once committed.
