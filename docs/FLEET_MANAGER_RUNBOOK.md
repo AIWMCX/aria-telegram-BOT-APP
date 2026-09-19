@@ -354,8 +354,9 @@ below.
 
 - `aria-telegram-BOT-APP` (this repo, worktree
   `aria-telegram-BOT-APP-hosted-impl`, branch `work/hosted-paper-engine-impl`):
-  commit `d66848a498cb7f0f7bf27d1d407469a359211fb3` (the fix commit itself
-  is later — see the ledger for its SHA).
+  commit `d66848a498cb7f0f7bf27d1d407469a359211fb3` (the soak itself ran
+  against this SHA; the re-certification fix that produced the checks and
+  numbers below landed in commit `1123008e72043df3927417ca6680700d56ed9c2d`).
 - `aria-engine` (sibling checkout): branch `feat/hosted-runtime-dir-override`
   @ `69299df9a68d925281f181064cb84c83771698a3` (unchanged from the first
   soak — confirmed again via `git branch --show-current`/`git rev-parse
