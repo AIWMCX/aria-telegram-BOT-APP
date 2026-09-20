@@ -974,5 +974,5 @@ NOT STARTED / IN PROGRESS / IMPLEMENTED (awaiting review) / REVIEWED-PASS / REVI
     suites.
   - **Status**: `IMPLEMENTED (awaiting review)` — a fresh independent
     review of this fix still needs to happen.
-  - **Commit**: pending — recorded in a follow-up note once pushed to
-    `origin/fix/hosted-entitlement-renewal`; branch not merged anywhere.
+  - **Commit**: `8f59d62`, pushed to `origin/fix/hosted-entitlement-renewal`;
+    branch not merged anywhere.
