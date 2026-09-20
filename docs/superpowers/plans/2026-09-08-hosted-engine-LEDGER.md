@@ -22,7 +22,7 @@ NOT STARTED / IN PROGRESS / IMPLEMENTED (awaiting review) / REVIEWED-PASS / REVI
 | 4 | Wire Telegram commands to Fleet Manager | DONE | `a0c5ff5`; review fix `b4c4321`; second review fix `1c66e8a` | DONE — REVIEWED-FIXED after 2 fix cycles. First cycle: reviewer found a real, silent P0 — converting an EXISTING `local` client to `hosted` (`startHostedEngine`'s `else if (client.hosting_mode !== "hosted")` branch) flipped only the DB flag and wrote nothing to disk, so the spawned tenant's `aria-engine` process generated an unrelated keypair in its empty runtime dir that could never match the row's original (locally-paired) `device_public_key` — every `/api/engine/sync` call from that hosted process would fail signature verification, permanently and silently. Fixed by generating a real Ed25519 identity for the SAME row, writing it to the tenant's runtime directory, and rotating the row's `device_public_key` to match. Second cycle (2026-09-18): a follow-up review of that fix found the DB-write and disk-write were still ordered DB-then-disk, leaving a narrow crash window that could reintroduce the same P0; a UX gap (no disclosure that the local pairing is being superseded); and a ledger arithmetic error in this row's own prior text (see Log for corrected, freshly-run counts). All three fixed — see Log. Independently re-reviewed a third time (2026-09-18): traced the write-before-commit ordering as genuinely unconditional in both code paths, confirmed `rotateClientDeviceIdentityAndSetHosted` is a real single-statement atomic UPDATE (not two awaits dressed up as atomic), verified the crash-simulation test performs a real second retry that self-heals (not just "error caught"), and independently re-ran the test file to get 90/90 passing — matching the claim exactly and closing out this row's own prior arithmetic errors for good. | Depends on: 2, 3 |
 | 5 | Dual-mode (local + hosted) coexistence test | IMPLEMENTED (awaiting review) | `e874097` | | Depends on: 4 |
 | 6 | Soak the Fleet Manager itself | IMPLEMENTED (awaiting review) | `54ca099`; first re-certification fix `1123008`/`5f92185`; second re-certification fix `ed1db8c` | FAILED x2 — first soak: vacuous isolation checks (fixed). Second review: first fix's per-tenant-FleetManager-instance topology made the in-memory isolation channel structurally unable to detect the bug class it exists to catch (fixed by restoring one shared instance). A THIRD independent review of this second fix still needs to happen. | Depends on: 2, 3 |
-| P0 (fix/hosted-pairing-state-seeding) | Hosted `/paper_start` never seeded `pairing-state.json`/entitlement token — real `aria paper start` would fail closed with "Device is not paired" for EVERY hosted tenant, regardless of engine packaging or Fleet Manager correctness | IMPLEMENTED (awaiting review) | `ce0e48d` | | Depends on: 4 (reuses `registerHostedClient`/`convertClientToHosted`'s existing device-identity call sites and write-before-commit discipline) |
+| P0 (fix/hosted-pairing-state-seeding) | Hosted `/paper_start` never seeded `pairing-state.json`/entitlement token — real `aria paper start` would fail closed with "Device is not paired" for EVERY hosted tenant, regardless of engine packaging or Fleet Manager correctness | REVIEWED-PASS | `ce0e48d`; SHA record `977d379` | REVIEWED-PASS (2026-09-19, independent adversarial review — see Log). Verified by reproduction, not self-report: genuine reuse of `issueReal1BetaEntitlementToken` (no second signer), private key never leaves `engine-entitlement-signer.ts` and no `.env` in this worktree, real aria-engine modules imported by the tests with both negative controls passing, real-CLI seeded-vs-unseeded control re-run independently, write-before-commit ordering traced in both call sites, 0o600/0o700 modes matched, typecheck clean and 345 PASS / 0 FAIL re-run. Two REQUIRED FOLLOW-UPS before wider rollout, neither blocking merge: (1) the disclosed revocation gap is real and broader — hosted-only tenants get no `engine_entitlements` row at all, so there is no UUID for `/revokeengine`; mitigated by `engine_clients.status='revoked'` and operator-side `stopTenant`; (2) NEW, undisclosed — the 7-day token is minted once and never renewed, so a hosted tenant silently crash-loops on day 8 with a `aria pair <CODE>` instruction it cannot follow. | Depends on: 4 (reuses `registerHostedClient`/`convertClientToHosted`'s existing device-identity call sites and write-before-commit discipline) |
 
 ## Stop conditions
 - A task's acceptance criteria cannot be met without violating PAPER-only guardrails (no wallet/signing/broadcast anywhere in the Fleet Manager or spawned processes) → STOP, report.
@@ -579,3 +579,131 @@ NOT STARTED / IN PROGRESS / IMPLEMENTED (awaiting review) / REVIEWED-PASS / REVI
     small follow-up ledger-only commit, matching this program's own
     established two-commit pattern. Branch pushed to
     `origin/fix/hosted-pairing-state-seeding`, not merged anywhere.
+
+- 2026-09-19 — **INDEPENDENT ADVERSARIAL REVIEW of the P0 hosted
+  pairing-state/entitlement seeding fix (`ce0e48d` / `977d379`): VERDICT
+  PASS.** Reviewer did not write the code; every claim below was verified
+  by reading the real source and re-running the real commands, not by
+  trusting the implementer's self-report.
+  - **Genuine reuse, not a second signing implementation (the most
+    important check)**: `src/fleet/hosted-pairing-seed.ts:4` imports
+    `issueReal1BetaEntitlementToken` from `../engine-entitlement-signer.js`
+    and calls it at line 101. No Ed25519 signing, key handling, or token
+    assembly is reimplemented anywhere in the new module — it is the
+    identical function `server.ts:302` (`/api/engine/pair`) already calls
+    for a locally-paired device. No drift risk from a duplicate signer.
+  - **Private-key handling**: the only reader of
+    `ARIA_ENTITLEMENT_PRIVATE_D` remains `engine-entitlement-signer.ts`'s
+    `requireSigningKey()` (via `CONFIG`). The new module never touches it,
+    never logs it, and never writes it to disk beside the token it mints.
+    No hardcoded key anywhere. Confirmed no `.env` file exists in this
+    worktree at all — only `.env.example`, with the key line blank —
+    matching the established pattern from earlier in this program.
+    `bot.ts` discards `seedHostedPairingState`'s return value, so the
+    minted bearer token is never logged either.
+  - **The token is real, verified by the real verifier**: the test's
+    `importEngineModule()` (`hosted-pairing-seed.test.ts:75-77`) resolves
+    `pathToFileURL(path.join("C:\\Users\\AIWMC\\dev\\aria-engine", "src",
+    ...))` — a genuine dynamic import of the sibling aria-engine
+    checkout's own `pairing-state.ts` / `entitlement.ts` /
+    `entitlement-gate.ts`, not a local mock or similarly-named stub.
+    Reviewer confirmed those three files are the real engine modules on
+    `aria-engine` `main` @ `766dcdb`, that `checkPaperStartEntitlement`'s
+    `publicKeyX` third parameter is a legitimate pre-existing
+    test-injection point defaulting to the baked-in production constant
+    (`entitlement-public-key.ts`), and re-ran the suite: both negative
+    controls — tampered signature rejected, wrong public key rejected —
+    genuinely pass, proving real Ed25519 verification, not a shape check.
+  - **End-to-end CLI proof independently REPRODUCED**: reviewer seeded a
+    fresh tenant runtime dir using this fix's own `seedHostedPairingState`
+    under a self-generated synthetic entitlement keypair, then ran the real
+    engine (`node --import tsx src/cli.ts paper start` from
+    `C:\Users\AIWMC\dev\aria-engine`, `ARIA_RUNTIME_DIR` pointed at it).
+    Control (unseeded dir): "Device is not paired. Run `aria pair <CODE>`
+    first." Seeded dir: "Entitlement signature-invalid — run `aria pair
+    <CODE>` to obtain a fresh entitlement." Exactly the implementer's
+    claimed outcome, reproduced independently. That failure mode is
+    internally consistent and is NOT papering over a defect:
+    `signature-invalid` is specifically what `verifyEntitlement` returns
+    for a well-formed, correctly-scoped, unexpired ARIAE1 token whose
+    signer key does not match the engine's baked-in public key — a
+    malformed payload, wrong scope, or bad TTL would surface as
+    `malformed` / `expired` instead. The real production
+    `ARIA_ENTITLEMENT_PRIVATE_D` correctly exists only in Railway, so this
+    is the strongest proof obtainable in this environment.
+  - **Write-before-commit ordering traced in BOTH call sites**, in the code
+    itself rather than from a comment: `registerHostedClient` (`src/bot.ts`)
+    runs `writeHostedDeviceIdentityToDisk(runtimeDir, identity)`, then
+    `seedHostedPairingState(runtimeDir, client.id)`, then
+    `await setHostingMode(client.id, "hosted")`; `convertClientToHosted`
+    runs the same two synchronous disk writes, then
+    `await rotateClientDeviceIdentityAndSetHosted(...)`. Both seeding calls
+    are unconditional and strictly precede the DB commit; both are
+    synchronous, so a throw provably prevents the DB call from running.
+  - **Crash-safety / idempotency**: verified the test's crash block is a
+    real second execution (two commit attempts counted, fresh keypair on
+    the retry, final on-disk `pairing-state.json` and `device-identity.json`
+    asserted to agree with the committed row), not an assertion of intent.
+    Separately traced that double-seeding cannot corrupt a live tenant:
+    `startHostedEngine` reaches `registerHostedClient` only when no client
+    row exists, and `convertClientToHosted` only when
+    `hosting_mode !== "hosted"`, so an already-hosted tenant is never
+    re-seeded. The `lastSequence: 0` reset on a local-to-hosted conversion
+    was checked as a possible desync defect and is NOT one: the control
+    plane returns its authoritative `currentSequence` on a 409 and the
+    engine's `resyncSequence` retry path (`cli.ts`, `pairing-client.ts`)
+    self-heals on the first sync.
+  - **File modes**: `writeHostedPairingStateToDisk` uses
+    `mkdirSync(..., { mode: 0o700 })` and
+    `writeFileSync(..., { mode: 0o600 })` — identical to aria-engine's own
+    `savePairingState` and to this repo's `writeHostedDeviceIdentityToDisk`.
+    Matches the established sensitive-tenant-file pattern.
+  - **Regression check re-run by the reviewer, not taken on report**:
+    `npm run typecheck` clean (zero errors); `npm test` exit 0 with
+    **345 PASS lines and zero FAIL markers**, matching the claimed 345/0
+    exactly, with `hosted-commands`, `fleet-manager`,
+    `fleet-manager.integration`, and `dual-mode-coexistence` all unchanged
+    and green.
+  - **Call on the disclosed revocation-propagation gap: REAL, ACCEPTED
+    AS-IS FOR MERGE, but a REQUIRED FOLLOW-UP before wider rollout.**
+    Confirmed real, and in fact slightly BROADER than described:
+    `getOrCreateTrialEntitlement` is called from exactly one place in the
+    codebase (`server.ts:296`, inside `/api/engine/pair`), so a hosted-only
+    tenant that never ran `/pair` has no `engine_entitlements` row at all —
+    meaning there is not merely "no propagation", there is no entitlement
+    UUID for `/revokeengine` to act on in the first place. Severity is
+    nonetheless acceptable now, for reasons specific to hosted: (a)
+    PAPER-only — no wallet, no signing, no money at risk; (b)
+    `engine_clients.status = 'revoked'` still exists and immediately 401s
+    that device's `/api/engine/sync`; (c) decisively, a hosted tenant runs
+    as ARIA's OWN supervised child process, so the operator's
+    `stopTenant` / kill is a strictly stronger and immediate revocation
+    lever than any token channel. Worst case is bounded at 7 days of
+    paper-only activity for an operator who declines to use those levers.
+    The follow-up should create the `engine_entitlements` row for hosted
+    tenants too, so one revocation path covers both modes.
+  - **Additional finding, NOT a blocker, NOT previously disclosed — 7-day
+    token TTL with no renewal path for hosted tenants.** The seeded token
+    carries `REAL1_BETA_DURATION_SECONDS` (7 days) and is minted exactly
+    once, at client creation/conversion. `startHostedEngine` never
+    re-seeds an already-`hosted` row, so on day 8 every `/paper_start` and
+    every Fleet Manager auto-restart fails the entitlement gate; the tenant
+    crash-loops into `failed` while the user sees only a generic "Could not
+    start your hosted PAPER engine", and the engine's own message tells
+    them to run `aria pair <CODE>` — an instruction a Telegram-only hosted
+    user cannot follow. This fails CLOSED (the safe direction) and is a
+    usability/operability defect, not a trust-boundary defect, so it does
+    not block merge. It should be fixed in the same follow-up as the
+    revocation gap: renew or re-seed the token on hosted start when the
+    existing one is near or past expiry, and surface a clear
+    entitlement-expired message instead of a generic start failure.
+  - **Minor, acceptable**: the new tests exercise
+    `registerHostedClient` / `convertClientToHosted` as faithful local
+    simulations rather than importing bot.ts's real functions (bot.ts
+    constructs a live grammy bot at import time). The reviewer compensated
+    by tracing the real ordering directly in the `ce0e48d` diff, which
+    matches the simulated ordering exactly. Consistent with this repo's
+    existing convention.
+  - **Status**: `REVIEWED-PASS`. Ledger-only update; no code was changed by
+    this review. Branch not merged, not rebased, not pushed beyond this
+    ledger commit.
