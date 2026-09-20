@@ -871,5 +871,108 @@ NOT STARTED / IN PROGRESS / IMPLEMENTED (awaiting review) / REVIEWED-PASS / REVI
     `dual-mode-coexistence.test.ts`.
   - **Status**: `IMPLEMENTED (awaiting review)` — an independent review of
     this fix has not yet happened.
+  - **Commit**: `e2a4a8f`, pushed to `origin/fix/hosted-entitlement-renewal`.
+
+- 2026-09-19 — **RE-CERTIFICATION after independent-review FAIL on `e2a4a8f`
+  (status stays `IMPLEMENTED (awaiting review)` — a fresh independent review
+  of THIS fix still needs to happen).** An independent reviewer failed the
+  renewal fix above on one P0 and one lower-priority (P2) finding.
+  - **D1 — P0, the blocker, FIXED.** `renewHostedPairingStateIfNeeded`
+    (`src/fleet/hosted-pairing-seed.ts`) read the existing on-disk
+    `pairing-state.json` (which is actually aria-engine's own `PairingState`
+    shape — see `aria-engine/src/pairing-state.ts:38` — including
+    `lastKnownEntitlementStatus`, written by the RUNNING engine on every
+    real sync and consulted by `checkPaperStartEntitlement`,
+    `entitlement-gate.ts:52-55`, to deny with `revoked-by-server` even for
+    an offline-valid, correctly-signed token), but then constructed a BRAND
+    NEW object with only `{clientId, lastSequence, entitlementToken}` and
+    overwrote the whole file — silently erasing `lastKnownEntitlementStatus`
+    and any other field the engine had written. **Concrete exploit
+    reproduced by the reviewer**: admin `/revokeengine <id>` -> tenant's
+    next real sync correctly caches `revoked` -> `/paper_start` correctly
+    denied -> the token later enters its 24h renewal window -> the next
+    `/paper_start` calls renewal, mints a fresh valid token, and silently
+    WIPES the revoked cache in the same write -> the gate now grants
+    access -> the revoked user is back in and can renew indefinitely.
+    **Root cause confirmed exactly as flagged, not assumed**:
+    `readHostedPairingStateFromDisk` does a bare `JSON.parse(...)` (no
+    narrowing of unknown fields at runtime — TypeScript's `HostedPairingState`
+    return-type annotation does not strip actual JS object properties), so
+    the read step was never the problem; the loss happened purely at the
+    WRITE step's object reconstruction. **Fix**: `renewHostedPairingStateIfNeeded`
+    now re-reads the file immediately before writing (`preserveFrom`, see
+    D2 below) and spreads `...preserveFrom` into the new state object
+    FIRST, overriding only `clientId`/`lastSequence` (falling back to the
+    function's arguments only when there is no existing file at all,
+    exactly as before) and `entitlementToken` (when issuance succeeds) —
+    never reconstructing a narrow object from scratch. `HostedPairingState`
+    also gained an explicit (unused-by-this-module) `lastKnownEntitlementStatus?:
+    unknown` field with a docblock explaining it exists only so the type
+    documents what the spread preserves, not because this module ever sets it.
+  - **New exploit-reproduction test** (`src/fleet/hosted-pairing-seed.test.ts`,
+    `[exploit] ...` block): matches the reviewer's own reproduction exactly —
+    (1) writes a pairing-state file with `lastKnownEntitlementStatus:
+    {status: "revoked", ...}` plus a token expiring in ~1h (inside the 24h
+    renewal margin), with a precondition check confirming the REAL
+    `checkPaperStartEntitlement()` genuinely denies with `revoked-by-server`
+    before renewal touches anything; (2) calls the real
+    `renewHostedPairingStateIfNeeded`, confirming it actually renews (mints
+    a genuinely new token, preserves `lastSequence`); (3) reads the file
+    back and asserts `lastKnownEntitlementStatus` is still present and
+    still exactly `"revoked"` (both on disk and on the function's own
+    returned `state`); (4) drives the REAL aria-engine `verifyEntitlement()`
+    (confirming the renewed token is, on its own, genuinely offline-valid —
+    ruling out "the gate just failed for an unrelated reason") and the REAL
+    `checkPaperStartEntitlement()` against the renewed on-disk state,
+    asserting it STILL denies with `revoked-by-server` despite the freshly-
+    signed, otherwise-valid token. All real Ed25519/real verifier, same
+    established convention as this file's other tests — 9 new checks, all
+    passing.
+  - **D2 — P2, FIXED (the straightforward part) + disclosed (the rest).**
+    The renewal read-modify-write wasn't coordinated with the live engine's
+    own concurrent writes to the same file (it writes `lastSequence` on
+    every sync tick), so renewal could rewind `lastSequence` to a stale
+    value, causing the engine's next sync to be rejected as a replay
+    (self-healing via `resyncSequence`, but reproducing a sync-desync
+    signature this program has hit before). **Fix applied (simple, as
+    instructed)**: `renewHostedPairingStateIfNeeded` now takes a SECOND
+    read of the file (`preserveFrom`) immediately before the write, instead
+    of building the written state from the read taken at the top of the
+    function (`existing`, used only for the renewal-need decision) — this
+    narrows the window during which a concurrent engine write would be
+    clobbered, without requiring file-locking. **Not fully closed, disclosed
+    in the docblock rather than silently ignored**: the engine could still
+    write between this second read and this function's own `writeFileSync`
+    — closing that completely needs real file-locking or atomic
+    read-then-write coordination with the live engine process, which is out
+    of scope for this fix cycle. New test (`[D2] ...`) proves the narrowed
+    window actually works: a write simulating a concurrent engine sync
+    tick landing between renewal's two internal reads is picked up (the
+    newer `lastSequence` survives), not clobbered by the earlier, now-stale
+    read.
+  - **Docblock overclaim fixed**: `renewHostedPairingStateIfNeeded`'s
+    docblock used to claim "there is no way for the file to end up torn or
+    holding a mix of old/new fields." Softened to state precisely what is
+    and isn't guaranteed: true for two sequential in-process calls and for
+    `writeFileSync` completing normally; NOT a guarantee against a crash
+    mid-`writeFileSync` — and aria-engine's own `loadPairingState()` does a
+    bare `JSON.parse` with no try/catch, so a genuinely torn file would
+    THROW there, not self-heal (this repo's own
+    `readHostedPairingStateFromDisk` is more defensive, but that only
+    protects renewal's own read, not whatever the spawned engine process
+    reads next).
+  - **Test/typecheck/regression results**: `npm run typecheck` — clean,
+    zero errors. `npx tsx src/fleet/hosted-pairing-seed.test.ts` standalone —
+    all pre-existing checks plus 11 new checks (9 exploit-reproduction + 1
+    D2 spot-check, plus the pre-existing count), all passing, 0 failures.
+    Full `npm test` (all 9 scripts, unchanged script list) — exit 0,
+    `grep -c "❌"` on the full captured output returns `0`, `grep -c "^✅"`
+    returns `404` total across the whole suite — confirming zero
+    regressions in `fleet-manager.test.ts`,
+    `fleet-manager.integration.test.ts`, `hosted-commands.test.ts`,
+    `dual-mode-coexistence.test.ts`, or any of the earlier `test/*.ts`
+    suites.
+  - **Status**: `IMPLEMENTED (awaiting review)` — a fresh independent
+    review of this fix still needs to happen.
   - **Commit**: pending — recorded in a follow-up note once pushed to
     `origin/fix/hosted-entitlement-renewal`; branch not merged anywhere.

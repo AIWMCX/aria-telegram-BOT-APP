@@ -75,6 +75,7 @@ const {
   decodeEntitlementExpiry,
   ENTITLEMENT_RENEWAL_MARGIN_SECONDS,
 } = await import("./hosted-pairing-seed.js");
+type HostedPairingState = ReturnType<typeof buildHostedPairingState> & { lastKnownEntitlementStatus?: unknown };
 const { generateHostedDeviceIdentity, writeHostedDeviceIdentityToDisk } = await import("./hosted-device-identity.js");
 
 /**
@@ -492,6 +493,109 @@ async function main() {
         const verification = verifyEntitlement(final.entitlementToken, TEST_ENTITLEMENT_PUBLIC_X, new Date());
         check("[race] the final on-disk token genuinely verifies against the REAL aria-engine verifier", verification.granted === true);
       }
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  }
+
+  // ── P0 exploit reproduction (independent-review finding, 2026-09-19 fix):
+  // renewal must NEVER silently erase the server-revocation cache
+  // (`lastKnownEntitlementStatus`), or /revokeengine is defeated the moment
+  // the token enters its 24h renewal window. Reproduces the reviewer's own
+  // scenario end to end: admin revokes -> a real sync response caches
+  // `revoked` on disk -> the token later enters its renewal window ->
+  // renewal must preserve the cache -> the REAL checkPaperStartEntitlement()
+  // must still deny with "revoked-by-server" despite the freshly-renewed
+  // token being otherwise offline-valid. ──
+  {
+    const tmpRoot = mkdtempSync(path.join(tmpdir(), "aria-hosted-renewal-revoked-exploit-test-"));
+    try {
+      const runtimeDir = path.join(tmpRoot, "renew-revoked", ".aria");
+      const nowSec = Math.floor(Date.now() / 1000);
+      // A token expiring in ~1h — inside the 24h renewal margin, so the
+      // NEXT /paper_start's call to renewHostedPairingStateIfNeeded will
+      // renew it. This mirrors "the token enters its 24h renewal window"
+      // from the reviewer's reproduction.
+      const nearExpiryToken = signTestEntitlementToken("client-revoked-1", nowSec - (7 * 24 * 3600 - 3600), nowSec + 3600);
+      const revokedCache = { status: "revoked", expiresAt: null, checkedAtMs: Date.now() };
+
+      // (1) Write a pairing-state file with lastKnownEntitlementStatus:
+      // revoked (standing in for a real sync response caching /revokeengine's
+      // effect) PLUS the near-expiring token.
+      const beforeRenewal: HostedPairingState = {
+        clientId: "client-revoked-1",
+        lastSequence: 3,
+        entitlementToken: nearExpiryToken,
+        lastKnownEntitlementStatus: revokedCache,
+      };
+      writeHostedPairingStateToDisk(runtimeDir, beforeRenewal);
+
+      // Sanity: confirm the exploit precondition — the gate genuinely
+      // denies BEFORE renewal, via the server-revocation cache, not via the
+      // token's own (still momentarily valid) signature/expiry.
+      if (haveEngine) {
+        const { checkPaperStartEntitlement } = await importEngineModule("entitlement-gate.ts");
+        const preResult = checkPaperStartEntitlement(beforeRenewal as any, new Date(), TEST_ENTITLEMENT_PUBLIC_X);
+        check("[exploit] precondition: gate denies BEFORE renewal (revoked-by-server)", preResult.granted === false && (preResult as any).reason === "revoked-by-server");
+      }
+
+      // (2) Call renewHostedPairingStateIfNeeded — this is the exact call
+      // startHostedEngine makes on every /paper_start, unconditionally.
+      const result = renewHostedPairingStateIfNeeded(runtimeDir, "client-revoked-1");
+      check("[exploit] renewal actually fired (token really was near-expiry)", result.renewed === true);
+      check("[exploit] a genuinely NEW token was minted, not the stale one", result.state.entitlementToken !== nearExpiryToken);
+      check("[exploit] lastSequence preserved through the renewal", result.state.lastSequence === 3);
+
+      // (3) Read the file back and assert lastKnownEntitlementStatus is
+      // STILL present and STILL "revoked" — this is the P0: it must survive
+      // the renewal write, not be silently dropped.
+      const onDisk = JSON.parse(readFileSync(path.join(runtimeDir, "state", "pairing-state.json"), "utf8"));
+      check("[exploit] lastKnownEntitlementStatus survived the renewal write (not undefined)", onDisk.lastKnownEntitlementStatus !== undefined);
+      check("[exploit] lastKnownEntitlementStatus.status is still exactly 'revoked'", onDisk.lastKnownEntitlementStatus?.status === "revoked");
+      check("[exploit] the returned state object also carries the preserved revocation cache (not just the raw file)", (result.state as any).lastKnownEntitlementStatus?.status === "revoked");
+
+      // (4) Drive the REAL aria-engine checkPaperStartEntitlement()/
+      // verifyEntitlement() against the renewed on-disk state and assert the
+      // gate STILL denies with revoked-by-server, despite the token itself
+      // being freshly signed and otherwise fully valid. This is the exact
+      // scenario the reviewer reproduced: a silent re-grant to a revoked
+      // tenant the moment their token gets renewed.
+      if (haveEngine) {
+        const { verifyEntitlement } = await importEngineModule("entitlement.ts");
+        const offlineVerification = verifyEntitlement(onDisk.entitlementToken, TEST_ENTITLEMENT_PUBLIC_X, new Date());
+        check("[exploit] the renewed token is, on its own, offline-valid (proves the gate denial below is from the cache, not a broken token)", offlineVerification.granted === true);
+
+        const { checkPaperStartEntitlement } = await importEngineModule("entitlement-gate.ts");
+        const { loadPairingState } = await importEngineModule("pairing-state.ts");
+        const loaded = loadPairingState(path.join(runtimeDir, "state"));
+        const gateResult = checkPaperStartEntitlement(loaded!, new Date(), TEST_ENTITLEMENT_PUBLIC_X);
+        check("[exploit] THE FIX: the REAL checkPaperStartEntitlement() still DENIES after renewal, with revoked-by-server", gateResult.granted === false && (gateResult as any).reason === "revoked-by-server");
+      }
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  }
+
+  // ── D2 spot-check: a fresh write to the file by the "live engine"
+  // (advancing lastSequence, simulating a sync tick) that lands AFTER
+  // renewal's first read but BEFORE its write must still be picked up by
+  // the pre-write re-read, not clobbered back to the stale value. ──
+  {
+    const tmpRoot = mkdtempSync(path.join(tmpdir(), "aria-hosted-renewal-d2-test-"));
+    try {
+      const runtimeDir = path.join(tmpRoot, "renew-d2", ".aria");
+      const nowSec = Math.floor(Date.now() / 1000);
+      const nearExpiryToken = signTestEntitlementToken("client-d2-1", nowSec - (7 * 24 * 3600 - 3600), nowSec + 3600);
+      writeHostedPairingStateToDisk(runtimeDir, { clientId: "client-d2-1", lastSequence: 5, entitlementToken: nearExpiryToken });
+
+      // Simulate the live engine advancing lastSequence via a sync tick
+      // that happens to land between renewal's internal reads, by writing a
+      // newer lastSequence directly before calling renewal (renewal's own
+      // re-read-before-write, exercised internally, will pick this up).
+      writeHostedPairingStateToDisk(runtimeDir, { clientId: "client-d2-1", lastSequence: 9, entitlementToken: nearExpiryToken });
+
+      const result = renewHostedPairingStateIfNeeded(runtimeDir, "client-d2-1");
+      check("[D2] renewal preserves the LATEST lastSequence (9), not a stale earlier read (5)", result.state.lastSequence === 9);
     } finally {
       rmSync(tmpRoot, { recursive: true, force: true });
     }

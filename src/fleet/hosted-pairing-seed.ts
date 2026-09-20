@@ -74,6 +74,21 @@ export interface HostedPairingState {
   clientId: string;
   lastSequence: number;
   entitlementToken?: string;
+  /**
+   * NOT written by anything in this file — populated by the RUNNING
+   * aria-engine process itself, on every real `/api/engine/sync` response
+   * (aria-engine's `pairing-state.ts` `PairingState.lastKnownEntitlementStatus`,
+   * consulted by `checkPaperStartEntitlement` in entitlement-gate.ts to deny
+   * access with `revoked-by-server` even for an offline-valid, correctly-
+   * signed token). Declared here — even though this module never sets it —
+   * so that `renewHostedPairingStateIfNeeded`'s read-modify-write preserves
+   * it (and any other engine-written field this repo's own type doesn't
+   * yet model) instead of silently dropping it. See the P0 fix below for
+   * why this matters: a renewal that reconstructs a fresh object instead of
+   * spreading the existing one would erase a server-side revocation cached
+   * here, defeating `/revokeengine`.
+   */
+  lastKnownEntitlementStatus?: unknown;
 }
 
 /**
@@ -262,8 +277,51 @@ export function readHostedPairingStateFromDisk(runtimeDir: string): HostedPairin
  * the SAME preserved `clientId`/`lastSequence`, and each writes a complete,
  * valid, self-consistent JSON object via the same atomic-enough
  * `writeFileSync` `writeHostedPairingStateToDisk` already uses — whichever
- * write lands last simply wins with its own genuinely valid token; there is
- * no way for the file to end up torn or holding a mix of old/new fields.
+ * write lands last simply wins with its own genuinely valid token.
+ *
+ * What that guarantee does and does NOT cover (softened from a prior,
+ * overbroad claim that the file can never end up torn — an independent
+ * review correctly flagged that as inaccurate): it's true for two
+ * SEQUENTIAL in-process calls to this function, and true for
+ * `writeFileSync` itself never producing a partially-written file under
+ * normal completion. It is NOT a guarantee against a process crashing
+ * mid-`writeFileSync` (a torn file on disk, however unlikely on most
+ * filesystems, is not ruled out by anything this function does) — and
+ * aria-engine's `loadPairingState()` does a bare `JSON.parse` with no
+ * try/catch, so a genuinely torn file would THROW there, not self-heal.
+ * `readHostedPairingStateFromDisk` in THIS file is more defensive (catches
+ * and returns `undefined` on a parse failure, see above), but that only
+ * protects renewal's own read — it does not retroactively protect whatever
+ * reads the file next inside the spawned `aria-engine` process.
+ *
+ * Preserving the FULL existing on-disk object (see the `...preserveFrom`
+ * spread below) is also what closes the P0 an independent reviewer found:
+ * this function used to construct a BRAND NEW object with only
+ * `{clientId, lastSequence, entitlementToken}`, silently erasing
+ * `lastKnownEntitlementStatus` (and any other field the RUNNING engine had
+ * written) on every renewal. Concretely: `/revokeengine` correctly caches
+ * `revoked` via a real sync response, `/paper_start` correctly denies via
+ * that cache — but the NEXT renewal (triggered by the token entering its
+ * 24h window) used to wipe that cache in the same write, silently
+ * re-granting a revoked tenant. Fixed by spreading `...preserveFrom` (the
+ * full existing on-disk object, not narrowed to this repo's own
+ * `HostedPairingState` fields) before overriding only the fields renewal
+ * actually needs to change.
+ *
+ * D2 (disclosed, narrow, NOT fully fixed here): this read-modify-write is
+ * not coordinated with the LIVE engine process's own concurrent writes to
+ * this same file (it writes `lastSequence` on every sync tick). To narrow
+ * (not eliminate) that window, the state actually written is built from a
+ * SECOND read taken immediately before the write, not the read taken at
+ * the top of this function — so a sync write that lands in between is
+ * still picked up rather than clobbered by a stale `lastSequence`. This
+ * does not eliminate the race: the engine could still write between this
+ * second read and this function's own `writeFileSync`. Closing that
+ * completely would need real file-locking or an atomic read-then-write
+ * coordinated with the live engine process, which is out of scope for this
+ * fix — a stale-`lastSequence` write here self-heals via the engine's own
+ * `resyncSequence` on its next rejected sync, at the cost of one rejected
+ * sync attempt, not data loss or a stuck client.
  */
 export function renewHostedPairingStateIfNeeded(
   runtimeDir: string,
@@ -275,9 +333,22 @@ export function renewHostedPairingStateIfNeeded(
     return { renewed: false, state: existing };
   }
 
+  // D2: re-read immediately before writing, narrowing (not eliminating) the
+  // race window against the live engine's own concurrent writes to this
+  // same file — see the docblock above for the full disclosed scope of
+  // what this does and does not guarantee.
+  const preserveFrom = readHostedPairingStateFromDisk(runtimeDir) ?? existing;
+
+  // D1 fix: spread the FULL existing on-disk object first — including any
+  // field this repo's own HostedPairingState type doesn't model, like
+  // aria-engine's `lastKnownEntitlementStatus` server-revocation cache —
+  // then override only the fields renewal actually needs to change. Never
+  // reconstruct a fresh object here; that is exactly what used to silently
+  // erase the revocation cache and defeat /revokeengine.
   const state: HostedPairingState = {
-    clientId: existing?.clientId ?? clientId,
-    lastSequence: existing?.lastSequence ?? 0,
+    ...preserveFrom,
+    clientId: preserveFrom?.clientId ?? clientId,
+    lastSequence: preserveFrom?.lastSequence ?? 0,
   };
   if (ENTITLEMENT_ISSUANCE_ENABLED) {
     try {
