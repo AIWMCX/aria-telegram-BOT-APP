@@ -12,10 +12,10 @@
  *
  * Run: npx tsx src/fleet/hosted-commands.test.ts
  */
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createPrivateKey, createPublicKey } from "node:crypto";
+import { createPrivateKey, createPublicKey, generateKeyPairSync, randomUUID, sign as ed25519Sign } from "node:crypto";
 import { FleetCapacityError, type TenantProcessHandle } from "./fleet-manager.js";
 import { generateHostedDeviceIdentity, writeHostedDeviceIdentityToDisk } from "./hosted-device-identity.js";
 import {
@@ -34,6 +34,48 @@ let failures = 0;
 function check(name: string, condition: boolean) {
   console.log(condition ? `✅ ${name}` : `❌ ${name}`);
   if (!condition) failures++;
+}
+
+// ── Env setup for the entitlement-renewal wiring block below, BEFORE any
+// dynamic import touches config.js (via hosted-pairing-seed.js ->
+// engine-entitlement-signer.js) — same pattern as hosted-pairing-seed.test.ts.
+// This has to be a dynamic import specifically because a static one would be
+// hoisted and evaluated before these process.env assignments run at all. ──
+process.env.TELEGRAM_BOT_TOKEN ??= "1234567890:TEST_TOKEN_NOT_REAL_xxxxxxxxxxxxxxxxxxxx";
+process.env.PUBLIC_URL ??= "http://localhost:8080";
+process.env.RESEND_API_KEY ??= "re_test_fake_key_xxxxxxxxxxxxxxxxxxxx";
+process.env.ADMIN_EMAIL ??= "admin@example.com";
+process.env.LOG_LEVEL ??= "error";
+if (!process.env.ARIA_LICENSE_PRIVATE_D || !process.env.ARIA_LICENSE_PUBLIC_X) {
+  const { publicKey: licPub, privateKey: licPriv } = generateKeyPairSync("ed25519");
+  process.env.ARIA_LICENSE_PRIVATE_D = (licPriv.export({ format: "jwk" }) as { d: string }).d;
+  process.env.ARIA_LICENSE_PUBLIC_X = (licPub.export({ format: "jwk" }) as { x: string }).x;
+}
+const { publicKey: entPub, privateKey: entPriv } = generateKeyPairSync("ed25519");
+const entPubJwk = entPub.export({ format: "jwk" }) as { x: string };
+const entPrivJwk = entPriv.export({ format: "jwk" }) as { d: string };
+process.env.ARIA_ENTITLEMENT_PRIVATE_D = entPrivJwk.d;
+process.env.ARIA_ENTITLEMENT_PUBLIC_X = entPubJwk.x;
+const TEST_ENTITLEMENT_PUBLIC_X = entPubJwk.x;
+
+const { renewHostedPairingStateIfNeeded, writeHostedPairingStateToDisk } = await import("./hosted-pairing-seed.js");
+
+/** Same hand-signing helper as hosted-pairing-seed.test.ts — real Ed25519 signing against this test's own synthetic entitlement key, with caller-controlled iat/exp so a near-expiry (but genuinely valid-until-then) token can be constructed on demand. */
+function signTestEntitlementToken(clientId: string, iat: number, exp: number): string {
+  const payload = { v: 1 as const, iss: "aria-engine" as const, sub: clientId, scope: "real1-paper-beta" as const, iat, exp, jti: randomUUID() };
+  const payloadB64 = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const privateKey = createPrivateKey({ key: { kty: "OKP", crv: "Ed25519", x: entPubJwk.x, d: entPrivJwk.d }, format: "jwk" });
+  const signature = ed25519Sign(null, Buffer.from(payloadB64, "utf8"), privateKey);
+  return `ARIAE1.${payloadB64}.${signature.toString("base64url")}`;
+}
+
+const ENGINE_REPO = "C:\\Users\\AIWMC\\dev\\aria-engine";
+function engineCheckoutAvailable(): boolean {
+  return existsSync(path.join(ENGINE_REPO, "src", "pairing-state.ts"));
+}
+async function importEngineModule(relPath: string): Promise<any> {
+  const { pathToFileURL } = await import("node:url");
+  return import(pathToFileURL(path.join(ENGINE_REPO, "src", relPath).replace(/\\/g, "/")).href);
 }
 
 /** A tiny in-memory fake standing in for the real FleetManager — tracks handles per clientId exactly like the real one's map, without spawning anything. */
@@ -74,9 +116,10 @@ class FakeFleetManager {
 }
 
 /** A tiny in-memory fake for the engine_clients DB layer — one map per test, keyed by userId, entirely independent of any real Postgres pool. */
-function makeFakeDeps(fleet: FakeFleetManager, opts: { approved?: boolean } = {}): HostedCommandsDeps & { clientsByUser: Map<number, EngineClientLike>; notifications: Array<{ telegramUserId: number; text: string }>; nextId: () => string } {
+function makeFakeDeps(fleet: FakeFleetManager, opts: { approved?: boolean } = {}): HostedCommandsDeps & { clientsByUser: Map<number, EngineClientLike>; notifications: Array<{ telegramUserId: number; text: string }>; nextId: () => string; renewCalls: string[] } {
   const clientsByUser = new Map<number, EngineClientLike>();
   const notifications: Array<{ telegramUserId: number; text: string }> = [];
+  const renewCalls: string[] = [];
   let counter = 0;
   const nextId = () => `client-${++counter}`;
 
@@ -84,6 +127,7 @@ function makeFakeDeps(fleet: FakeFleetManager, opts: { approved?: boolean } = {}
     clientsByUser,
     notifications,
     nextId,
+    renewCalls,
     fleetManager: fleet,
     getLatestActiveClientForUser: async (userId) => clientsByUser.get(userId),
     registerHostedClient: async (userId) => {
@@ -97,6 +141,15 @@ function makeFakeDeps(fleet: FakeFleetManager, opts: { approved?: boolean } = {}
       }
     },
     isUserApproved: async () => opts.approved ?? true,
+    // Default fake: a no-op that just records it was called — most tests in
+    // this file don't care about entitlement renewal specifically (that's
+    // covered by the dedicated "entitlement renewal wiring" block below,
+    // which overrides this with a real hosted-pairing-seed.ts call against a
+    // real temp runtime dir). Recording the call still lets every OTHER test
+    // assert renewal runs before spawnTenant without needing its own override.
+    renewHostedEntitlementIfNeeded: async (clientId) => {
+      renewCalls.push(clientId);
+    },
     notify: async (telegramUserId, text) => {
       notifications.push({ telegramUserId, text });
     },
@@ -550,6 +603,72 @@ async function main() {
       await handlePaperStart(deps, { telegramUserId: 9802, userId: 982 });
       const text = deps.notifications[0]!.text;
       check("[disclosure] already-hosted client's repeat /paper_start DM has no supersession notice", !text.includes("/pair"));
+    }
+  }
+
+  // ── Entitlement-renewal wiring (2026-09-19 fix): startHostedEngine calls
+  // the REAL renewHostedPairingStateIfNeeded (hosted-pairing-seed.ts) BEFORE
+  // spawnTenant() for an ALREADY-hosted client, not just on create/convert —
+  // this is the actual fix for the gap where a hosted tenant's entitlement
+  // token (fixed 7-day TTL) is never re-seeded past its first mint. Uses the
+  // real renewal function against a real temp runtime dir (not the
+  // no-op default fake in makeFakeDeps) so this proves the WIRING, not just
+  // that some function got called. ──
+  {
+    const haveEngine = engineCheckoutAvailable();
+    if (!haveEngine) {
+      console.log(`⚠ aria-engine checkout not found at ${ENGINE_REPO} — the entitlement-renewal wiring block will run with structural assertions only (still real signing/renewal, just no cross-check against the real verifier).`);
+    }
+
+    const tmpRoot = mkdtempSync(path.join(tmpdir(), "aria-hosted-renewal-wiring-test-"));
+    try {
+      const runtimeDirFor = (clientId: string) => path.join(tmpRoot, clientId, ".aria");
+      const pairingFilePath = (clientId: string) => path.join(runtimeDirFor(clientId), "state", "pairing-state.json");
+
+      const fleet = new FakeFleetManager();
+      const deps = makeFakeDeps(fleet, { approved: true });
+      deps.renewHostedEntitlementIfNeeded = async (clientId) => {
+        renewHostedPairingStateIfNeeded(runtimeDirFor(clientId), clientId);
+      };
+
+      const existingClientId = "already-hosted-near-expiry-client";
+      deps.clientsByUser.set(9900, { id: existingClientId, hosting_mode: "hosted" });
+
+      // Seed a pairing-state.json with a token expiring in ~1h — simulating
+      // a hosted tenant well past the point this fix needed to exist for.
+      const nowSec = Math.floor(Date.now() / 1000);
+      const nearExpiryToken = signTestEntitlementToken(existingClientId, nowSec - (7 * 24 * 3600 - 3600), nowSec + 3600);
+      writeHostedPairingStateToDisk(runtimeDirFor(existingClientId), { clientId: existingClientId, lastSequence: 3, entitlementToken: nearExpiryToken });
+
+      // ── (a) /paper_start (startHostedEngine) on an ALREADY-hosted client with a near-expiry token transparently renews it before spawning ──
+      const result1 = await startHostedEngine(deps, 9900);
+      check("[wiring] start succeeds", result1.ok === true);
+      if (result1.ok) {
+        check("[wiring] created=false, converted=false — this is the plain 'already hosted' path renewal must also cover", result1.created === false && result1.converted === false);
+      }
+      check("[wiring] spawnTenant was called for the existing client", fleet.spawnCalls.includes(existingClientId));
+
+      const afterFirstStart = JSON.parse(readFileSync(pairingFilePath(existingClientId), "utf8"));
+      check("[wiring] the near-expiry token was replaced with a genuinely different one, BEFORE spawnTenant ran", afterFirstStart.entitlementToken !== nearExpiryToken);
+      check("[wiring] lastSequence was preserved through the renewal (3, not reset)", afterFirstStart.lastSequence === 3);
+
+      if (haveEngine) {
+        const { verifyEntitlement } = await importEngineModule("entitlement.ts");
+        const verification = verifyEntitlement(afterFirstStart.entitlementToken, TEST_ENTITLEMENT_PUBLIC_X, new Date());
+        check("[wiring] the token startHostedEngine renewed genuinely verifies against the REAL aria-engine verifier", verification.granted === true);
+      }
+
+      // ── (b) A second /paper_start immediately after — token is now healthy, so it must NOT be re-signed again ──
+      const result2 = await startHostedEngine(deps, 9900);
+      check("[wiring] second start also succeeds", result2.ok === true);
+      const afterSecondStart = JSON.parse(readFileSync(pairingFilePath(existingClientId), "utf8"));
+      check("[wiring] a SECOND immediate /paper_start does NOT re-sign an already-healthy token", afterSecondStart.entitlementToken === afterFirstStart.entitlementToken);
+
+      // ── Sanity: a brand-new client's create path still works with renewal wired in (renewal is a cheap no-op right after a fresh seed) ──
+      const resultNew = await startHostedEngine(deps, 9901);
+      check("[wiring] brand-new client create path is unaffected by the renewal wiring", resultNew.ok === true && (resultNew as any).created === true);
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true });
     }
   }
 

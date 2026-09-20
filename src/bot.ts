@@ -15,7 +15,7 @@ import { listRecentFeedback } from "./feedback.js";
 import { registerClient, getLatestActiveClientForUser, setHostingMode, rotateClientDeviceIdentityAndSetHosted, type EngineClient } from "./engine-clients.js";
 import { fleetManager, tenantRuntimeDir } from "./fleet/instance.js";
 import { generateHostedDeviceIdentity, writeHostedDeviceIdentityToDisk } from "./fleet/hosted-device-identity.js";
-import { seedHostedPairingState } from "./fleet/hosted-pairing-seed.js";
+import { seedHostedPairingState, renewHostedPairingStateIfNeeded } from "./fleet/hosted-pairing-seed.js";
 import { handlePaperStart, handlePaperStop, handlePaperStatus, formatHostedStatusMessage, type HostedCommandsDeps } from "./fleet/hosted-commands.js";
 import type { Lead } from "./leads.js";
 import type { IssuedLicense } from "./licenses.js";
@@ -428,6 +428,16 @@ const hostedDeps: HostedCommandsDeps = {
   registerHostedClient,
   convertClientToHosted,
   isUserApproved,
+  // Entitlement-renewal fix (2026-09-19) — see hosted-commands.ts's
+  // `renewHostedEntitlementIfNeeded` docblock and hosted-pairing-seed.ts's
+  // `renewHostedPairingStateIfNeeded` for the full writeup. Synchronous and
+  // side-effecting (same runtime dir `registerHostedClient`/
+  // `convertClientToHosted` already write into above), wrapped as async
+  // only to match the interface shape every other disk/DB-touching dep
+  // here already uses.
+  renewHostedEntitlementIfNeeded: async (clientId) => {
+    renewHostedPairingStateIfNeeded(tenantRuntimeDir(clientId), clientId);
+  },
   notify: async (telegramUserId, text) => {
     try {
       await bot.api.sendMessage(telegramUserId, text, { parse_mode: "Markdown" });

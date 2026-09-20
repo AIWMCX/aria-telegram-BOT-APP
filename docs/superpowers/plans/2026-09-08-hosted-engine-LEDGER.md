@@ -23,6 +23,7 @@ NOT STARTED / IN PROGRESS / IMPLEMENTED (awaiting review) / REVIEWED-PASS / REVI
 | 5 | Dual-mode (local + hosted) coexistence test | IMPLEMENTED (awaiting review) | `e874097` | | Depends on: 4 |
 | 6 | Soak the Fleet Manager itself | IMPLEMENTED (awaiting review) | `54ca099`; first re-certification fix `1123008`/`5f92185`; second re-certification fix `ed1db8c` | FAILED x2 — first soak: vacuous isolation checks (fixed). Second review: first fix's per-tenant-FleetManager-instance topology made the in-memory isolation channel structurally unable to detect the bug class it exists to catch (fixed by restoring one shared instance). A THIRD independent review of this second fix still needs to happen. | Depends on: 2, 3 |
 | P0 (fix/hosted-pairing-state-seeding) | Hosted `/paper_start` never seeded `pairing-state.json`/entitlement token — real `aria paper start` would fail closed with "Device is not paired" for EVERY hosted tenant, regardless of engine packaging or Fleet Manager correctness | REVIEWED-PASS | `ce0e48d`; SHA record `977d379` | REVIEWED-PASS (2026-09-19, independent adversarial review — see Log). Verified by reproduction, not self-report: genuine reuse of `issueReal1BetaEntitlementToken` (no second signer), private key never leaves `engine-entitlement-signer.ts` and no `.env` in this worktree, real aria-engine modules imported by the tests with both negative controls passing, real-CLI seeded-vs-unseeded control re-run independently, write-before-commit ordering traced in both call sites, 0o600/0o700 modes matched, typecheck clean and 345 PASS / 0 FAIL re-run. Two REQUIRED FOLLOW-UPS before wider rollout, neither blocking merge: (1) the disclosed revocation gap is real and broader — hosted-only tenants get no `engine_entitlements` row at all, so there is no UUID for `/revokeengine`; mitigated by `engine_clients.status='revoked'` and operator-side `stopTenant`; (2) NEW, undisclosed — the 7-day token is minted once and never renewed, so a hosted tenant silently crash-loops on day 8 with a `aria pair <CODE>` instruction it cannot follow. | Depends on: 4 (reuses `registerHostedClient`/`convertClientToHosted`'s existing device-identity call sites and write-before-commit discipline) |
+| P0-follow-up (fix/hosted-entitlement-renewal) | Closes follow-up (2) from the P0 row above: the 7-day ARIAE1 entitlement token is minted exactly ONCE (at tenant create/convert time) with no re-seed path, so every hosted tenant older than 7 days permanently fails the entitlement gate on its next `/paper_start` or FleetManager auto-restart, with an unfollowable "run `aria pair <CODE>`" denial message | IMPLEMENTED (awaiting review) | (pending — see Log) | | Depends on: P0 (fix/hosted-pairing-state-seeding) — reuses `issueReal1BetaEntitlementToken`/`writeHostedPairingStateToDisk` and the write-before-spawn ordering that fix established |
 
 ## Stop conditions
 - A task's acceptance criteria cannot be met without violating PAPER-only guardrails (no wallet/signing/broadcast anywhere in the Fleet Manager or spawned processes) → STOP, report.
@@ -707,3 +708,168 @@ NOT STARTED / IN PROGRESS / IMPLEMENTED (awaiting review) / REVIEWED-PASS / REVI
   - **Status**: `REVIEWED-PASS`. Ledger-only update; no code was changed by
     this review. Branch not merged, not rebased, not pushed beyond this
     ledger commit.
+
+- 2026-09-19 — **P0-follow-up implemented: hosted entitlement-token renewal
+  (`fix/hosted-entitlement-renewal`, branched off `fix/hosted-pairing-state-seeding`).**
+  Closes the "NEW, undisclosed" finding from the P0 row's own review above:
+  `seedHostedPairingState` mints a real ARIAE1 token exactly ONCE, with a
+  fixed 7-day TTL (`REAL1_BETA_DURATION_SECONDS`, confirmed by reading
+  `engine-entitlement-signer.ts:20` directly), and nothing ever re-seeds an
+  already-`hosted` client. Left as-is, every hosted tenant older than 7 days
+  would permanently fail the entitlement gate on its next `/paper_start` or
+  FleetManager auto-restart, crash-looping to terminal `failed` with a
+  denial message ("run `aria pair <CODE>`") a Telegram-only hosted user has
+  no way to follow.
+  - **The gap this closes**: `src/fleet/hosted-pairing-seed.ts` gains four
+    new exports — `decodeEntitlementExpiry` (pure, decodes just the `exp`
+    field of an ARIAE1 token without verifying its signature — renewal-need
+    decisions don't require cryptographic trust, and erring toward "can't
+    tell, so renew" on anything unparseable is the safe direction),
+    `entitlementNeedsRenewal` (pure, true when a token is missing/
+    malformed/expired/expiring within `ENTITLEMENT_RENEWAL_MARGIN_SECONDS`
+    = 24h), `readHostedPairingStateFromDisk` (reads pairing-state.json back
+    off disk, `undefined` on missing/corrupt rather than throwing — a
+    corrupt file self-heals via re-seed instead of crashing), and
+    `renewHostedPairingStateIfNeeded` (the actual fix: re-issues the token
+    via the SAME `issueReal1BetaEntitlementToken` call `seedHostedPairingState`
+    already uses — no second signer — and rewrites the file via the SAME
+    `writeHostedPairingStateToDisk`, so the 0o600/0o700 modes and
+    write-semantics are identical, not reimplemented). Unlike
+    `seedHostedPairingState` (always `lastSequence: 0`, correct for a fresh
+    pair/hosted-create), the renewal path PRESERVES `lastSequence` and
+    `clientId` from whatever's already on disk — this is a token refresh
+    for a client that may have already been running and synced past 0, not
+    a re-pair.
+  - **Trigger condition implemented, and why**: `startHostedEngine`
+    (hosted-commands.ts) now calls a new injected dep,
+    `renewHostedEntitlementIfNeeded(clientId)`, at the START of every call —
+    unconditionally, for the newly-created, newly-converted, AND
+    already-hosted branches alike — BEFORE `fleetManager.spawnTenant()`.
+    Wired in `bot.ts` to `renewHostedPairingStateIfNeeded(tenantRuntimeDir(clientId),
+    clientId)`. The 24h margin (`ENTITLEMENT_RENEWAL_MARGIN_SECONDS`) was
+    chosen to comfortably exceed any realistic gap between a hosted
+    tenant's `/paper_start` calls (a dormant user, a bot restart, a
+    Telegram delivery delay) while staying small relative to the 7-day TTL,
+    so a tenant that checks in every day or two is never needlessly
+    re-signed. Calling it for EVERY branch (not just "already hosted") is
+    deliberately redundant-but-cheap: a freshly (re)seeded token from
+    `registerHostedClient`/`convertClientToHosted` is nowhere near the 24h
+    margin, so the renewal check is a genuine, verified no-op there (see
+    tests below) — one call site, no special-casing which branch needs it.
+  - **Mid-session renewal — investigated, NOT needed, evidence recorded
+    rather than assumed**: read aria-engine's `cli.ts` directly and
+    confirmed `checkPaperStartEntitlement` is called EXACTLY ONCE, at the
+    top of `cmdPaperStart`, before the tick loop starts (`cli.ts:451-458`).
+    Also checked `sync/command-handler.ts`'s `refresh_entitlement` case
+    (line 47-52): it only refreshes `lastKnownEntitlementStatus` (the
+    SEPARATE server-revocation cache `checkPaperStartEntitlement` also
+    consults), never re-runs the offline signature/expiry check itself.
+    Conclusion: a token valid at process-start time remains sufficient for
+    the entire run, however long it lasts — so renewing at spawn time
+    (which covers both a fresh `/paper_start` AND a FleetManager
+    auto-restart, since `launch()`'s restart path re-invokes the same
+    `runtimeDirFor`-rooted directory `startHostedEngine` already renewed
+    before the FIRST spawn) is sufficient. No mid-session renewal loop was
+    built, because none is needed — a long-running tenant that's still
+    inside its already-validated-at-startup token never re-checks it, and
+    a tenant that crashes and auto-restarts goes back through
+    `spawnTenant()`, but NOT back through `startHostedEngine`'s renewal
+    call (FleetManager's own `launch()` restart path is internal, not a
+    fresh `/paper_start`) — see the one disclosed residual gap below.
+  - **Disclosed residual gap, not fixed in this branch, narrower than the
+    original P0**: a FleetManager-internal auto-restart (crash-loop
+    backoff, `fleet-manager.ts`'s `launch(entry, isRestart=true)`) calls
+    `this.launch()` directly, not `startHostedEngine` — so it does NOT run
+    through the new renewal check. In practice this only matters for a
+    tenant that (a) has been running continuously past the point its token
+    is within 24h of expiry, AND (b) crashes and auto-restarts during that
+    window, AND (c) no `/paper_start` has been called in the meantime to
+    renew it first. That spawn would use the still-on-disk (soon-to-expire
+    or already-expired) token. This is narrower than the original P0 (it
+    requires a crash landing in a specific ~24h-to-7-day window, not "every
+    tenant past day 7"), and self-heals the next time the user calls
+    `/paper_start` (or the operator manually respawns), but is a real,
+    disclosed gap rather than a silently-assumed-covered case. Flagged
+    here for whoever picks up the next follow-up: the cleanest fix is
+    likely having `FleetManager.launch()` itself call
+    `renewHostedPairingStateIfNeeded` before an `isRestart` launch, which
+    was NOT done in this branch to keep this fix narrowly scoped to the
+    task's literal instruction (renew in `startHostedEngine`/
+    `handlePaperStart`) and avoid entangling `fleet-manager.ts` (already
+    twice-reviewed, DONE) with a new dependency on `hosted-pairing-seed.ts`
+    without its own review cycle.
+  - **Tests — real crypto, not shape checks**: `hosted-pairing-seed.test.ts`
+    gained a hand-signing test helper (`signTestEntitlementToken`) that
+    produces a REAL Ed25519-signed ARIAE1 token against the test's own
+    synthetic entitlement key but with caller-controlled `iat`/`exp` (the
+    real `issueReal1BetaEntitlementToken` always uses `iat = now`, so a
+    genuinely near-expiry token has to be hand-signed to test against, not
+    reimplemented-insecurely). New checks cover: (a) a token expiring in
+    ~1h is renewed, the new token is verified by the REAL
+    `aria-engine` `verifyEntitlement`/`checkPaperStartEntitlement`
+    (imported from the sibling checkout, same pattern as the P0 fix's own
+    tests), with a negative control proving the OLD near-expiry token
+    really would have failed the gate 2h later; (b) a freshly-seeded
+    healthy token is NOT re-signed — asserted both by field equality and a
+    byte-for-byte file-content comparison before/after; (c) a missing/
+    corrupt pairing-state.json self-heals via a fresh seed rather than
+    throwing; (d) two back-to-back renewal calls (the closest reproducible
+    approximation of a race between near-simultaneous `/paper_start` taps,
+    given Node's single-threaded execution — disclosed as a real scope
+    limit, not silently assumed to cover a genuine multi-process race) —
+    the SECOND call correctly recognizes the first one's fix and does not
+    re-renew, and the final on-disk file is always exactly one
+    fully-valid, independently-re-verified token, never a mix. File-mode
+    checks (0o600/0o700 preserved through a renewal) run when
+    `process.platform !== "win32"` (POSIX mode bits aren't meaningfully
+    enforced on this dev machine's OS). `hosted-commands.test.ts` gained a
+    parallel wiring-level block (own env/dynamic-import setup, mirroring
+    hosted-pairing-seed.test.ts, since a static import of
+    `hosted-pairing-seed.js` would pull in `config.js` before this file's
+    env vars could be set) proving `startHostedEngine` itself calls the
+    real renewal function before `spawnTenant()`, that an already-hosted
+    client's near-expiry token is genuinely replaced before the spawn
+    call, that a second immediate `/paper_start` does not re-sign an
+    already-healthy token, and that the brand-new-client create path is
+    unaffected.
+  - **Real end-to-end CLI proof — attempted, partial, honestly bounded**:
+    seeded three real tenant runtime dirs (an already-expired token, a
+    near-expiry-but-not-yet-expired token, and the same near-expiry token
+    after running it through the real `renewHostedPairingStateIfNeeded`)
+    using a synthetic entitlement keypair (same reason as the P0 fix's own
+    proof — the real production `ARIA_ENTITLEMENT_PRIVATE_D` exists only in
+    Railway), then ran the REAL `aria-engine` CLI (`node --import tsx
+    src/cli.ts paper start` from `C:\Users\AIWMC\dev\aria-engine`,
+    `ARIA_RUNTIME_DIR` pointed at each). A control against a completely
+    unseeded dir reproduced the baseline "Device is not paired." All THREE
+    seeded dirs — expired, near-expiry, and renewed alike — produced the
+    IDENTICAL message: "Entitlement signature-invalid — run `aria pair
+    <CODE>` to obtain a fresh entitlement." Reading `entitlement.ts`
+    explains why: `verifyEntitlement` checks the Ed25519 signature BEFORE
+    checking `exp` (`entitlement.ts:92-112`), so with a non-production
+    signing key every token fails at the signature step regardless of
+    expiry — the wrong-key failure masks any expired-vs-not distinction the
+    real CLI could otherwise show. This means the real-CLI proof for THIS
+    fix can only reconfirm gate #1 (pairing state) clears, exactly like the
+    P0 fix's own proof — it CANNOT independently demonstrate the renewed
+    token's improved expiry via the unmodified real binary in this
+    environment. The genuine expiry proof is the unit-level one above,
+    using the REAL `verifyEntitlement`/`checkPaperStartEntitlement`
+    functions with their pre-existing, reviewer-confirmed `publicKeyX`
+    test-injection parameter (not a shape check, not a reimplementation) —
+    disclosed here as the honest ceiling on what a real-CLI run can prove
+    without the production key, rather than claiming a stronger real-CLI
+    proof than what was actually observed.
+  - **Test/typecheck/regression results**: `npm run typecheck` — clean,
+    zero errors. Full `npm test` (all 9 scripts, unchanged script list) —
+    exit 0, zero `❌` lines (`grep -c "❌"` on the full captured output
+    returns `0`). `hosted-pairing-seed.test.ts` standalone: all
+    pre-existing checks plus 27 new renewal-specific checks, all passing.
+    `hosted-commands.test.ts` standalone: all pre-existing checks plus 9
+    new wiring-specific checks, all passing. No regressions in
+    `fleet-manager.test.ts`, `fleet-manager.integration.test.ts`, or
+    `dual-mode-coexistence.test.ts`.
+  - **Status**: `IMPLEMENTED (awaiting review)` — an independent review of
+    this fix has not yet happened.
+  - **Commit**: pending — recorded in a follow-up note once pushed to
+    `origin/fix/hosted-entitlement-renewal`; branch not merged anywhere.

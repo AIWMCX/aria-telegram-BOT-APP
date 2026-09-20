@@ -25,11 +25,11 @@
  *
  * Run: npx tsx src/fleet/hosted-pairing-seed.test.ts
  */
-import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { generateKeyPairSync } from "node:crypto";
+import { generateKeyPairSync, randomUUID, sign as ed25519Sign, createPrivateKey } from "node:crypto";
 
 const ENGINE_REPO = "C:\\Users\\AIWMC\\dev\\aria-engine";
 
@@ -65,8 +65,38 @@ process.env.ARIA_ENTITLEMENT_PRIVATE_D = entPrivJwk.d;
 process.env.ARIA_ENTITLEMENT_PUBLIC_X = entPubJwk.x;
 const TEST_ENTITLEMENT_PUBLIC_X = entPubJwk.x;
 
-const { seedHostedPairingState, buildHostedPairingState, writeHostedPairingStateToDisk } = await import("./hosted-pairing-seed.js");
+const {
+  seedHostedPairingState,
+  buildHostedPairingState,
+  writeHostedPairingStateToDisk,
+  renewHostedPairingStateIfNeeded,
+  readHostedPairingStateFromDisk,
+  entitlementNeedsRenewal,
+  decodeEntitlementExpiry,
+  ENTITLEMENT_RENEWAL_MARGIN_SECONDS,
+} = await import("./hosted-pairing-seed.js");
 const { generateHostedDeviceIdentity, writeHostedDeviceIdentityToDisk } = await import("./hosted-device-identity.js");
+
+/**
+ * Hand-signs a REAL ARIAE1 token with the same synthetic entitlement
+ * private key `issueReal1BetaEntitlementToken` uses (via
+ * ARIA_ENTITLEMENT_PRIVATE_D/_X above), but with caller-controlled
+ * `iat`/`exp` — needed to construct a genuinely-signed token that's
+ * ALREADY near its expiry, which the real issuer function (always
+ * `iat = now`) can't produce on demand. This is real Ed25519 signing
+ * against the test's own key material, not a shape-only fake token — the
+ * REAL aria-engine `verifyEntitlement()` is what checks it below.
+ */
+function signTestEntitlementToken(clientId: string, iat: number, exp: number): string {
+  const payload = { v: 1 as const, iss: "aria-engine" as const, sub: clientId, scope: "real1-paper-beta" as const, iat, exp, jti: randomUUID() };
+  const payloadB64 = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const privateKey = createPrivateKey({
+    key: { kty: "OKP", crv: "Ed25519", x: entPubJwk.x, d: entPrivJwk.d },
+    format: "jwk",
+  });
+  const signature = ed25519Sign(null, Buffer.from(payloadB64, "utf8"), privateKey);
+  return `ARIAE1.${payloadB64}.${signature.toString("base64url")}`;
+}
 
 function engineCheckoutAvailable(): boolean {
   return existsSync(path.join(ENGINE_REPO, "src", "pairing-state.ts"));
@@ -301,6 +331,167 @@ async function main() {
       check("[disk-failure] the row is untouched — still local", row.hosting_mode === "local");
       check("[disk-failure] device identity DID get written (it ran first, before the failing step)", existsSync(path.join(runtimeDir, "state", "device-identity.json")));
       check("[disk-failure] pairing-state.json was NOT written to the real runtime dir (only the bad path was attempted)", !existsSync(path.join(runtimeDir, "state", "pairing-state.json")));
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  }
+
+  // ── Entitlement renewal (2026-09-19 fix): decodeEntitlementExpiry / entitlementNeedsRenewal — pure helper correctness ──
+  {
+    check("[decode] a well-formed ARIAE1 token's exp decodes correctly", decodeEntitlementExpiry(buildHostedPairingState("client-decode-1").entitlementToken!) !== undefined);
+    check("[decode] a non-ARIAE1 token returns undefined", decodeEntitlementExpiry("NOTAREALTOKEN.abc.def") === undefined);
+    check("[decode] a garbage payload segment returns undefined", decodeEntitlementExpiry("ARIAE1.not-valid-base64url-json.sig") === undefined);
+    check("[decode] a token with too few segments returns undefined", decodeEntitlementExpiry("ARIAE1.onlyonepart") === undefined);
+
+    check("[needs-renewal] undefined state needs renewal", entitlementNeedsRenewal(undefined) === true);
+    check("[needs-renewal] state with no token needs renewal", entitlementNeedsRenewal({ entitlementToken: undefined }) === true);
+    check("[needs-renewal] state with an undecodable token needs renewal", entitlementNeedsRenewal({ entitlementToken: "garbage" }) === true);
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const freshToken = signTestEntitlementToken("client-decode-2", nowSec, nowSec + 7 * 24 * 3600);
+    check("[needs-renewal] a freshly-issued 7-day token does NOT need renewal", entitlementNeedsRenewal({ entitlementToken: freshToken }) === false);
+
+    const expiringSoonToken = signTestEntitlementToken("client-decode-3", nowSec - (7 * 24 * 3600 - 3600), nowSec + 3600);
+    check("[needs-renewal] a token expiring in 1h (inside the 24h margin) needs renewal", entitlementNeedsRenewal({ entitlementToken: expiringSoonToken }) === true);
+
+    const alreadyExpiredToken = signTestEntitlementToken("client-decode-4", nowSec - 7 * 24 * 3600 - 10, nowSec - 10);
+    check("[needs-renewal] an already-expired token needs renewal", entitlementNeedsRenewal({ entitlementToken: alreadyExpiredToken }) === true);
+
+    check("[needs-renewal] margin is exactly 24h", ENTITLEMENT_RENEWAL_MARGIN_SECONDS === 24 * 60 * 60);
+  }
+
+  // ── (a) A hosted client with a token expiring in <24h is renewed transparently, with a REAL re-signed token that passes REAL verification ──
+  {
+    const tmpRoot = mkdtempSync(path.join(tmpdir(), "aria-hosted-renewal-near-expiry-test-"));
+    try {
+      const runtimeDir = path.join(tmpRoot, "renew-near-expiry", ".aria");
+      const nowSec = Math.floor(Date.now() / 1000);
+      const nearExpiryToken = signTestEntitlementToken("client-renew-1", nowSec - (7 * 24 * 3600 - 3600), nowSec + 3600); // expires in ~1h
+      writeHostedPairingStateToDisk(runtimeDir, { clientId: "client-renew-1", lastSequence: 7, entitlementToken: nearExpiryToken });
+
+      const result = renewHostedPairingStateIfNeeded(runtimeDir, "client-renew-1");
+      check("[renewal] renewed === true for a token expiring in 1h", result.renewed === true);
+      check("[renewal] clientId is preserved", result.state.clientId === "client-renew-1");
+      check("[renewal] lastSequence is preserved, NOT reset to 0 (this is a refresh, not a re-pair)", result.state.lastSequence === 7);
+      check("[renewal] a genuinely NEW token was minted (different from the near-expiry one)", result.state.entitlementToken !== nearExpiryToken);
+
+      const onDisk = JSON.parse(readFileSync(path.join(runtimeDir, "state", "pairing-state.json"), "utf8"));
+      check("[renewal] the renewed token was actually written to disk", onDisk.entitlementToken === result.state.entitlementToken);
+      check("[renewal] lastSequence on disk matches (7, preserved)", onDisk.lastSequence === 7);
+
+      if (haveEngine) {
+        const { verifyEntitlement } = await importEngineModule("entitlement.ts");
+        const verification = verifyEntitlement(result.state.entitlementToken, TEST_ENTITLEMENT_PUBLIC_X, new Date());
+        check("[renewal] the REAL aria-engine verifyEntitlement() grants the renewed token", verification.granted === true);
+        if (verification.granted) {
+          check("[renewal] renewed token's remaining TTL is close to the full 7 days, not expiring soon", verification.payload.exp - Math.floor(Date.now() / 1000) > 6 * 24 * 3600);
+        }
+
+        const { loadPairingState } = await importEngineModule("pairing-state.ts");
+        const { checkPaperStartEntitlement } = await importEngineModule("entitlement-gate.ts");
+        const loaded = loadPairingState(path.join(runtimeDir, "state"));
+        const gateResult = checkPaperStartEntitlement(loaded!, new Date(), TEST_ENTITLEMENT_PUBLIC_X);
+        check("[renewal] the REAL checkPaperStartEntitlement() (the actual gate cmdPaperStart calls) grants access AFTER renewal", gateResult.granted === true);
+
+        // Negative control: prove the OLD near-expiry token, on its own, was
+        // genuinely about to fail this same gate — renewal is fixing a real
+        // problem, not a no-op dressed up as one.
+        const oldGateResult = checkPaperStartEntitlement({ entitlementToken: nearExpiryToken }, new Date(Date.now() + 2 * 3600 * 1000), TEST_ENTITLEMENT_PUBLIC_X);
+        check("[renewal] negative control: the OLD near-expiry token really would have failed the gate 2h later", oldGateResult.granted === false);
+      }
+
+      if (process.platform !== "win32") {
+        const fileMode = statSync(path.join(runtimeDir, "state", "pairing-state.json")).mode & 0o777;
+        check("[renewal] pairing-state.json keeps the same 0o600 mode as the original seed write", fileMode === 0o600);
+        const dirMode = statSync(path.join(runtimeDir, "state")).mode & 0o777;
+        check("[renewal] state/ directory keeps the same 0o700 mode", dirMode === 0o700);
+      }
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  }
+
+  // ── (b) A healthy, comfortably-non-expiring token is NOT needlessly re-signed ──
+  {
+    const tmpRoot = mkdtempSync(path.join(tmpdir(), "aria-hosted-renewal-healthy-test-"));
+    try {
+      const runtimeDir = path.join(tmpRoot, "renew-healthy", ".aria");
+      const seeded = seedHostedPairingState(runtimeDir, "client-renew-2");
+      const beforeBytes = readFileSync(path.join(runtimeDir, "state", "pairing-state.json"), "utf8");
+
+      check("[no-op] a freshly-seeded token does not need renewal", entitlementNeedsRenewal(seeded) === false);
+
+      const result = renewHostedPairingStateIfNeeded(runtimeDir, "client-renew-2");
+      check("[no-op] renewed === false for a healthy token", result.renewed === false);
+      check("[no-op] the SAME token object/value is returned, not re-signed", result.state.entitlementToken === seeded.entitlementToken);
+
+      const afterBytes = readFileSync(path.join(runtimeDir, "state", "pairing-state.json"), "utf8");
+      check("[no-op] the file on disk is byte-for-byte unchanged — no wasteful rewrite", beforeBytes === afterBytes);
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  }
+
+  // ── (c) readHostedPairingStateFromDisk self-heals on a missing/corrupt file instead of throwing ──
+  {
+    const tmpRoot = mkdtempSync(path.join(tmpdir(), "aria-hosted-renewal-missing-test-"));
+    try {
+      const runtimeDir = path.join(tmpRoot, "renew-missing", ".aria");
+      check("[missing-file] readHostedPairingStateFromDisk returns undefined when nothing was ever seeded", readHostedPairingStateFromDisk(runtimeDir) === undefined);
+
+      const result = renewHostedPairingStateIfNeeded(runtimeDir, "client-renew-4");
+      check("[missing-file] renewed === true when there was no pairing-state.json to begin with", result.renewed === true);
+      check("[missing-file] clientId falls back to the argument passed in", result.state.clientId === "client-renew-4");
+      check("[missing-file] lastSequence falls back to 0, matching a fresh seed", result.state.lastSequence === 0);
+      check("[missing-file] a real pairing-state.json now exists", existsSync(path.join(runtimeDir, "state", "pairing-state.json")));
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  }
+
+  // ── (d) Idempotency: two back-to-back renewal calls (standing in for a race between two near-simultaneous /paper_start calls) never corrupt the file or leave an inconsistent state ──
+  // Note on scope: Node is single-threaded and renewHostedPairingStateIfNeeded
+  // is fully synchronous, so two calls "racing" here run strictly
+  // sequentially — that's actually the tightest interleaving reachable
+  // in-process (there's no genuine multi-process race to reproduce without
+  // spawning real OS processes). What this proves instead — and what
+  // matters for the real race, since a second /paper_start tap that arrives
+  // even a few milliseconds after the first will see whatever the first one
+  // already wrote — is that the SECOND call correctly recognizes the FIRST
+  // call's renewal already fixed the problem and does NOT re-renew: only
+  // the first call actually mints a new token, the second is a genuine,
+  // correct no-op against the now-healthy state the first one just wrote.
+  // That's the strongest idempotency guarantee obtainable here, and it's
+  // exactly what prevents two near-simultaneous callers from double-signing
+  // or corrupting the file.
+  {
+    const tmpRoot = mkdtempSync(path.join(tmpdir(), "aria-hosted-renewal-race-test-"));
+    try {
+      const runtimeDir = path.join(tmpRoot, "renew-race", ".aria");
+      const nowSec = Math.floor(Date.now() / 1000);
+      const nearExpiryToken = signTestEntitlementToken("client-renew-3", nowSec - (7 * 24 * 3600 - 1800), nowSec + 1800); // expires in ~30 min
+      writeHostedPairingStateToDisk(runtimeDir, { clientId: "client-renew-3", lastSequence: 12, entitlementToken: nearExpiryToken });
+
+      const r1 = renewHostedPairingStateIfNeeded(runtimeDir, "client-renew-3");
+      const r2 = renewHostedPairingStateIfNeeded(runtimeDir, "client-renew-3");
+
+      check("[race] the first call renews (the token really was expiring soon)", r1.renewed === true);
+      check("[race] the second call correctly sees the first call's fix and does NOT re-renew", r2.renewed === false);
+      check("[race] both preserve lastSequence (12)", r1.state.lastSequence === 12 && r2.state.lastSequence === 12);
+      check("[race] both preserve clientId", r1.state.clientId === "client-renew-3" && r2.state.clientId === "client-renew-3");
+      check("[race] the second call's state is EXACTLY the first call's renewed token — no second, redundant signing", r2.state.entitlementToken === r1.state.entitlementToken);
+
+      const final = JSON.parse(readFileSync(path.join(runtimeDir, "state", "pairing-state.json"), "utf8"));
+      check("[race] the final on-disk file parses as valid, well-shaped JSON — not corrupted/torn", typeof final.clientId === "string" && typeof final.lastSequence === "number" && typeof final.entitlementToken === "string");
+      check("[race] final clientId is correct", final.clientId === "client-renew-3");
+      check("[race] final lastSequence is correct (12, preserved through the renewal)", final.lastSequence === 12);
+      check("[race] the final on-disk token is the ONE token the first call minted", final.entitlementToken === r1.state.entitlementToken);
+
+      if (haveEngine) {
+        const { verifyEntitlement } = await importEngineModule("entitlement.ts");
+        const verification = verifyEntitlement(final.entitlementToken, TEST_ENTITLEMENT_PUBLIC_X, new Date());
+        check("[race] the final on-disk token genuinely verifies against the REAL aria-engine verifier", verification.granted === true);
+      }
     } finally {
       rmSync(tmpRoot, { recursive: true, force: true });
     }
