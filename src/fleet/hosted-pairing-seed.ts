@@ -343,13 +343,14 @@ export function readHostedPairingStateFromDisk(runtimeDir: string): HostedPairin
  *      renewal cycle, not a stuck or permanently-denied client.
  *
  * Test-only synchronization seam: `renewHostedPairingStateIfNeeded` takes
- * an optional `testHooks.afterReadBeforeWrite` callback, invoked in the
- * exact window between the pre-write re-read and the write, used ONLY by
- * `hosted-pairing-seed.test.ts`'s `[D2]` test to simulate the live engine
- * writing a fresh `lastSequence` into that window — see that test for the
- * empirical revert-and-confirm-fails proof that this seam genuinely
- * exercises the re-read, not just decoration. No production caller passes
- * this; it defaults to a no-op.
+ * an optional `testHooks.afterReadBeforeWrite` callback, invoked BEFORE the
+ * pre-write re-read (right after the initial read/signing above, and right
+ * before that re-read fires), used ONLY by `hosted-pairing-seed.test.ts`'s
+ * `[D2]` test to simulate the live engine writing a fresh `lastSequence`
+ * into that window so the re-read has something new to actually pick up —
+ * see that test for the empirical revert-and-confirm-fails proof that this
+ * seam genuinely exercises the re-read, not just decoration. No production
+ * caller passes this; it defaults to a no-op.
  */
 export function renewHostedPairingStateIfNeeded(
   runtimeDir: string,
