@@ -576,10 +576,21 @@ async function main() {
     }
   }
 
-  // ── D2 spot-check: a fresh write to the file by the "live engine"
-  // (advancing lastSequence, simulating a sync tick) that lands AFTER
-  // renewal's first read but BEFORE its write must still be picked up by
-  // the pre-write re-read, not clobbered back to the stale value. ──
+  // ── D2 (second review round, 2026-09-19): a fresh write to the file by
+  // the "live engine" (advancing lastSequence, simulating a sync tick) must
+  // genuinely land BETWEEN renewal's internal read and its write — not
+  // before renewal is even called — to prove the pre-write re-read is doing
+  // real work. The FIRST version of this test wrote lastSequence:9 to disk
+  // BEFORE calling renewal at all, so renewal's very first read already saw
+  // 9 and the test passed even with the re-read deleted entirely (an
+  // independent reviewer proved this by replacing the re-read with
+  // `const preserveFrom = existing;` and watching the test still pass).
+  // This version uses the `testHooks.afterReadBeforeWrite` seam
+  // (hosted-pairing-seed.ts) — a callback invoked by
+  // `renewHostedPairingStateIfNeeded` in the exact window between its
+  // internal read and its write, added FOR this test and a no-op for every
+  // real caller — to perform the concurrent write from inside that window,
+  // not before the function is even entered. ──
   {
     const tmpRoot = mkdtempSync(path.join(tmpdir(), "aria-hosted-renewal-d2-test-"));
     try {
@@ -588,14 +599,21 @@ async function main() {
       const nearExpiryToken = signTestEntitlementToken("client-d2-1", nowSec - (7 * 24 * 3600 - 3600), nowSec + 3600);
       writeHostedPairingStateToDisk(runtimeDir, { clientId: "client-d2-1", lastSequence: 5, entitlementToken: nearExpiryToken });
 
-      // Simulate the live engine advancing lastSequence via a sync tick
-      // that happens to land between renewal's internal reads, by writing a
-      // newer lastSequence directly before calling renewal (renewal's own
-      // re-read-before-write, exercised internally, will pick this up).
-      writeHostedPairingStateToDisk(runtimeDir, { clientId: "client-d2-1", lastSequence: 9, entitlementToken: nearExpiryToken });
+      let hookFired = false;
+      const result = renewHostedPairingStateIfNeeded(runtimeDir, "client-d2-1", new Date(), {
+        afterReadBeforeWrite: () => {
+          hookFired = true;
+          // This is the "live engine" sync tick landing INSIDE renewal's
+          // read-to-write window, simulated via the seam rather than staged
+          // on disk beforehand.
+          writeHostedPairingStateToDisk(runtimeDir, { clientId: "client-d2-1", lastSequence: 9, entitlementToken: nearExpiryToken });
+        },
+      });
+      check("[D2] the concurrency-simulation seam actually fired", hookFired);
+      check("[D2] renewal preserves the LATEST lastSequence (9) written DURING its read-to-write window, not the stale value (5) seen by its first read", result.state.lastSequence === 9);
 
-      const result = renewHostedPairingStateIfNeeded(runtimeDir, "client-d2-1");
-      check("[D2] renewal preserves the LATEST lastSequence (9), not a stale earlier read (5)", result.state.lastSequence === 9);
+      const onDisk = JSON.parse(readFileSync(path.join(runtimeDir, "state", "pairing-state.json"), "utf8"));
+      check("[D2] the concurrent value was actually persisted to disk by renewal's own write, not just returned in memory", onDisk.lastSequence === 9);
     } finally {
       rmSync(tmpRoot, { recursive: true, force: true });
     }

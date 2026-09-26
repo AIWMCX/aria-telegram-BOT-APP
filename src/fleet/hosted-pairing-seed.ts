@@ -310,33 +310,88 @@ export function readHostedPairingStateFromDisk(runtimeDir: string): HostedPairin
  *
  * D2 (disclosed, narrow, NOT fully fixed here): this read-modify-write is
  * not coordinated with the LIVE engine process's own concurrent writes to
- * this same file (it writes `lastSequence` on every sync tick). To narrow
- * (not eliminate) that window, the state actually written is built from a
- * SECOND read taken immediately before the write, not the read taken at
- * the top of this function — so a sync write that lands in between is
- * still picked up rather than clobbered by a stale `lastSequence`. This
- * does not eliminate the race: the engine could still write between this
- * second read and this function's own `writeFileSync`. Closing that
- * completely would need real file-locking or an atomic read-then-write
- * coordinated with the live engine process, which is out of scope for this
- * fix — a stale-`lastSequence` write here self-heals via the engine's own
- * `resyncSequence` on its next rejected sync, at the cost of one rejected
- * sync attempt, not data loss or a stuck client.
+ * this same file (it writes `lastSequence` on every sync tick, and — see
+ * below — the reverse direction is equally real). To narrow (not
+ * eliminate) that window, the state actually written is built from a
+ * SECOND read taken as the LAST thing before the write (see the
+ * signing-before-re-read reordering below, which closes the second
+ * review's Defect 2 finding: the re-read now has no signing operation
+ * sitting between it and `writeFileSync`, not just "immediately before"
+ * in name only) — so a sync write that lands in between is still picked
+ * up rather than clobbered by a stale `lastSequence`. This does not
+ * eliminate the race: the engine could still write between this second
+ * read and this function's own `writeFileSync`. Closing that completely
+ * would need real file-locking or an atomic read-then-write coordinated
+ * with the live engine process, which is out of scope for this fix.
+ *
+ * The race is symmetric, and both directions self-heal (second review,
+ * 2026-09-19 — a prior version of this docblock only disclosed the first
+ * direction, which an independent reviewer correctly flagged as
+ * one-sided):
+ *   1. This function's write can clobber a concurrent engine sync's fresh
+ *      `lastSequence` update back to a stale value. Self-heals via the
+ *      engine's own `resyncSequence` (aria-engine's `pairing-state.ts`) on
+ *      its next rejected sync — cost: one rejected sync attempt, not data
+ *      loss or a stuck client.
+ *   2. The engine's own `savePairingState`/`nextSequence`
+ *      (`aria-engine/src/pairing-state.ts:57-63`) is ALSO a full-object
+ *      read-modify-write, so a concurrent engine sync tick can equally
+ *      clobber THIS function's freshly-minted `entitlementToken` back to
+ *      the stale/expiring one it just replaced. Self-heals because that
+ *      stale token is renewed again on the very next `/paper_start`'s
+ *      expiry check (`entitlementNeedsRenewal` above) — cost: one extra
+ *      renewal cycle, not a stuck or permanently-denied client.
+ *
+ * Test-only synchronization seam: `renewHostedPairingStateIfNeeded` takes
+ * an optional `testHooks.afterReadBeforeWrite` callback, invoked in the
+ * exact window between the pre-write re-read and the write, used ONLY by
+ * `hosted-pairing-seed.test.ts`'s `[D2]` test to simulate the live engine
+ * writing a fresh `lastSequence` into that window — see that test for the
+ * empirical revert-and-confirm-fails proof that this seam genuinely
+ * exercises the re-read, not just decoration. No production caller passes
+ * this; it defaults to a no-op.
  */
 export function renewHostedPairingStateIfNeeded(
   runtimeDir: string,
   clientId: string,
   now: Date = new Date(),
+  testHooks?: { afterReadBeforeWrite?: () => void },
 ): { renewed: boolean; state: HostedPairingState } {
   const existing = readHostedPairingStateFromDisk(runtimeDir);
   if (existing && !entitlementNeedsRenewal(existing, now.getTime())) {
     return { renewed: false, state: existing };
   }
 
-  // D2: re-read immediately before writing, narrowing (not eliminating) the
-  // race window against the live engine's own concurrent writes to this
-  // same file — see the docblock above for the full disclosed scope of
-  // what this does and does not guarantee.
+  const resolvedClientId = existing?.clientId ?? clientId;
+
+  // Defect 2 fix (second review round, 2026-09-19): sign the fresh token
+  // FIRST — using only `resolvedClientId`, already available from the read
+  // above — BEFORE the re-read below. This makes the re-read genuinely the
+  // LAST thing before `writeFileSync`, with no signing operation (Ed25519
+  // private-key construction + signing — measured by the reviewer at
+  // ~104µs, the dominant cost of the ORIGINAL pre-fix race window) sitting
+  // between the re-read and the write, matching what the docblock above
+  // now actually claims instead of overstating it.
+  let newToken: string | undefined;
+  if (ENTITLEMENT_ISSUANCE_ENABLED) {
+    try {
+      newToken = issueReal1BetaEntitlementToken(resolvedClientId, randomUUID()).token;
+    } catch {
+      // Same fail-open-on-issuance/fail-closed-on-verification contract as
+      // buildHostedPairingState: never block a start over entitlement
+      // issuance itself. If this leaves the token missing/still-expired,
+      // checkPaperStartEntitlement fails closed downstream exactly as
+      // documented there.
+    }
+  }
+
+  // Test-only seam (Defect 1 fix, second review round): fires in the exact
+  // window between the read above and the re-read below, letting a test
+  // simulate the live engine's own concurrent write landing here. No-op in
+  // production.
+  testHooks?.afterReadBeforeWrite?.();
+
+  // D2: re-read as the LAST thing before writing — see the docblock above.
   const preserveFrom = readHostedPairingStateFromDisk(runtimeDir) ?? existing;
 
   // D1 fix: spread the FULL existing on-disk object first — including any
@@ -347,20 +402,11 @@ export function renewHostedPairingStateIfNeeded(
   // erase the revocation cache and defeat /revokeengine.
   const state: HostedPairingState = {
     ...preserveFrom,
-    clientId: preserveFrom?.clientId ?? clientId,
+    clientId: preserveFrom?.clientId ?? resolvedClientId,
     lastSequence: preserveFrom?.lastSequence ?? 0,
   };
-  if (ENTITLEMENT_ISSUANCE_ENABLED) {
-    try {
-      state.entitlementToken = issueReal1BetaEntitlementToken(state.clientId, randomUUID()).token;
-    } catch {
-      // Same fail-open-on-issuance/fail-closed-on-verification contract as
-      // buildHostedPairingState: never block a start over entitlement
-      // issuance itself. If this leaves the token missing/still-expired,
-      // checkPaperStartEntitlement fails closed downstream exactly as
-      // documented there.
-    }
-  }
+  if (newToken !== undefined) state.entitlementToken = newToken;
+
   writeHostedPairingStateToDisk(runtimeDir, state);
   return { renewed: true, state };
 }
