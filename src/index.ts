@@ -218,7 +218,7 @@ async function verifyWebhookOnBoot(): Promise<void> {
         consecutiveMismatches = 0;
       } else {
         consecutiveMismatches++;
-        logger.error(
+        logger.warn(
           { expectedUrl, actualUrl: info.url, lastErrorMessage: info.last_error_message, consecutiveMismatches },
           "TELEGRAM_WEBHOOK_MISMATCH — evidence of active external interference, not a one-off",
         );
