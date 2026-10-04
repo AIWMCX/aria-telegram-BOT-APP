@@ -11,6 +11,12 @@ The app + migrations + /healthz path was proven on a bare machine with a throw-a
 Postgres (see "Verification evidence" at the bottom). Expect to fix small things on
 the first real `docker compose up` and treat that run as the real test.
 
+SMALL HOSTS (1 GB RAM VM, GCP e2-micro, cheap VPS, or a Windows-PC stopgap): see
+`SMALL-VM-ADDENDUM.md` and the `docker-compose.small.yml` override
+(`docker compose -f docker-compose.yml -f docker-compose.small.yml up -d --build`). It also covers
+HTTPS without a domain. After any start, check `GET /readyz` (HTTP 200 = SQLite and Postgres
+migrations ready); `/healthz` alone is only liveness.
+
 ## 0. What the app needs (verified in source)
 
 - Node 22 (uses `node:sqlite`); the repo Dockerfile already provides it.

@@ -1,0 +1,70 @@
+# Memory-tight override for 1 GB hosts (GCP e2-micro, 1 GB VPS, ...).
+# Use together with the base file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.small.yml up -d --build
+#   (add --profile tunnel for Cloudflare Tunnel)
+#
+# STATUS: UNVERIFIED in Docker (no daemon was available). The numbers come from
+# a bare-machine measurement on Windows, see SMALL-VM-ADDENDUM.md section 1.
+# Linux numbers will differ; watch `docker stats` on the first real run.
+#
+# Nothing here changes app code or data layout; remove the -f override and you
+# are back on the stock stack. Needs Docker Compose v2 (mem_limit is honoured
+# by `docker compose`, not by the legacy swarm `deploy.resources` path).
+
+services:
+  app:
+    # `npm start` runs: npm -> tsx (parent) -> node (child). Measured on the
+    # bare machine, the two wrapper processes add ~120 MB of working set on top
+    # of the ~85-115 MB real server. Running node directly with the tsx loader
+    # (tsx is installed: the Dockerfile runs a plain `npm install`) drops them.
+    # Verified locally (migrations ran, /readyz 200); NOT verified inside the image.
+    command: ["node", "--import", "tsx", "src/index.ts"]
+    mem_limit: 320m
+    environment:
+      # Old-space cap below the container limit so V8 collects instead of the
+      # kernel OOM-killing the container. Measured idle heap is far below this.
+      NODE_OPTIONS: "--max-old-space-size=192"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }   # stop logs filling a 30 GB disk
+
+  postgres:
+    mem_limit: 256m
+    # The official image passes everything after `postgres` to the server.
+    # Each flag is justified in SMALL-VM-ADDENDUM.md section 2.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - effective_cache_size=256MB
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_connections=20
+      - -c
+      - max_wal_size=256MB
+      - -c
+      - min_wal_size=64MB
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - autovacuum_max_workers=2
+      - -c
+      - max_worker_processes=4
+      - -c
+      - max_parallel_workers_per_gather=0
+      - -c
+      - jit=off
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  cloudflared:
+    mem_limit: 96m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
