@@ -7,11 +7,13 @@ import { collectSecretValues, redactSecrets } from "./redact.js";
  * Errors, cause chains) passes through redactSecrets() BEFORE pino serialises
  * it, with secret values read from the live environment at log time.
  *
- * Severity: pino's default JSON puts a NUMERIC `level` (50) on stdout.
- * Railway derives severity from stderr/stdout or a recognised string field,
- * so every line, errors included, showed as `severity: info` (audit §M-3).
- * We emit string `level` and `severity` fields so the platform can filter
- * and alert on error/warn.
+ * Severity (INFERENCE, not verified): pino's default JSON puts a NUMERIC
+ * `level` (50) on stdout; the audit observed every line as `severity: info`
+ * on Railway (§M-3), which is consistent with the platform not mapping a
+ * numeric level. We now emit string `level` and `severity` fields, which a
+ * platform that reads either can use. CAVEAT: on plain `docker logs` (e.g. an
+ * Oracle VM) there is no platform severity at all; alerting there needs a log
+ * shipper/agent that parses the JSON `level` field.
  */
 export function createLogger(destination?: pino.DestinationStream, level: pino.LevelWithSilent = CONFIG.LOG_LEVEL) {
   const opts: pino.LoggerOptions = {

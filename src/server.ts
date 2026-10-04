@@ -29,6 +29,13 @@ import { releaseInfo } from "./release.js";
 
 export const app = new Hono();
 
+// Hono's default handler console.error()s the raw error (own fields and all),
+// bypassing the redacting logger. Log via the logger; never echo detail.
+app.onError((err, c) => {
+  logger.error({ err, path: c.req.path }, "unhandled route error");
+  return c.json({ error: "internal_error" }, 500);
+});
+
 /**
  * 2026-09-04 — canonical Telegram update destination. Production runs
  * TELEGRAM_TRANSPORT=webhook (config.ts fails closed if that's set without

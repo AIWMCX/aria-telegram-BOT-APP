@@ -110,6 +110,94 @@ async function main() {
   log4.error({ detail: `provider said bad key ${RESEND}` }, `stripe ${STRIPE_WH} failed`);
   check("env-value-only secrets masked via logger (no pattern help)", leaks(envOnly.join("")).length === 0 && envOnly.join("").includes("provider said bad key"));
 
+  // ── 1. ReDoS regression: attacker-controlled strings (e.g. User-Agent) ──
+  const adversarial: Array<[string, string]> = [
+    ["50k digits", "1".repeat(50_000)],
+    ["50k digits + colon", "1".repeat(50_000) + ":"],
+    ["digits:token-chars", "1".repeat(20_000) + ":" + "a".repeat(30_000)],
+    ["50k word chars", "A".repeat(50_000)],
+    ["50k _D-ish", "X_".repeat(25_000)],
+    ["50k scheme-ish", "a".repeat(50_000) + "://"],
+    ["scheme://user: no @", "http://" + "u".repeat(5_000) + ":" + "p".repeat(50_000)],
+    ["many quotes", '"secret_token":"' + "\\\\".repeat(25_000)],
+    ["authorization spaces", "authorization" + " ".repeat(50_000)],
+    ["50k colons", ":".repeat(50_000)],
+  ];
+  let worst = 0;
+  let worstName = "";
+  for (const [name, str] of adversarial) {
+    const t0 = performance.now();
+    redactSecrets({ ua: str }, secrets);
+    const dt = performance.now() - t0;
+    if (dt > worst) { worst = dt; worstName = name; }
+  }
+  console.log(`   (slowest adversarial input: ${worstName} ${worst.toFixed(1)}ms)`);
+  check("ReDoS: all adversarial 50k inputs redact in <100ms each", worst < 100);
+
+  // ── 2. DATABASE_URL: real ERR_INVALID_URL carries the whole URL in `input` ──
+  const DB_PASS = "DUMMYDBPASS#word123";
+  const DB_URL = `postgres://dbuser:${DB_PASS}@db.example.internal:5432/aria`;
+  process.env.DATABASE_URL = DB_URL;
+  let urlErr: unknown;
+  try { new URL(DB_URL); } catch (e) { urlErr = e; }
+  check("precondition: malformed DATABASE_URL really throws ERR_INVALID_URL with input", (urlErr as { code?: string })?.code === "ERR_INVALID_URL" && JSON.stringify(Object.assign({}, urlErr)).includes("DUMMYDBPASS"));
+  const dbLines: string[] = [];
+  const logDb = createLogger({ write: (s: string) => { dbLines.push(s); } }, "trace");
+  logDb.error({ err: urlErr }, "db connect failed");
+  const dbOut = dbLines.join("");
+  check("DATABASE_URL: password absent from logger output (real ERR_INVALID_URL)", !dbOut.includes("DUMMYDBPASS") && !dbOut.includes("word123"));
+  check("DATABASE_URL: log still informative", dbOut.includes("ERR_INVALID_URL"));
+  // pattern only (env value not set): scheme://user:pass@ is masked
+  delete process.env.DATABASE_URL;
+  const patOut = String(redactSecrets("connect postgres://svc:OTHERPASS9@h:5432/x failed", collectSecretValues(process.env)));
+  check("URL credentials pattern masks password without env help", !patOut.includes("OTHERPASS9") && patOut.includes("svc:"));
+  process.env.DATABASE_URL = DB_URL;
+
+  // ── 3a. Hono onError: no console.error of raw error, generic body ──
+  const { app } = await import("../src/server.js");
+  // Real throwing path: /healthz reads SQLite; with the DB closed it throws.
+  const { db } = await import("../src/db.js");
+  db.close();
+  const origConsoleError = console.error;
+  const consoleCalls: string[] = [];
+  console.error = (...a: unknown[]) => { consoleCalls.push(a.map(String).join(" ")); };
+  let res: Response;
+  try { res = await app.request("/healthz"); } finally { console.error = origConsoleError; }
+  const body = await res.text();
+  check("onError: 500 with generic body", res.status === 500 && body.includes("internal_error") && !/database|not open/i.test(body));
+  check("onError: body has no secret", leaks(body).length === 0);
+  check("onError: Hono default console.error not used", consoleCalls.length === 0);
+
+  // ── 3b. process handlers: log via redacting logger, then exit non-zero ──
+  const { installProcessErrorHandlers } = await import("../src/process-errors.js");
+  const before = { u: process.listeners("unhandledRejection"), x: process.listeners("uncaughtException") };
+  let exitCode: number | undefined;
+  const pLines: string[] = [];
+  installProcessErrorHandlers((c) => { exitCode = c; }, createLogger({ write: (x: string) => { pLines.push(x); } }, "trace"));
+  const mine = process.listeners("unhandledRejection").filter((l) => !before.u.includes(l));
+  const mineX = process.listeners("uncaughtException").filter((l) => !before.x.includes(l));
+  check("process handlers installed for both events", mine.length === 1 && mineX.length === 1);
+  (mine[0] as (e: unknown) => void)(Object.assign(new Error(`rejected ${WH}`), { payload: { secret_token: WH } }));
+  await new Promise((r) => setTimeout(r, 250));
+  check("process handler: exits non-zero (crash not swallowed)", exitCode === 1);
+  check("process handler: logged fatal via logger", pLines.join("").includes("unhandledRejection") && pLines.join("").includes('"level":"fatal"'));
+  check("process handler: no secret in log output", leaks(pLines.join("")).length === 0);
+  for (const l of mine) process.removeListener("unhandledRejection", l as (...a: unknown[]) => void);
+  for (const l of mineX) process.removeListener("uncaughtException", l as (...a: unknown[]) => void);
+
+  // ── 4. hardening ──
+  const hk = ser({ secretToken: "HK_1", SECRET_TOKEN: "HK_2", apiKey: "HK_3", api_key: "HK_4", Password: "HK_5", passwd: "HK_6", token: "HK_7", Authorization: "HK_8", Cookie: "HK_9", "Set-Cookie": "HK_10", private_key: "HK_11", stripeApiKey: "HK_12", dbPassword: "HK_13" });
+  check("key-name masking: case-insensitive variants all masked", !/HK_\d/.test(hk));
+  const benign = ser({ tokenCount: 5, secretsFound: 2, passwordLength: 12, dataSize: 1 });
+  check("key-name masking: innocuous tokenCount/secretsFound/passwordLength preserved", benign.includes('"tokenCount":5') && benign.includes('"secretsFound":2') && benign.includes('"passwordLength":12'));
+  check("short env values (<8) do not mangle text", redactString("a b c abc abc", ["a", "abc"]) === "a b c abc abc" && collectSecretValues({ RESEND_API_KEY: "x" }).length === 0);
+  const SPECIAL = "sec/ret+val&ue=1 \"q\"";
+  const spVals = collectSecretValues({ STRIPE_SECRET_KEY: SPECIAL });
+  check("URL-encoded form of env secret masked", !redactString(`GET /x?k=${encodeURIComponent(SPECIAL)}`, spVals).includes(encodeURIComponent(SPECIAL)));
+  check("JSON-escaped form of env secret masked", !redactString(JSON.stringify({ m: SPECIAL }), spVals).includes(JSON.stringify(SPECIAL).slice(1, -1)));
+  const bin = ser({ buf: Buffer.from("secret bytes here"), u8: new Uint8Array(40), ab: new ArrayBuffer(8) });
+  check("Buffers/typed arrays logged as [BINARY n bytes]", bin.includes("[BINARY 17 bytes]") && bin.includes("[BINARY 40 bytes]") && bin.includes("[BINARY 8 bytes]"));
+
   // ── severity ──
   const sev: string[] = [];
   const log2 = createLogger({ write: (s: string) => { sev.push(s); } }, "trace");
@@ -128,7 +216,7 @@ async function main() {
   check("index.ts: MISMATCH logged at warn", /logger\.warn\(\s*\{ expectedUrl[\s\S]*?TELEGRAM_WEBHOOK_MISMATCH/.test(src));
   check("index.ts: REASSERT_FAILED logged at error", /logger\.error\(\{ err \}, "TELEGRAM_WEBHOOK_REASSERT_FAILED"\)/.test(src));
 
-  for (const sfx of ["", "-wal", "-shm"]) if (fs.existsSync(TEST_DB + sfx)) fs.rmSync(TEST_DB + sfx);
+  for (const sfx of ["", "-wal", "-shm"]) { try { if (fs.existsSync(TEST_DB + sfx)) fs.rmSync(TEST_DB + sfx); } catch { /* db still open on Windows */ } }
   console.log(failures === 0 ? "ALL PASSED" : `${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 }
