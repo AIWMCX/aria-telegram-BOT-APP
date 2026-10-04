@@ -234,7 +234,7 @@ bot.command("pair", async (ctx) => {
       { parse_mode: "Markdown" },
     );
   } catch (err) {
-    logger.error({ err }, "pair command failed");
+    logger.error({ err: describeBotError(err) }, "pair command failed");
     await ctx.reply("Pairing service temporarily unavailable. Try again shortly.");
   }
 });
@@ -449,7 +449,7 @@ bot.on("message", async (ctx) => {
  * Pattern redaction in src/redact.ts is the second layer, not the first.
  */
 export function describeBotError(e: unknown): unknown {
-  if (e instanceof GrammyError) return { type: "GrammyError", method: e.method, error_code: e.error_code, description: e.description };
+  if (e instanceof GrammyError) return { type: "GrammyError", method: e.method, error_code: e.error_code, description: e.description, retry_after: e.parameters?.retry_after, migrate_to_chat_id: e.parameters?.migrate_to_chat_id };
   return e;
 }
 
@@ -470,7 +470,7 @@ export async function notifyAdminOfLicense(lead: Lead, license: IssuedLicense, k
   try {
     await bot.api.sendMessage(CONFIG.ADMIN_TELEGRAM_CHAT_ID, text, { parse_mode: "Markdown" });
   } catch (err) {
-    logger.warn({ err }, "admin license DM failed (non-fatal)");
+    logger.warn({ err: describeBotError(err) }, "admin license DM failed (non-fatal)");
   }
 }
 
@@ -490,7 +490,7 @@ export async function notifyCustomerLicenseIssued(lead: Lead, license: IssuedLic
   try {
     await bot.api.sendMessage(lead.tg_user_id, text, { parse_mode: "Markdown" });
   } catch (err) {
-    logger.warn({ err }, "customer license DM failed — they may not have started the bot chat");
+    logger.warn({ err: describeBotError(err) }, "customer license DM failed — they may not have started the bot chat");
     return; // don't send the follow-up if the first message failed
   }
 
@@ -504,7 +504,7 @@ export async function notifyCustomerLicenseIssued(lead: Lead, license: IssuedLic
       { reply_markup: keyboard },
     );
   } catch (err) {
-    logger.warn({ err }, "rypto redirect DM failed (non-fatal)");
+    logger.warn({ err: describeBotError(err) }, "rypto redirect DM failed (non-fatal)");
   }
 }
 
@@ -517,7 +517,7 @@ export async function notifyCustomerOfRefundRevocation(lead: Lead, license: { id
   try {
     await bot.api.sendMessage(lead.tg_user_id, text, { parse_mode: "Markdown" });
   } catch (err) {
-    logger.warn({ err }, "refund-revocation DM failed (non-fatal) — they may not have started the bot chat");
+    logger.warn({ err: describeBotError(err) }, "refund-revocation DM failed (non-fatal) — they may not have started the bot chat");
   }
 }
 
@@ -533,7 +533,7 @@ export async function notifyAdminOfRefundRevocation(lead: Lead, license: { id: s
   try {
     await bot.api.sendMessage(CONFIG.ADMIN_TELEGRAM_CHAT_ID, text, { parse_mode: "Markdown" });
   } catch (err) {
-    logger.warn({ err }, "admin refund-revocation DM failed (non-fatal)");
+    logger.warn({ err: describeBotError(err) }, "admin refund-revocation DM failed (non-fatal)");
   }
 }
 
@@ -547,7 +547,7 @@ export async function notifyCustomerOfExpiryWarning(lead: Lead, license: { id: s
   try {
     await bot.api.sendMessage(lead.tg_user_id, text, { parse_mode: "Markdown" });
   } catch (err) {
-    logger.warn({ err }, "expiry-warning DM failed (non-fatal) — they may not have started the bot chat");
+    logger.warn({ err: describeBotError(err) }, "expiry-warning DM failed (non-fatal) — they may not have started the bot chat");
   }
 }
 
@@ -568,6 +568,6 @@ export async function notifyCustomerOfEngineOffline(telegramUserId: number, devi
   try {
     await bot.api.sendMessage(telegramUserId, text, { parse_mode: "Markdown" });
   } catch (err) {
-    logger.warn({ err }, "engine-offline DM failed (non-fatal) — they may not have started the bot chat");
+    logger.warn({ err: describeBotError(err) }, "engine-offline DM failed (non-fatal) — they may not have started the bot chat");
   }
 }

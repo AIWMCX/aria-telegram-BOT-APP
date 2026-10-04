@@ -76,6 +76,47 @@ async function main() {
   check("describeBotError keeps method/code/description only", d.includes("sendMessage") && d.includes("400") && d.includes("parse entities") && !d.includes("ARIA1") && !d.includes("payload"));
   check("describeBotError passes non-Grammy errors through", describeBotError(new Error("x")) instanceof Error);
 
+  // Over-cap token: payload > 16384 and a long signature tail must be fully masked.
+  const bigLic = signLicense({
+    v: 1, iss: "aria", sub: "lead_1", email: "x".repeat(13000) + "@e.com", tg_user_id: 1, wallet: "W".repeat(44), tier: "pro",
+    features: ["a"], limits: { maxBuySol: 1, maxPositions: 2, maxTotalSol: 3 }, iat: now, exp: now + 1000, jti: "lic_big000000001",
+  });
+  const [bTag, bPay, bSig] = bigLic.split(".") as [string, string, string];
+  check("over-cap precondition: payload > 16384", bPay.length > 16384);
+  const bigOut = redactString("log " + bigLic + " end");
+  check("over-cap token fully masked (no payload/sig remnants)", bigOut === "log " + bTag + ".[REDACTED] end" || bigOut === "log " + bTag + ".[REDACTED]");
+  check("over-cap token: signature never survives", !bigOut.includes(bSig.slice(0, 20)) && !bigOut.includes(bPay.slice(-20)));
+  const forcedTail = "ARIA1." + "a".repeat(16384) + "TAILPAYLOAD." + "s".repeat(1024) + "TAILSIGNATURE";
+  check("synthetic over-cap tails masked", !/TAIL/.test(redactString("k=" + forcedTail)));
+
+  // Pairing codes: aria pair <27-char base64url>, MarkdownV2-escaped in bot text.
+  const { randomBytes } = await import("node:crypto");
+  const code = "Zq7Kx9PwLm" + randomBytes(20).toString("base64url").slice(0, 14) + "_-9"; // 27 chars incl. _ and -
+  const escCode = code.replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
+  const pairText = ["*Pair your ARIA device*", "", "`aria pair " + escCode + "`", "Expires 12:00 UTC"].join("\n");
+  const pleak = (o: string) => o.includes(code.slice(0, 10)) || o.includes(code.slice(-8)) || o.includes(escCode.slice(-8));
+  check("pair code: plain string masked, marker kept", (() => { const o = redactString(pairText); return !pleak(o) && o.includes("aria pair [REDACTED]") && o.includes("Expires 12:00 UTC"); })());
+  check("pair code: unescaped + /pair form masked", !pleak(redactString("run aria pair " + code)) && !pleak(redactString("/pair " + code)));
+  check("pair code: nested object", !pleak(ser({ a: [{ note: pairText }] })));
+  const pge = new GrammyError("Call to 'sendMessage' failed! (400: Bad Request: can't parse entities)",
+    { ok: false, error_code: 400, description: "Bad Request: can't parse entities" }, "sendMessage", { chat_id: 1, text: pairText, parse_mode: "Markdown" });
+  check("pair code GrammyError precondition: payload carries code", JSON.stringify(pge.payload).includes(code.slice(0, 10)));
+  check("pair code: GrammyError via redactSecrets masked", !pleak(ser(pge)));
+  const plines: string[] = [];
+  createLogger({ write: (s: string) => { plines.push(s); } }, "trace").error({ err: pge }, "pair command failed");
+  check("pair code: GrammyError via logger masked", !pleak(plines.join("")));
+  check("pair code: describeBotError drops payload", !pleak(JSON.stringify(describeBotError(pge))));
+  const lines2: string[] = [];
+  createLogger({ write: (s: string) => { lines2.push(s); } }, "trace").error({ err: describeBotError(pge) }, "pair command failed");
+  check("pair code: handler-layer log has no code", !pleak(lines2.join("")));
+
+  // parameters: retry_after / migrate_to_chat_id kept (non-secret), nothing else.
+  const rl = new GrammyError("Call to 'sendMessage' failed! (429)",
+    { ok: false, error_code: 429, description: "Too Many Requests: retry after 7", parameters: { retry_after: 7, migrate_to_chat_id: -100123 } },
+    "sendMessage", { chat_id: 1, text: pairText });
+  const rd = describeBotError(rl) as Record<string, unknown>;
+  check("describeBotError keeps retry_after + migrate_to_chat_id", rd.retry_after === 7 && rd.migrate_to_chat_id === -100123 && !JSON.stringify(rd).includes("aria pair"));
+
   // Timing: 100KB adversarial inputs
   const adv: Array<[string, string]> = [
     ["100k b64 chars after tag", "ARIA1." + "a".repeat(100_000)],
@@ -85,6 +126,11 @@ async function main() {
     ["tag-prefix soup", "ARIAE".repeat(20_000)],
     ["tag + payload + 100k sig", "ARIAE1.abc." + "b".repeat(100_000)],
     ["many ARIA1 no dot", "ARIA1".repeat(20_000)],
+    ["pair prefix soup", "aria pair ".repeat(20_000)],
+    ["pair + 100k code chars", "aria pair " + "a".repeat(100_000)],
+    ["pair + backslash soup", "aria pair " + "\\".repeat(100_000)],
+    ["pair + backslash/char alternation", "aria pair " + "\\a".repeat(50_000)],
+    ["slash-pair soup", "/pair ".repeat(20_000)],
     ["alternating tag/long seg", ("ARIA1." + "c".repeat(20_000) + " ").repeat(5)],
   ];
   let worst = 0, worstName = "";
@@ -96,6 +142,18 @@ async function main() {
   }
   console.log(`   (slowest adversarial input: ${worstName} ${worst.toFixed(1)}ms)`);
   check("ReDoS: 100KB adversarial token inputs <100ms each", worst < 100);
+  const big: Array<[string, string]> = [
+    ["1MB token chars", "ARIA1." + "a".repeat(1 << 20)],
+    ["1MB token dotted", "ARIA1." + "a.".repeat(1 << 19)],
+    ["1MB repeated tags", "ARIAE1.a.".repeat(116_000)],
+    ["1MB pair code chars", "aria pair " + "a".repeat(1 << 20)],
+    ["1MB pair backslash/char", "aria pair " + "\\a".repeat(350_000)],
+    ["1MB repeated pair", "aria pair a ".repeat(87_000)],
+  ];
+  let bw = 0, bn = "";
+  for (const [n, s2] of big) { const t0 = performance.now(); redactString(s2); const dt = performance.now() - t0; if (dt > bw) { bw = dt; bn = n; } }
+  console.log("   (slowest 1MB input: " + bn + " " + bw.toFixed(1) + "ms)");
+  check("ReDoS: 1MB adversarial inputs <500ms each", bw < 500);
 
   if (failures) { console.log(`\n${failures} FAILED`); process.exit(1); }
   console.log("\nAll token-redaction checks passed");

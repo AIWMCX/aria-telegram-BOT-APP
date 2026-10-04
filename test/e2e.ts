@@ -73,6 +73,20 @@ async function main() {
   });
   check("forged initData → 401 (HMAC layer)", r1b.status === 401);
 
+  // Email length cap (254): validation runs before HMAC, so a 255-char email is
+  // a 400 while a normal email with the same forged initData reaches the 401 layer.
+  const longEmail = "x".repeat(255 - "@e.com".length) + "@e.com";
+  const rLong = await app.request("/api/submit", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ initData: forged, name: "Test User", email: longEmail, wallet: TEST_WALLET }),
+  });
+  check("email > 254 chars → 400 (not 401), /api/submit", rLong.status === 400 && longEmail.length === 255);
+  const rHuge = await app.request("/api/submit", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ initData: forged, name: "Test User", email: "x".repeat(13000) + "@e.com", wallet: TEST_WALLET }),
+  });
+  check("13k-char email → 400, /api/submit", rHuge.status === 400);
+
   const validInitData = buildInitData({ id: 987654321, first_name: "Bogdan", username: "bogdan_test" });
   const r2 = await app.request("/api/submit", {
     method: "POST", headers: { "Content-Type": "application/json" },

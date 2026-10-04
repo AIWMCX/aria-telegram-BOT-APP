@@ -45,7 +45,17 @@ const BOT_TOKEN = /(?<!\d)\d{6,15}:[A-Za-z0-9_-]{30,64}/g;
 // (<= 16384 + 1024 chars) with no nested/overlapping quantifiers. The
 // signature segment is optional so a truncated token still gets masked.
 // The format tag is kept for debuggability; payload + signature are masked.
-const LICENSE_TOKEN = /(ARIAE?1)\.[A-Za-z0-9_-]{1,16384}(?:\.[A-Za-z0-9_-]{0,1024})?/g;
+// A trailing `[A-Za-z0-9_.-]*` continues masking past the caps so an over-long
+// token (e.g. huge email in the payload) never leaks its tail. It can match
+// empty, so the whole pattern never fails/backtracks: linear.
+const LICENSE_TOKEN = /(ARIAE?1)\.[A-Za-z0-9_-]{1,16384}(?:\.[A-Za-z0-9_-]{0,1024})?[A-Za-z0-9_.-]*/g;
+// Device pairing codes (src/engine-pairing.ts: 20 random bytes, base64url =
+// 27 chars of [A-Za-z0-9_-]). Bot text is `aria pair <code>` with MarkdownV2
+// escaping (esc() puts a backslash before '_' and '-'), so up to 4 backslashes
+// may precede each code char. The code is a ~10 minute bearer credential.
+// Anchored on the literal prefix; the repeated unit always consumes a class
+// char (backslashes are disjoint from it), so it is deterministic/linear.
+const PAIR_CODE = /(\baria\s{1,4}pair\s{1,4}|\/pair\s{1,4})(?:\\{0,4}[A-Za-z0-9_-]){1,128}[A-Za-z0-9_-]*/gi;
 // "secret_token":"..." (JSON text)
 const KEYED_JSON = /("(?:secret_token|authorization|x-telegram-bot-api-secret-token)"\s*:\s*)"(?:[^"\\]|\\.)*"/gi;
 const KEYED_PAIR = /\b(secret_token|x-telegram-bot-api-secret-token)(\s*[=:]\s*)[^\s,;&"'}]+/gi;
@@ -110,6 +120,7 @@ export function redactString(input: string, secrets: readonly string[] = []): st
     .replace(AUTH_HEADER, `$1${REDACTED}`)
     .replace(PRIVATE_PAIR, `$1${REDACTED}`)
     .replace(LICENSE_TOKEN, `$1.${REDACTED}`)
+    .replace(PAIR_CODE, `$1${REDACTED}`)
     .replace(BOT_TOKEN, REDACTED);
 }
 

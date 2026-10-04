@@ -62,7 +62,7 @@ const SolanaAddress = z.string().trim().min(32).max(44).regex(/^[1-9A-HJ-NP-Za-k
 const SubmitBody = z.object({
   initData: z.string().min(10, "initData missing — open this via the Telegram bot"),
   name: z.string().trim().min(2).max(100),
-  email: z.string().trim().toLowerCase().email(),
+  email: z.string().trim().toLowerCase().max(254).email(),
   wallet: SolanaAddress,
   interest: z.string().trim().max(500).optional(),
   website: z.string().max(200).optional(), // honeypot — real users never fill this
@@ -71,7 +71,7 @@ const SubmitBody = z.object({
 const CheckoutBody = z.object({
   initData: z.string().min(10),
   name: z.string().trim().min(2).max(100),
-  email: z.string().trim().toLowerCase().email(),
+  email: z.string().trim().toLowerCase().max(254).email(),
   wallet: SolanaAddress,
   tier: z.enum(["standard", "pro"]),
   website: z.string().max(200).optional(), // honeypot
