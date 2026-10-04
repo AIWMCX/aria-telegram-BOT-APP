@@ -90,7 +90,7 @@ Start (if you did not just run restore):
     docker compose ps
     docker compose logs app | grep -i -E "migrat|BOT_BOOT|webhook|error"
 
-You must see "Postgres migrations up to date". The app treats a migration failure as NON-fatal (logs an error, keeps running with engine routes unavailable), so `/healthz` can be green while Postgres features are broken. Always check that log line.
+You must see "Postgres migrations up to date". The app treats a migration failure as NON-fatal (logs an error, keeps running with engine routes unavailable), so `/healthz` (liveness, always 200) can be green while Postgres features are broken. Always check that log line, and check `/readyz` (readiness): it must return HTTP 200 after first boot. HTTP 503 means SQLite or Postgres/migrations are not ready; the JSON `postgres` block shows `configured`/`ready`/`migrations` and never credentials.
 
 ## 5. HTTPS (Telegram requires a public https URL)
 
@@ -115,7 +115,7 @@ Caddy gets the certificate automatically. Set `PUBLIC_URL=https://aria.example.c
 
 ## 7. Verify
 
-1. On the VM `curl -s http://127.0.0.1:8080/healthz`, and from outside `curl -s https://<your host>/healthz`: HTTP 200, `"ok":true`, and the `release` block shows the SHA you exported as `GIT_SHA` (compare with `git rev-parse HEAD`).
+1. On the VM `curl -s -i http://127.0.0.1:8080/readyz` must be HTTP 200 with `"ready":true` (check this, not only `/healthz`). Then `curl -s http://127.0.0.1:8080/healthz`, and from outside `curl -s https://<your host>/healthz`: HTTP 200, `"ok":true`, and the `release` block shows the SHA you exported as `GIT_SHA` (compare with `git rev-parse HEAD`).
 2. In Telegram send `/start` to the bot and expect a reply; open the Mini App from the menu button.
 3. `docker compose ps` shows app and postgres `healthy`.
 4. Run `./backup.sh` once and confirm it prints `OK`.

@@ -1,6 +1,7 @@
 import { runner } from "node-pg-migrate";
 import { CONFIG } from "./config.js";
 import { logger } from "./logger.js";
+import { setMigrationOutcome } from "./pg-health.js";
 
 /**
  * Runs Postgres migrations (migrations/*.js) on boot. Idempotent —
@@ -14,12 +15,18 @@ export async function runPgMigrations(): Promise<void> {
     logger.info("DATABASE_URL not set — skipping Postgres migrations (funded-account domain inactive)");
     return;
   }
-  await runner({
-    databaseUrl: CONFIG.DATABASE_URL,
-    dir: "migrations",
-    direction: "up",
-    migrationsTable: "pgmigrations",
-    log: (msg: string) => logger.info({ src: "pg-migrate" }, msg),
-  });
+  try {
+    await runner({
+      databaseUrl: CONFIG.DATABASE_URL,
+      dir: "migrations",
+      direction: "up",
+      migrationsTable: "pgmigrations",
+      log: (msg: string) => logger.info({ src: "pg-migrate" }, msg),
+    });
+  } catch (err) {
+    setMigrationOutcome("failed"); // surfaced via /healthz + /readyz (src/pg-health.ts)
+    throw err;
+  }
+  setMigrationOutcome("up-to-date");
   logger.info("Postgres migrations up to date");
 }

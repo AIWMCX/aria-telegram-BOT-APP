@@ -26,6 +26,8 @@ import { isUserApproved, markInvitePaired } from "./invites.js";
 import { trackEvent } from "./funnel.js";
 import { submitFeedback } from "./feedback.js";
 import { releaseInfo } from "./release.js";
+import { db } from "./db.js";
+import { getPostgresHealth } from "./pg-health.js";
 
 export const app = new Hono();
 
@@ -86,15 +88,41 @@ const CheckoutBody = z.object({
  * a commit SHA, a build timestamp, and a branch name are already public
  * in the GitHub repo this deploys from.
  */
-app.get("/healthz", (c) =>
+/**
+ * /healthz = LIVENESS. Always HTTP 200 while the process is serving; Railway /
+ * docker healthchecks depend on that, and failing it on a Postgres blip would
+ * cause restart loops. The `postgres` block is informational only.
+ * /readyz (below) = READINESS: 503 when the product cannot actually serve.
+ */
+app.get("/healthz", async (c) =>
   c.json({
     ok: true,
     uptime: process.uptime(),
     leads: totalLeads(),
     paymentsEnabled: PAYMENTS_ENABLED,
     release: releaseInfo(),
+    postgres: await getPostgresHealth(),
   }),
 );
+
+/**
+ * /readyz = READINESS. 200 only when SQLite is usable AND (Postgres is not
+ * configured OR Postgres answers and boot migrations are up-to-date); else 503
+ * with the same non-sensitive postgres block. Check this, not just /healthz,
+ * after first boot. Never put it behind a restart-on-fail liveness probe.
+ */
+app.get("/readyz", async (c) => {
+  let sqlite = false;
+  try {
+    db.prepare("SELECT 1").get();
+    sqlite = true;
+  } catch {
+    sqlite = false;
+  }
+  const postgres = await getPostgresHealth();
+  const ready = sqlite && (!postgres.configured || (postgres.ready && postgres.migrations === "up-to-date"));
+  return c.json({ ready, sqlite, postgres }, ready ? 200 : 503);
+});
 
 /**
  * Unauthenticated product-state summary consumed by the Mini App's reality
