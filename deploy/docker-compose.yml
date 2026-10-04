@@ -1,0 +1,76 @@
+# ARIA Telegram control plane - host-agnostic self-hosting stack.
+# Run from this directory:  docker compose up -d --build
+# Needs deploy/.env (copy .env.template -> .env and fill it in; never commit it).
+#
+# Migrations: the app itself runs node-pg-migrate on every boot
+# (src/index.ts -> src/migrate.ts, idempotent), so no separate migrate
+# service is needed. NOTE: a migration failure is logged but NOT fatal in the
+# app, so after first boot always check `docker compose logs app | grep -i migrat`.
+
+name: aria
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        # Surfaces in /healthz release block. Set with: export GIT_SHA=$(git rev-parse HEAD)
+        RAILWAY_GIT_COMMIT_SHA: ${GIT_SHA:-}
+        RAILWAY_GIT_BRANCH: ${GIT_BRANCH:-}
+    image: aria-control-plane:local
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Compose-level values win over env_file. DB_PATH matches the Dockerfile.
+      DB_PATH: /data/aria.db
+      PORT: "8080"
+      DATABASE_URL: postgres://aria:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/aria
+    volumes:
+      - aria_data:/data            # SQLite: leads, licenses, orders, audit_log (CUSTOMER DATA)
+      - ./backups:/backups         # backup.sh writes SQLite snapshots here
+    ports:
+      # Bound to localhost only; expose publicly via cloudflared or a reverse proxy.
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aria
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: aria
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    # No published port: only reachable from the compose network.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aria -d aria"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Optional free HTTPS tunnel. Enable with:  docker compose --profile tunnel up -d
+  # Needs CLOUDFLARE_TUNNEL_TOKEN in .env. Tunnel public hostname must point
+  # at http://app:8080 (configured in the Cloudflare Zero Trust dashboard).
+  cloudflared:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}   # required only when this profile is enabled
+    depends_on:
+      - app
+
+volumes:
+  aria_data:
+  pg_data:
