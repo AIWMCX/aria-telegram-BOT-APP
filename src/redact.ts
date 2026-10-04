@@ -31,9 +31,21 @@ function isSensitiveKey(key: string): boolean {
   return /private/.test(n) || /(secret|password|apikey|secrettoken|accesstoken)$/.test(n);
 }
 
-// Telegram bot token. Left-anchored with a digit lookbehind and bounded
-// quantifiers: without the lookbehind a long digit run is O(n^2) (ReDoS).
+// Telegram bot token. The BOUNDED quantifiers ({6,15}, {30,64}) are what cap
+// the work per start position (a long digit run is O(n*15), not O(n^2)).
+// The (?<!\d) lookbehind only avoids re-matching inside a digit run / keeps
+// the match left-aligned; it is NOT the ReDoS protection (removing it alone
+// still passes the timing tests).
 const BOT_TOKEN = /(?<!\d)\d{6,15}:[A-Za-z0-9_-]{30,64}/g;
+// Bearer license/entitlement tokens (src/license-signer.ts, src/engine-entitlement-signer.ts):
+//   ARIA1.<b64url payload>.<b64url Ed25519 sig>   (license)
+//   ARIAE1.<b64url payload>.<b64url Ed25519 sig>  (engine entitlement)
+// Anchored on the literal format tag; each segment is a single bounded
+// class run that cannot contain '.', so cost per tag occurrence is capped
+// (<= 16384 + 1024 chars) with no nested/overlapping quantifiers. The
+// signature segment is optional so a truncated token still gets masked.
+// The format tag is kept for debuggability; payload + signature are masked.
+const LICENSE_TOKEN = /(ARIAE?1)\.[A-Za-z0-9_-]{1,16384}(?:\.[A-Za-z0-9_-]{0,1024})?/g;
 // "secret_token":"..." (JSON text)
 const KEYED_JSON = /("(?:secret_token|authorization|x-telegram-bot-api-secret-token)"\s*:\s*)"(?:[^"\\]|\\.)*"/gi;
 const KEYED_PAIR = /\b(secret_token|x-telegram-bot-api-secret-token)(\s*[=:]\s*)[^\s,;&"'}]+/gi;
@@ -97,6 +109,7 @@ export function redactString(input: string, secrets: readonly string[] = []): st
     .replace(KEYED_PAIR, `$1$2${REDACTED}`)
     .replace(AUTH_HEADER, `$1${REDACTED}`)
     .replace(PRIVATE_PAIR, `$1${REDACTED}`)
+    .replace(LICENSE_TOKEN, `$1.${REDACTED}`)
     .replace(BOT_TOKEN, REDACTED);
 }
 

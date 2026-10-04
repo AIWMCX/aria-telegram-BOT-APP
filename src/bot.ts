@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard, type Context, type CommandContext } from "grammy";
+import { Bot, GrammyError, InlineKeyboard, type Context, type CommandContext } from "grammy";
 import { randomUUID } from "node:crypto";
 import { CONFIG, USERS_DOMAIN_ENABLED } from "./config.js";
 import { logger } from "./logger.js";
@@ -442,8 +442,19 @@ bot.on("message", async (ctx) => {
   await ctx.reply("Open the terminal to request access:", { reply_markup: keyboard });
 });
 
+/**
+ * A failed Telegram API call's GrammyError carries the whole request
+ * `payload` (incl. the message text — which for /licensekey is the raw
+ * bearer license token). Log only the non-secret diagnostic fields.
+ * Pattern redaction in src/redact.ts is the second layer, not the first.
+ */
+export function describeBotError(e: unknown): unknown {
+  if (e instanceof GrammyError) return { type: "GrammyError", method: e.method, error_code: e.error_code, description: e.description };
+  return e;
+}
+
 bot.catch((err) => {
-  logger.error({ err: err.error, update: err.ctx.update.update_id }, "bot error");
+  logger.error({ err: describeBotError(err.error), update: err.ctx.update.update_id }, "bot error");
 });
 
 /** DM the admin whenever a license is issued (signup, purchase, or renewal). */
