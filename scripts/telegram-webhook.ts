@@ -15,6 +15,7 @@
  */
 import { Bot } from "grammy";
 import { CONFIG, TELEGRAM_WEBHOOK_PATH } from "../src/config.js";
+import { redactString, collectSecretValues } from "../src/redact.js";
 
 async function main(): Promise<void> {
   const sub = process.argv[2];
@@ -46,6 +47,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("telegram-webhook script failed:", err?.message ?? err);
+  console.error("telegram-webhook script failed:", redactString(String(err?.message ?? err), collectSecretValues(process.env)));
   process.exit(1);
 });

@@ -1,6 +1,9 @@
 import "./db.js"; // ensure schema runs before anything else touches the DB
 import { CONFIG, PAYMENTS_ENABLED, TELEGRAM_WEBHOOK_PATH } from "./config.js";
 import { logger } from "./logger.js";
+import { installProcessErrorHandlers } from "./process-errors.js";
+
+installProcessErrorHandlers();
 import { bot } from "./bot.js";
 import { startServer } from "./server.js";
 import "./engine-customer-routes.js"; // registers Telegram-owned REAL-1 preview routes on the shared Hono app
@@ -218,7 +221,7 @@ async function verifyWebhookOnBoot(): Promise<void> {
         consecutiveMismatches = 0;
       } else {
         consecutiveMismatches++;
-        logger.error(
+        logger.warn(
           { expectedUrl, actualUrl: info.url, lastErrorMessage: info.last_error_message, consecutiveMismatches },
           "TELEGRAM_WEBHOOK_MISMATCH — evidence of active external interference, not a one-off",
         );
