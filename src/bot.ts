@@ -12,6 +12,7 @@ import { createInvite, listInvites, redeemInvite, isUserApproved, getAttribution
 import { getNotifyPromotions, setNotifyPromotions } from "./leads.js";
 import { trackEvent, getFunnelCounts } from "./funnel.js";
 import { listRecentFeedback } from "./feedback.js";
+import { formatPairReply } from "./pair-reply.js";
 import type { Lead } from "./leads.js";
 import type { IssuedLicense } from "./licenses.js";
 
@@ -224,15 +225,7 @@ bot.command("pair", async (ctx) => {
     }
     const { code, expiresAt } = await createPairingCode(user.id);
     const expiresLabel = new Date(expiresAt).toISOString().slice(11, 16);
-    await ctx.reply(
-      [
-        `*Pair your ARIA device*`, ``,
-        `Run this on the computer running ARIA:`, ``,
-        `\`aria pair ${esc(code)}\``, ``,
-        `Expires ${expiresLabel} UTC (10 minutes) — single use. Run \`/pair\` again if it expires.`,
-      ].join("\n"),
-      { parse_mode: "Markdown" },
-    );
+    await ctx.reply(formatPairReply(code, expiresLabel), { parse_mode: "Markdown" });
   } catch (err) {
     logger.error({ err: describeBotError(err) }, "pair command failed");
     await ctx.reply("Pairing service temporarily unavailable. Try again shortly.");
