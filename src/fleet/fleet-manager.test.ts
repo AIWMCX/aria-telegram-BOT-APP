@@ -13,7 +13,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { FleetManager, FleetCapacityError, type EngineInvocation } from "./fleet-manager.js";
+import { FleetManager, FleetCapacityError, assertValidClientId, type EngineInvocation } from "./fleet-manager.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(__dirname, "test-fixtures", "fake-engine.mjs");
@@ -501,7 +501,27 @@ async function main() {
     delete process.env.FAKE_EXIT_CODE;
   }
 
-  console.log(`\n${failures === 0 ? "✅ ALL PASSED" : `❌ ${failures} FAILED`}`);
+  // clientId path-safety allow-list
+  {
+    const root = freshTempRoot();
+    const fm = new FleetManager({ engineInvocation: fakeInvocation(), tenantsRoot: path.join(root, "tenants"), logsRoot: path.join(root, "logs") });
+    const bad = ["..", "../x", "a/b", "a\\b", "", "a\0b", ".", "x".repeat(65), "/etc/passwd", "a b", "..%2f"];
+    for (const id of bad) {
+      let threw = false;
+      try { fm.runtimeDirFor(id); } catch { threw = true; }
+      let spawnRejected = false;
+      try { await fm.spawnTenant(id); } catch { spawnRejected = true; }
+      check(`clientId ${JSON.stringify(id)} rejected by runtimeDirFor and spawnTenant`, threw && spawnRejected);
+    }
+    const uuid = "123e4567-e89b-12d3-a456-426614174000";
+    let ok = true;
+    try { assertValidClientId(uuid); assertValidClientId("tenant_A-1"); } catch { ok = false; }
+    check("UUID and simple ids accepted", ok);
+    check("runtimeDirFor stays under tenantsRoot", fm.runtimeDirFor(uuid).startsWith(path.join(root, "tenants")));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+
+  console.log(`\n${failures === 0 ?"✅ ALL PASSED" : `❌ ${failures} FAILED`}`);
   process.exit(failures === 0 ? 0 : 1);
 }
 

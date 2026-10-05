@@ -148,6 +148,9 @@ console.log("[package-engine] npm ci --include=dev");
 execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", ["ci", "--include=dev", "--no-audit", "--no-fund"], {
   cwd: dest,
   stdio: "inherit",
+  // Node >=20.12 refuses to spawn .cmd files without a shell (EINVAL, CVE-2024-27980).
+  // Windows-only; the args above are constants, so no injection surface. Linux/Docker unchanged.
+  shell: process.platform === "win32",
 });
 
 // Build-identity marker, written NEXT TO the code that will execute. This is

@@ -18,6 +18,11 @@ services:
         # Surfaces in /healthz release block. Set with: export GIT_SHA=$(git rev-parse HEAD)
         RAILWAY_GIT_COMMIT_SHA: ${GIT_SHA:-}
         RAILWAY_GIT_BRANCH: ${GIT_BRANCH:-}
+        # REQUIRED: the Dockerfile engine stage fails closed without these.
+        # Values come from the shell / deploy/.env (names only here, never values).
+        # aria-engine is a PRIVATE repo: a host without read access to it cannot build this image.
+        ARIA_ENGINE_COMMIT_SHA: ${ARIA_ENGINE_COMMIT_SHA:?set ARIA_ENGINE_COMMIT_SHA (exact 40-char aria-engine commit) in .env}
+        ARIA_ENGINE_GIT_TOKEN: ${ARIA_ENGINE_GIT_TOKEN:?set ARIA_ENGINE_GIT_TOKEN (read-only token for the private aria-engine repo) in .env}
     image: aria-control-plane:local
     restart: unless-stopped
     env_file: .env

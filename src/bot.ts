@@ -435,7 +435,7 @@ const hostedDeps: HostedCommandsDeps = {
     try {
       await bot.api.sendMessage(telegramUserId, text, { parse_mode: "Markdown" });
     } catch (err) {
-      logger.warn({ err }, "hosted PAPER command DM failed — they may not have started the bot chat");
+      logger.warn({ err: describeBotError(err) }, "hosted PAPER command DM failed — they may not have started the bot chat");
     }
   },
 };
@@ -459,7 +459,7 @@ bot.command("paper_start", async (ctx) => {
     });
     await handlePaperStart(hostedDeps, { telegramUserId: tgId, userId: user.id });
   } catch (err) {
-    logger.error({ err }, "paper_start command failed");
+    logger.error({ err: describeBotError(err) }, "paper_start command failed");
     await ctx.reply("Something went wrong starting your hosted PAPER engine. Try again shortly.");
   }
 });
@@ -474,7 +474,7 @@ bot.command("paper_stop", async (ctx) => {
     if (!user) { await ctx.reply("No account found yet — use /start first."); return; }
     await handlePaperStop(hostedDeps, { telegramUserId: tgId, userId: user.id });
   } catch (err) {
-    logger.error({ err }, "paper_stop command failed");
+    logger.error({ err: describeBotError(err) }, "paper_stop command failed");
     await ctx.reply("Something went wrong stopping your hosted PAPER engine. Try again shortly.");
   }
 });
@@ -497,7 +497,7 @@ bot.command("paper_status", async (ctx) => {
     }
     await handlePaperStatus(hostedDeps, { telegramUserId: tgId, userId: user.id });
   } catch (err) {
-    logger.error({ err }, "paper_status command failed");
+    logger.error({ err: describeBotError(err) }, "paper_status command failed");
     await ctx.reply("Something went wrong checking your hosted PAPER engine status. Try again shortly.");
   }
 });

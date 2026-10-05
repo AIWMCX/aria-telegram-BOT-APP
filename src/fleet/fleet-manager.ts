@@ -187,6 +187,18 @@ const DEFAULT_GRACEFUL_STOP_TIMEOUT_MS = 8000;
 const DEFAULT_SIGTERM_TIMEOUT_MS = 4000;
 const DEFAULT_MAX_CONCURRENT_TENANTS = 5;
 
+/**
+ * Strict allow-list for tenant ids. Real ids are Postgres UUIDs
+ * (engine_clients.id), which this also accepts; `..`, separators, NUL,
+ * and anything else that could escape tenantsRoot/logsRoot is rejected.
+ */
+export const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+export function assertValidClientId(clientId: string): void {
+  if (typeof clientId !== "string" || !CLIENT_ID_PATTERN.test(clientId)) {
+    throw new Error("invalid clientId: must match /^[A-Za-z0-9_-]{1,64}$/");
+  }
+}
+
 export class FleetManager {
   private readonly tenants = new Map<string, TenantEntry>();
   // `verifyEngineIdentity` is deliberately kept genuinely optional rather than
@@ -231,6 +243,7 @@ export class FleetManager {
    * tenant is ever spawned (e.g. to pre-seed a device identity file).
    */
   runtimeDirFor(clientId: string): string {
+    assertValidClientId(clientId);
     return path.join(this.opts.tenantsRoot, clientId, ".aria");
   }
 
@@ -276,6 +289,8 @@ export class FleetManager {
    * restarting) to avoid a spawn racing a not-yet-released lock file.
    */
   async spawnTenant(clientId: string): Promise<TenantProcessHandle> {
+    // Path-safety gate: clientId becomes a directory and a log filename.
+    assertValidClientId(clientId);
     // Engine build-identity gate (Task 7) — FIRST, before any bookkeeping or
     // slot accounting. A spawn that cannot legitimately happen must not
     // mutate crash counters, consume a capacity slot, or create a handle.

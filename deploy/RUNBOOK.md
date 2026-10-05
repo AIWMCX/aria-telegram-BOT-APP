@@ -83,6 +83,8 @@ Fill in `.env` (names are in `.env.template`):
 - NEW: `TELEGRAM_WEBHOOK_SECRET` (`openssl rand -hex 32`) - must NOT be the old value, which leaked into Railway logs (2026-09-26 audit). `POSTGRES_PASSWORD` (`openssl rand -hex 24`).
 - `PUBLIC_URL` = the final https URL (section 5), no trailing slash. `TELEGRAM_TRANSPORT=webhook`. Plus `TELEGRAM_BOT_TOKEN`, `RESEND_API_KEY`, `ADMIN_EMAIL`, `FROM_EMAIL` and the Stripe values as on Railway.
 
+- Hosted PAPER engine build inputs (REQUIRED, the image build fails closed without them): `ARIA_ENGINE_COMMIT_SHA` (exact 40-char commit of the aria-engine repo) and `ARIA_ENGINE_GIT_TOKEN` (read-only token for it). **aria-engine is a PRIVATE repo: a host without read access to AIWMCX/aria-engine cannot build this image.** The token is used only in the builder stage and is not in the final image. Optional runtime tuning: `FLEET_MAX_CONCURRENT_TENANTS` (default 5; use 12 for ~10 concurrent testers; leave it unset rather than empty).
+
 Import old data (only if you exported in section 1). Put the two files in a folder, named exactly `aria.pgdump` and `aria.sqlite` (e.g. `deploy/import/aria.pgdump` and `deploy/import/aria.sqlite`), then:
 
     ./restore.sh import --yes-overwrite
