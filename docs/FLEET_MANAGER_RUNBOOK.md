@@ -273,17 +273,45 @@ sibling `aria-engine` worktree first — this remains a real environment
 prerequisite until that branch is merged to `aria-engine main`, it just is
 no longer an open/reproducing gap in THIS worktree right now.
 
-## 9. Task 6 soak test — evidence (2026-09-19, SECOND RE-CERTIFICATION CYCLE — awaiting a third independent review)
+## 9. Task 6 soak test — evidence (certifying runs 2026-10-05, raw evidence COMMITTED; narrative below transcribed from the 2026-09-19 cycle, numbers superseded by the committed files)
 
-**Status caveat, stated first and plainly**: this section reports what the
-run below actually measured. It has NOT yet been independently reviewed.
-Treat every "PASS"/checkmark below as "this specific check, as coded, did
-not fire on this specific run" — not as a general guarantee that
-`FleetManager` has no isolation bugs. Two prior soak attempts on this exact
-script were reviewed and found wanting (first: vacuous checks; second: a
-topology that couldn't have caught the bug class it claimed to test) — the
-correct prior applied here is skepticism of this section until a reviewer
-who did not write it has independently re-run or re-derived it.
+**Committed raw evidence (authoritative; supersedes every number in the older
+narrative below).** The 2026-09-19 soak's evidence file was git-ignored and later
+overwritten, so its numbers could not be traced. Two fresh certifying runs are now
+committed under `docs/evidence/` (the raw JSON written by `scripts/fleet-soak.ts`
+plus the full console log; never re-run into the same names). All on **Windows 11**
+(i9-13900H, 20 logical CPUs), Node via `tsx`, aria-engine HEAD
+`766dcdbc7aca1dad54d6294729fba1f45a8b6481` (unused by the fake fixture, recorded by the script):
+
+1. `docs/evidence/fleet-soak-fake-fixture_2026-10-05_shab31b816_N5warm-N20main-30min-3kill-2crashloop.json` / `.console.txt` - control-plane tree **`b31b816`**
+   (= `d5ddbb3` tenant-env-isolation fix + the evidence harness; the tree with
+   `testEnvPassthroughPrefixes: ["FAKE_"]` in the soak scripts). Started
+   2026-10-05T17:46:34Z, 32 min 15 s total. This is the run to cite.
+2. `docs/evidence/fleet-soak-fake-fixture_2026-10-05_sha7c9f3b4_N5warm-N20main-30min-3kill-2crashloop_PRE-d5ddbb3.json` / `.console.txt` - control-plane tree **`7c9f3b4`**
+   (before `d5ddbb3`). 32 min 5 s. A second, independent run of the same script on
+   the previous tree; not the certifying run.
+
+Headline numbers (run 1, from the JSON): N=5 warmup held 90 s, all 5 running, zero
+orphans after stop. Main phase N=20 spawned under ONE shared `FleetManager`
+(`maxConcurrentTenants` engaged): 2 crash-loop tenants reached terminal `failed`
+early by design, **18 sustained concurrently for 1,740,881 ms (~29.0 min)**;
+3 SIGKILLs all auto-recovered; `controlTenantsCompletelyUnaffected: true`;
+`journalIntegrityIssues: []`; `orphanedPidsAfterShutdown: []`. Control-plane (soak
+process) RSS **78,880-81,144 KB**, heapUsed 8,632-9,673 KB over 25 samples (flat
+tail); sampled tenant fixture RSS 56,572-58,996 KB (451 data points). Run 2 gave the
+same pass/fail results (RSS 80,148-82,216 KB, 26 samples). The control-plane RSS
+band (~79-82 MB) is higher than the ~61 MB quoted in the older narrative below -
+different run and tree, same method; use the committed files.
+
+**Status caveat**: these are single runs, by the author of the scripts. "PASS" means
+this specific check, as coded, did not fire on this specific run. That the checks CAN
+fire was first confirmed independently by a reviewer who injected a SIGKILL and a
+marker collision on a short run; the author's own pre-run test (item 4 below) is
+self-verification and is NOT cited as independent proof. Nothing here is a general
+guarantee of isolation.
+
+(Historical narrative follows, transcribed 2026-09-19 from a run whose raw file no
+longer exists; its figures are history only.)
 
 **Script**: `scripts/fleet-soak.ts` + `scripts/fleet-soak-fixture.mjs` (single
 shared fixture, replacing the three separate fixture files from the first
@@ -511,15 +539,15 @@ could over-extend:
   internally-crash-looping tenants), the 15 control tenants' bookkeeping
   and processes were unaffected. A real isolation bug that only manifests
   under a different fault pattern, timing, or scale would not necessarily
-  be caught by this specific run. The pre-run verification (item 4 above)
-  establishes that the CHECK ITSELF is capable of firing when a fault is
-  present — it does not and cannot establish that every possible fault is
-  covered.
+  be caught by this specific run. The author's own pre-run test (item 4 above) showed the check firing, but that is
+  self-verification, not independent proof; independent confirmation came from a
+  reviewer who injected a SIGKILL and a marker collision on a short run. Neither
+  establishes that every possible fault is covered.
 - **Per-tenant log-file isolation**: every one of the 20 tenants' log files
   was scanned for (a) its OWN distinctive marker (must be present) and (b)
   every OTHER tenant's marker (must be absent). Result:
-  `journalIntegrityIssues: []` — zero issues found, on a check independently
-  demonstrated capable of firing (see item 4 above).
+  `journalIntegrityIssues: []` — zero issues found, on a check whose ability to fire was first confirmed by a reviewer's
+  injected marker collision (the author's item-4 test is self-verification only).
 - **Ready-marker lifecycle count**: every tenant's log was also checked for
   the number of times the shared ready marker (`"paper engine started"`)
   appears, against its expected lifecycle. Result: exact match for all 20
@@ -618,8 +646,8 @@ does not append a bare pass/fail verdict word:
 | Resource behavior | FleetManager-hosting process RSS 60,872–61,736 KB, heapUsed 7,956–8,555 KB across 25 samples over ~30 min main-soak window, including through fault injection — bounded, no growth trend observed on this single run |
 | Tenant isolation (in-memory) | 15/15 control tenants' status/pid/restartCount/consecutiveCrashes bit-for-bit unchanged across the fault-injection window, under a topology where all 20 tenants share ONE FleetManager instance's bookkeeping Map — the channel a real cross-tenant bug would have to corrupt to go undetected |
 | Tenant isolation (OS-level) | 15/15 control tenants' original OS pid confirmed still alive at end-of-run; 15/15 control tenants' log file size/mtime unchanged across the fault-injection window |
-| Isolation-check capability, independently verified | Deliberate marker-collision injection produced a positive detection before this run; deliberate mid-run SIGKILL of a shared-instance control tenant was caught by both channels independently, with the untouched sibling unaffected — see item 4 above |
-| Cross-tenant log-marker contamination | Zero found across all 20 tenants (`journalIntegrityIssues: []`), on a check independently proven capable of firing |
+| Isolation-check capability | Author's pre-run test (item 4) showed detection on an injected marker collision and SIGKILL; first INDEPENDENTLY confirmed by a reviewer who injected a SIGKILL and a marker collision on a short run |
+| Cross-tenant log-marker contamination | Zero found across all 20 tenants (`journalIntegrityIssues: []`), on a check whose ability to fire was first confirmed by a reviewer's injected marker collision |
 | Ready-marker lifecycle count | All 20 tenants' counts exactly match expected lifecycle (control=1×15, SIGKILL-recovered=2×3, crash-loop-to-terminal=5×2) |
 | Restart/crash behavior | 3/3 SIGKILL'd tenants auto-recovered with new pids; 2/2 crash-loop tenants correctly escalated to terminal `failed` at `consecutiveCrashes===5`/`restartCount===4`; zero spillover between fault groups or into the control group |
 | Clean shutdown | Zero orphaned OS processes after full shutdown, both warmup (N=5) and main soak (N=20 spawned) |
@@ -639,10 +667,49 @@ can be marked reviewed-pass (see the ledger's Status column).
 
 ### Raw evidence file
 
-Full machine-readable evidence (every memory sample, every status
-snapshot, every fault event, exact timestamps, `controlTenantsOsLevelChecks`,
-`readyMarkerCounts`, `sustainedTenantCount`) is at
-`scripts/fleet-soak-evidence.json`, regenerated by each run of
-`scripts/fleet-soak.ts` (scratch output, not meant to be hand-edited — the
-numbers in this section were transcribed directly from this cycle's run and
-supersede both prior cycles' numbers wherever they differ).
+Committed: see the two `docs/evidence/fleet-soak-fake-fixture_2026-10-05_*` pairs at
+the top of this section. `scripts/fleet-soak-evidence.json` is still the script's
+scratch output path (overwritten by any run) - copy it into `docs/evidence/` with
+date, SHA and parameters in the name immediately after a run, and never re-run over
+a committed file.
+
+## 10. 10-real-engine capacity measurement (2026-10-05, Windows, shadow mode)
+
+Evidence: `docs/evidence/real-engine-10tenant-shadow-windows_2026-10-05_shab31b816_engine766dcdb_15min-30s-sampling.json` (raw samples), `.console.txt`, `.summary.md`.
+Harness: `scripts/real-engine-capacity-run.mts` + `scripts/stub-rpc.mjs`, control-plane
+tree `b31b816`, packaged aria-engine `766dcdbc7aca1dad54d6294729fba1f45a8b6481`
+(via `scripts/package-engine.mjs`; local git credentials worked).
+
+**Scope, stated first.** Windows 11, **`shadow start`** (the only mode that runs
+without the production entitlement key), **not** paper mode with a price feed, **not**
+Linux. Shadow mode has no synthetic market source, so each tenant's `rpc.url` was
+pre-seeded to a local stub JSON-RPC server (127.0.0.1) answering every call with an
+empty result: **no external RPC/Jupiter/Raydium endpoint was contacted** (the stub
+served 10,974 `getSignaturesForAddress` calls). This measures supervision plus idle
+discovery-polling footprint, not the cost of evaluating real launch candidates.
+
+Setup: 10 tenants (`cap-tenant-0..9`) under ONE shared `FleetManager`,
+`maxConcurrentTenants: 12`; all 10 `running` within 1.96 s of spawn; 30 samples at 30 s
+(~15.5 min). A tenant is a 2-process tree (node + tsx child); figures are the tree sum.
+
+| series | min | median | max | trend (first-third median -> last-third) |
+|---|---|---|---|---|
+| control plane RSS KB | 77,324 | 81,106 | 86,048 | 79,076 -> 81,648 (+3.3%) |
+| per-tenant working set KB (10 pooled) | 72,920* | 112,936 | 119,020 | 113,174 -> 113,504 (+0.3%) |
+| per-tenant private bytes KB (10 pooled) | 70,472* | 153,478 | 174,324 | 153,842 -> 153,932 (+0.1%) |
+
+\* minima are the restarted tenant right after its SIGKILL; the nine undisturbed
+tenants sat at 105.3-119.0 MB working set / 146.2-174.3 MB private. Total tenant working
+set ~1.09-1.18 GB for 10 tenants (~113 MB each). Per-tenant CPU (undisturbed)
+0.49-0.59% of one core. Per-tenant table: see `.summary.md`. The stub process itself
+grew 68 -> 77 MB working set (harness artifact, not engine).
+
+Recovery: `cap-tenant-3` SIGKILLed at ~450 s; old pid gone, restarted under a new pid,
+`restartCount: 1`, status `running`; the other nine had `restartCount: 0`.
+Shutdown: all stopped, `orphanedPids: []` across 21 distinct pids seen (tenant roots
+and children), 0 active tenants afterwards.
+
+Capacity read: ~1.2 GB for 10 idle shadow tenants plus ~80 MB control plane on
+Windows; no meaningful growth over 15 min. NOT verified: Linux/Railway memory
+accounting, paper mode with a live price feed, real candidate-processing load, runs
+longer than 15 min (slow leaks), more than 10 tenants.

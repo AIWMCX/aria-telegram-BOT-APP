@@ -1,0 +1,5075 @@
+{
+  "startedAtIso": "2026-10-05T06:22:09.857Z",
+  "ariaTelegramBotAppShaAtStart": "7c9f3b4265d7159e601d06ffc6ebc9e07fcd8716",
+  "ariaEngineBranchAtStart": "main",
+  "ariaEngineShaAtStart": "766dcdbc7aca1dad54d6294729fba1f45a8b6481",
+  "phase1Warmup": {
+    "durationMs": 90000,
+    "tenantCount": 5,
+    "allReachedRunning": true,
+    "allStillRunningAfterHold": true,
+    "pids": [
+      49876,
+      64820,
+      72356,
+      3184,
+      62364
+    ],
+    "allStoppedCleanly": true,
+    "orphanedPidsAfterStop": []
+  },
+  "phase2MainSoak": {
+    "N": 20,
+    "durationMs": 1800000,
+    "crashLoopIds": [
+      "soak-crashloop-0",
+      "soak-crashloop-1"
+    ],
+    "sigkillIds": [
+      "soak-sigkill-0",
+      "soak-sigkill-1",
+      "soak-sigkill-2"
+    ],
+    "controlIds": [
+      "soak-control-0",
+      "soak-control-1",
+      "soak-control-2",
+      "soak-control-3",
+      "soak-control-4",
+      "soak-control-5",
+      "soak-control-6",
+      "soak-control-7",
+      "soak-control-8",
+      "soak-control-9",
+      "soak-control-10",
+      "soak-control-11",
+      "soak-control-12",
+      "soak-control-13",
+      "soak-control-14"
+    ],
+    "allNonCrashLoopReachedRunning": true,
+    "controlTenantsCompletelyUnaffected": true,
+    "controlTenantsCompletelyUnaffectedInMemory": true,
+    "controlTenantsOsLevelChecks": [
+      {
+        "clientId": "soak-control-0",
+        "prePid": 72956,
+        "pidStillAliveSamePid": true,
+        "preStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "postStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "logUnchangedSinceInjection": true
+      },
+      {
+        "clientId": "soak-control-1",
+        "prePid": 72524,
+        "pidStillAliveSamePid": true,
+        "preStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "postStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "logUnchangedSinceInjection": true
+      },
+      {
+        "clientId": "soak-control-2",
+        "prePid": 70260,
+        "pidStillAliveSamePid": true,
+        "preStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "postStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "logUnchangedSinceInjection": true
+      },
+      {
+        "clientId": "soak-control-3",
+        "prePid": 45092,
+        "pidStillAliveSamePid": true,
+        "preStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "postStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "logUnchangedSinceInjection": true
+      },
+      {
+        "clientId": "soak-control-4",
+        "prePid": 74300,
+        "pidStillAliveSamePid": true,
+        "preStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "postStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "logUnchangedSinceInjection": true
+      },
+      {
+        "clientId": "soak-control-5",
+        "prePid": 71608,
+        "pidStillAliveSamePid": true,
+        "preStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "postStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "logUnchangedSinceInjection": true
+      },
+      {
+        "clientId": "soak-control-6",
+        "prePid": 73416,
+        "pidStillAliveSamePid": true,
+        "preStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "postStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "logUnchangedSinceInjection": true
+      },
+      {
+        "clientId": "soak-control-7",
+        "prePid": 64600,
+        "pidStillAliveSamePid": true,
+        "preStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "postStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "logUnchangedSinceInjection": true
+      },
+      {
+        "clientId": "soak-control-8",
+        "prePid": 17068,
+        "pidStillAliveSamePid": true,
+        "preStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "postStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "logUnchangedSinceInjection": true
+      },
+      {
+        "clientId": "soak-control-9",
+        "prePid": 56852,
+        "pidStillAliveSamePid": true,
+        "preStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "postStat": {
+          "size": 69,
+          "mtimeMs": 1791181420909.6199
+        },
+        "logUnchangedSinceInjection": true
+      },
+      {
+        "clientId": "soak-control-10",
+        "prePid": 70736,
+        "pidStillAliveSamePid": true,
+        "preStat": {
+          "size": 70,
+          "mtimeMs": 1791181420929.525
+        },
+        "postStat": {
+          "size": 70,
+          "mtimeMs": 1791181420929.525
+        },
+        "logUnchangedSinceInjection": true
+      },
+      {
+        "clientId": "soak-control-11",
+        "prePid": 68740,
+        "pidStillAliveSamePid": true,
+        "preStat": {
+          "size": 70,
+          "mtimeMs": 1791181420945.6338
+        },
+        "postStat": {
+          "size": 70,
+          "mtimeMs": 1791181420945.6338
+        },
+        "logUnchangedSinceInjection": true
+      },
+      {
+        "clientId": "soak-control-12",
+        "prePid": 69756,
+        "pidStillAliveSamePid": true,
+        "preStat": {
+          "size": 70,
+          "mtimeMs": 1791181420961.6345
+        },
+        "postStat": {
+          "size": 70,
+          "mtimeMs": 1791181420961.6345
+        },
+        "logUnchangedSinceInjection": true
+      },
+      {
+        "clientId": "soak-control-13",
+        "prePid": 56220,
+        "pidStillAliveSamePid": true,
+        "preStat": {
+          "size": 70,
+          "mtimeMs": 1791181420978.1938
+        },
+        "postStat": {
+          "size": 70,
+          "mtimeMs": 1791181420978.1938
+        },
+        "logUnchangedSinceInjection": true
+      },
+      {
+        "clientId": "soak-control-14",
+        "prePid": 74728,
+        "pidStillAliveSamePid": true,
+        "preStat": {
+          "size": 70,
+          "mtimeMs": 1791181420978.1938
+        },
+        "postStat": {
+          "size": 70,
+          "mtimeMs": 1791181420978.1938
+        },
+        "logUnchangedSinceInjection": true
+      }
+    ],
+    "sigkilledTenantsAutoRecovered": true,
+    "crashLoopTenantsEscalatedToFailed": true,
+    "journalIntegrityIssues": [],
+    "readyMarkerCounts": {
+      "soak-crashloop-0": 5,
+      "soak-crashloop-1": 5,
+      "soak-sigkill-0": 2,
+      "soak-sigkill-1": 2,
+      "soak-sigkill-2": 2,
+      "soak-control-0": 1,
+      "soak-control-1": 1,
+      "soak-control-2": 1,
+      "soak-control-3": 1,
+      "soak-control-4": 1,
+      "soak-control-5": 1,
+      "soak-control-6": 1,
+      "soak-control-7": 1,
+      "soak-control-8": 1,
+      "soak-control-9": 1,
+      "soak-control-10": 1,
+      "soak-control-11": 1,
+      "soak-control-12": 1,
+      "soak-control-13": 1,
+      "soak-control-14": 1
+    },
+    "expectedReadyMarkerCounts": {
+      "soak-crashloop-0": 5,
+      "soak-crashloop-1": 5,
+      "soak-sigkill-0": 2,
+      "soak-sigkill-1": 2,
+      "soak-sigkill-2": 2,
+      "soak-control-0": 1,
+      "soak-control-1": 1,
+      "soak-control-2": 1,
+      "soak-control-3": 1,
+      "soak-control-4": 1,
+      "soak-control-5": 1,
+      "soak-control-6": 1,
+      "soak-control-7": 1,
+      "soak-control-8": 1,
+      "soak-control-9": 1,
+      "soak-control-10": 1,
+      "soak-control-11": 1,
+      "soak-control-12": 1,
+      "soak-control-13": 1,
+      "soak-control-14": 1
+    },
+    "orphanedPidsAfterShutdown": [],
+    "initialTenantCount": 20,
+    "sustainedTenantCount": 18,
+    "sustainedFromElapsedMs": 79539,
+    "sustainedDurationMs": 1737061,
+    "totalElapsedMs": 1816600
+  },
+  "memSamples": [
+    {
+      "atIso": "2026-10-05T06:24:00.106Z",
+      "elapsedMs": 0,
+      "fleetManagerProcessRssKb": 80148,
+      "fleetManagerProcessHeapUsedKb": 8698,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": 58464,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 58320,
+        "soak-sigkill-1": 58300,
+        "soak-sigkill-2": 58520,
+        "soak-control-0": 58532,
+        "soak-control-1": 58412,
+        "soak-control-2": 58452,
+        "soak-control-3": 58364,
+        "soak-control-4": 58744,
+        "soak-control-5": 58944,
+        "soak-control-6": 59016,
+        "soak-control-7": 59048,
+        "soak-control-8": 59096,
+        "soak-control-9": 59628,
+        "soak-control-10": 59304,
+        "soak-control-11": 58828,
+        "soak-control-12": 59124,
+        "soak-control-13": 59124,
+        "soak-control-14": 59396
+      },
+      "activeTenantCount": 20
+    },
+    {
+      "atIso": "2026-10-05T06:25:16.306Z",
+      "elapsedMs": 79539,
+      "fleetManagerProcessRssKb": 80728,
+      "fleetManagerProcessHeapUsedKb": 9031,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 58848,
+        "soak-sigkill-1": 58588,
+        "soak-sigkill-2": 60192,
+        "soak-control-0": 60124,
+        "soak-control-1": 59020,
+        "soak-control-2": 59280,
+        "soak-control-3": 58820,
+        "soak-control-4": 59148,
+        "soak-control-5": 59048,
+        "soak-control-6": 58804,
+        "soak-control-7": 59112,
+        "soak-control-8": 59172,
+        "soak-control-9": 59580,
+        "soak-control-10": 59304,
+        "soak-control-11": 59032,
+        "soak-control-12": 58936,
+        "soak-control-13": 59060,
+        "soak-control-14": 59140
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:26:32.589Z",
+      "elapsedMs": 155737,
+      "fleetManagerProcessRssKb": 80484,
+      "fleetManagerProcessHeapUsedKb": 8548,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 60044,
+        "soak-sigkill-1": 59884,
+        "soak-sigkill-2": 60212,
+        "soak-control-0": 60148,
+        "soak-control-1": 60152,
+        "soak-control-2": 60436,
+        "soak-control-3": 60000,
+        "soak-control-4": 60272,
+        "soak-control-5": 60216,
+        "soak-control-6": 59964,
+        "soak-control-7": 60196,
+        "soak-control-8": 60160,
+        "soak-control-9": 60608,
+        "soak-control-10": 60336,
+        "soak-control-11": 60104,
+        "soak-control-12": 59976,
+        "soak-control-13": 60076,
+        "soak-control-14": 60092
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:27:48.501Z",
+      "elapsedMs": 232016,
+      "fleetManagerProcessRssKb": 81780,
+      "fleetManagerProcessHeapUsedKb": 8495,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 60092,
+        "soak-sigkill-1": 59932,
+        "soak-sigkill-2": 60212,
+        "soak-control-0": 60148,
+        "soak-control-1": 60164,
+        "soak-control-2": 60448,
+        "soak-control-3": 60000,
+        "soak-control-4": 60272,
+        "soak-control-5": 60216,
+        "soak-control-6": 59964,
+        "soak-control-7": 60196,
+        "soak-control-8": 60188,
+        "soak-control-9": 60608,
+        "soak-control-10": 60336,
+        "soak-control-11": 60104,
+        "soak-control-12": 59976,
+        "soak-control-13": 60076,
+        "soak-control-14": 60092
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:29:05.508Z",
+      "elapsedMs": 307931,
+      "fleetManagerProcessRssKb": 81852,
+      "fleetManagerProcessHeapUsedKb": 8498,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 60156,
+        "soak-sigkill-1": 60092,
+        "soak-sigkill-2": 60136,
+        "soak-control-0": 60252,
+        "soak-control-1": 60164,
+        "soak-control-2": 60460,
+        "soak-control-3": 60068,
+        "soak-control-4": 60328,
+        "soak-control-5": 60308,
+        "soak-control-6": 60036,
+        "soak-control-7": 60240,
+        "soak-control-8": 60240,
+        "soak-control-9": 60560,
+        "soak-control-10": 60344,
+        "soak-control-11": 60184,
+        "soak-control-12": 60016,
+        "soak-control-13": 60156,
+        "soak-control-14": 60080
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:30:21.085Z",
+      "elapsedMs": 384939,
+      "fleetManagerProcessRssKb": 81660,
+      "fleetManagerProcessHeapUsedKb": 8502,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 60140,
+        "soak-sigkill-1": 60104,
+        "soak-sigkill-2": 60500,
+        "soak-control-0": 60568,
+        "soak-control-1": 60152,
+        "soak-control-2": 60664,
+        "soak-control-3": 60056,
+        "soak-control-4": 60532,
+        "soak-control-5": 60308,
+        "soak-control-6": 60024,
+        "soak-control-7": 60412,
+        "soak-control-8": 60256,
+        "soak-control-9": 60764,
+        "soak-control-10": 60516,
+        "soak-control-11": 60368,
+        "soak-control-12": 60224,
+        "soak-control-13": 60136,
+        "soak-control-14": 60084
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:31:39.421Z",
+      "elapsedMs": 460514,
+      "fleetManagerProcessRssKb": 81956,
+      "fleetManagerProcessHeapUsedKb": 8506,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 60108,
+        "soak-sigkill-1": 60072,
+        "soak-sigkill-2": 60476,
+        "soak-control-0": 60536,
+        "soak-control-1": 60116,
+        "soak-control-2": 60628,
+        "soak-control-3": 60024,
+        "soak-control-4": 60496,
+        "soak-control-5": 60272,
+        "soak-control-6": 59988,
+        "soak-control-7": 60392,
+        "soak-control-8": 60260,
+        "soak-control-9": 60732,
+        "soak-control-10": 60480,
+        "soak-control-11": 60340,
+        "soak-control-12": 60192,
+        "soak-control-13": 60116,
+        "soak-control-14": 60052
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:32:55.817Z",
+      "elapsedMs": 538858,
+      "fleetManagerProcessRssKb": 82216,
+      "fleetManagerProcessHeapUsedKb": 8511,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 60108,
+        "soak-sigkill-1": 60072,
+        "soak-sigkill-2": 60476,
+        "soak-control-0": 60536,
+        "soak-control-1": 60116,
+        "soak-control-2": 60628,
+        "soak-control-3": 60024,
+        "soak-control-4": 60496,
+        "soak-control-5": 60272,
+        "soak-control-6": 59988,
+        "soak-control-7": 60392,
+        "soak-control-8": 60260,
+        "soak-control-9": 60732,
+        "soak-control-10": 60480,
+        "soak-control-11": 60340,
+        "soak-control-12": 60192,
+        "soak-control-13": 60116,
+        "soak-control-14": 60052
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:34:13.549Z",
+      "elapsedMs": 615257,
+      "fleetManagerProcessRssKb": 81772,
+      "fleetManagerProcessHeapUsedKb": 8963,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 58908,
+        "soak-sigkill-1": 59000,
+        "soak-sigkill-2": 60420,
+        "soak-control-0": 60568,
+        "soak-control-1": 60144,
+        "soak-control-2": 60660,
+        "soak-control-3": 60056,
+        "soak-control-4": 60528,
+        "soak-control-5": 60304,
+        "soak-control-6": 60020,
+        "soak-control-7": 60424,
+        "soak-control-8": 60292,
+        "soak-control-9": 60764,
+        "soak-control-10": 60512,
+        "soak-control-11": 60372,
+        "soak-control-12": 60224,
+        "soak-control-13": 60148,
+        "soak-control-14": 60084
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:35:32.287Z",
+      "elapsedMs": 692975,
+      "fleetManagerProcessRssKb": 81820,
+      "fleetManagerProcessHeapUsedKb": 8917,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 60268,
+        "soak-sigkill-1": 60196,
+        "soak-sigkill-2": 60456,
+        "soak-control-0": 60536,
+        "soak-control-1": 60116,
+        "soak-control-2": 60628,
+        "soak-control-3": 60188,
+        "soak-control-4": 60540,
+        "soak-control-5": 60452,
+        "soak-control-6": 60148,
+        "soak-control-7": 60392,
+        "soak-control-8": 60260,
+        "soak-control-9": 60736,
+        "soak-control-10": 60560,
+        "soak-control-11": 60352,
+        "soak-control-12": 60152,
+        "soak-control-13": 60284,
+        "soak-control-14": 60212
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:36:45.055Z",
+      "elapsedMs": 771725,
+      "fleetManagerProcessRssKb": 81892,
+      "fleetManagerProcessHeapUsedKb": 8913,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 60632,
+        "soak-sigkill-1": 60496,
+        "soak-sigkill-2": 60456,
+        "soak-control-0": 60536,
+        "soak-control-1": 60292,
+        "soak-control-2": 60624,
+        "soak-control-3": 60192,
+        "soak-control-4": 60540,
+        "soak-control-5": 60456,
+        "soak-control-6": 60152,
+        "soak-control-7": 60392,
+        "soak-control-8": 60260,
+        "soak-control-9": 60756,
+        "soak-control-10": 60568,
+        "soak-control-11": 60356,
+        "soak-control-12": 60156,
+        "soak-control-13": 60284,
+        "soak-control-14": 60220
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:37:57.710Z",
+      "elapsedMs": 844494,
+      "fleetManagerProcessRssKb": 81916,
+      "fleetManagerProcessHeapUsedKb": 8855,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 60612,
+        "soak-sigkill-1": 60448,
+        "soak-sigkill-2": 60428,
+        "soak-control-0": 60536,
+        "soak-control-1": 60292,
+        "soak-control-2": 60624,
+        "soak-control-3": 60192,
+        "soak-control-4": 60540,
+        "soak-control-5": 60456,
+        "soak-control-6": 60152,
+        "soak-control-7": 60392,
+        "soak-control-8": 60260,
+        "soak-control-9": 60756,
+        "soak-control-10": 60568,
+        "soak-control-11": 60356,
+        "soak-control-12": 60156,
+        "soak-control-13": 60284,
+        "soak-control-14": 60220
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:39:10.508Z",
+      "elapsedMs": 917143,
+      "fleetManagerProcessRssKb": 81952,
+      "fleetManagerProcessHeapUsedKb": 8766,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 51992,
+        "soak-sigkill-1": 50660,
+        "soak-sigkill-2": 48948,
+        "soak-control-0": 60476,
+        "soak-control-1": 60260,
+        "soak-control-2": 60632,
+        "soak-control-3": 60172,
+        "soak-control-4": 60524,
+        "soak-control-5": 60456,
+        "soak-control-6": 60132,
+        "soak-control-7": 60376,
+        "soak-control-8": 60428,
+        "soak-control-9": 60792,
+        "soak-control-10": 60524,
+        "soak-control-11": 56376,
+        "soak-control-12": 55680,
+        "soak-control-13": 51292,
+        "soak-control-14": 46552
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:40:23.225Z",
+      "elapsedMs": 989937,
+      "fleetManagerProcessRssKb": 81956,
+      "fleetManagerProcessHeapUsedKb": 8709,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 52060,
+        "soak-sigkill-1": 51036,
+        "soak-sigkill-2": 49144,
+        "soak-control-0": 60476,
+        "soak-control-1": 60260,
+        "soak-control-2": 60632,
+        "soak-control-3": 60172,
+        "soak-control-4": 60524,
+        "soak-control-5": 60456,
+        "soak-control-6": 60132,
+        "soak-control-7": 60376,
+        "soak-control-8": 60428,
+        "soak-control-9": 60792,
+        "soak-control-10": 60528,
+        "soak-control-11": 56376,
+        "soak-control-12": 55680,
+        "soak-control-13": 51292,
+        "soak-control-14": 46552
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:41:37.434Z",
+      "elapsedMs": 1062666,
+      "fleetManagerProcessRssKb": 81956,
+      "fleetManagerProcessHeapUsedKb": 8594,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 52060,
+        "soak-sigkill-1": 51036,
+        "soak-sigkill-2": 49208,
+        "soak-control-0": 60476,
+        "soak-control-1": 60260,
+        "soak-control-2": 60632,
+        "soak-control-3": 60172,
+        "soak-control-4": 60524,
+        "soak-control-5": 60456,
+        "soak-control-6": 60132,
+        "soak-control-7": 60376,
+        "soak-control-8": 60428,
+        "soak-control-9": 60792,
+        "soak-control-10": 60528,
+        "soak-control-11": 56376,
+        "soak-control-12": 55680,
+        "soak-control-13": 51292,
+        "soak-control-14": 46552
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:42:51.304Z",
+      "elapsedMs": 1136865,
+      "fleetManagerProcessRssKb": 81960,
+      "fleetManagerProcessHeapUsedKb": 8602,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 52060,
+        "soak-sigkill-1": 51036,
+        "soak-sigkill-2": 49208,
+        "soak-control-0": 60476,
+        "soak-control-1": 60260,
+        "soak-control-2": 60632,
+        "soak-control-3": 60172,
+        "soak-control-4": 60524,
+        "soak-control-5": 60456,
+        "soak-control-6": 60132,
+        "soak-control-7": 60376,
+        "soak-control-8": 60428,
+        "soak-control-9": 60792,
+        "soak-control-10": 60528,
+        "soak-control-11": 56376,
+        "soak-control-12": 55680,
+        "soak-control-13": 51292,
+        "soak-control-14": 46552
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:44:05.200Z",
+      "elapsedMs": 1210730,
+      "fleetManagerProcessRssKb": 81976,
+      "fleetManagerProcessHeapUsedKb": 8608,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 52092,
+        "soak-sigkill-1": 51068,
+        "soak-sigkill-2": 49240,
+        "soak-control-0": 60476,
+        "soak-control-1": 60260,
+        "soak-control-2": 60632,
+        "soak-control-3": 60172,
+        "soak-control-4": 60524,
+        "soak-control-5": 60456,
+        "soak-control-6": 60132,
+        "soak-control-7": 60376,
+        "soak-control-8": 60428,
+        "soak-control-9": 60792,
+        "soak-control-10": 60528,
+        "soak-control-11": 56376,
+        "soak-control-12": 55680,
+        "soak-control-13": 51292,
+        "soak-control-14": 46552
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:45:18.512Z",
+      "elapsedMs": 1284629,
+      "fleetManagerProcessRssKb": 81660,
+      "fleetManagerProcessHeapUsedKb": 8612,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 52064,
+        "soak-sigkill-1": 51028,
+        "soak-sigkill-2": 49208,
+        "soak-control-0": 60476,
+        "soak-control-1": 60264,
+        "soak-control-2": 60632,
+        "soak-control-3": 60172,
+        "soak-control-4": 60524,
+        "soak-control-5": 60456,
+        "soak-control-6": 60132,
+        "soak-control-7": 60376,
+        "soak-control-8": 60428,
+        "soak-control-9": 60792,
+        "soak-control-10": 60528,
+        "soak-control-11": 56376,
+        "soak-control-12": 55680,
+        "soak-control-13": 51292,
+        "soak-control-14": 46552
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:46:32.342Z",
+      "elapsedMs": 1357944,
+      "fleetManagerProcessRssKb": 81732,
+      "fleetManagerProcessHeapUsedKb": 8616,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 52064,
+        "soak-sigkill-1": 51028,
+        "soak-sigkill-2": 49208,
+        "soak-control-0": 60476,
+        "soak-control-1": 60264,
+        "soak-control-2": 60632,
+        "soak-control-3": 60172,
+        "soak-control-4": 60524,
+        "soak-control-5": 60456,
+        "soak-control-6": 60132,
+        "soak-control-7": 60376,
+        "soak-control-8": 60428,
+        "soak-control-9": 60792,
+        "soak-control-10": 60528,
+        "soak-control-11": 56376,
+        "soak-control-12": 55680,
+        "soak-control-13": 51292,
+        "soak-control-14": 46552
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:47:46.227Z",
+      "elapsedMs": 1431778,
+      "fleetManagerProcessRssKb": 81788,
+      "fleetManagerProcessHeapUsedKb": 8620,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 52064,
+        "soak-sigkill-1": 51028,
+        "soak-sigkill-2": 49208,
+        "soak-control-0": 60476,
+        "soak-control-1": 60264,
+        "soak-control-2": 60632,
+        "soak-control-3": 60172,
+        "soak-control-4": 60524,
+        "soak-control-5": 60456,
+        "soak-control-6": 60132,
+        "soak-control-7": 60376,
+        "soak-control-8": 60428,
+        "soak-control-9": 60792,
+        "soak-control-10": 60528,
+        "soak-control-11": 56376,
+        "soak-control-12": 55680,
+        "soak-control-13": 51292,
+        "soak-control-14": 46552
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:49:01.492Z",
+      "elapsedMs": 1505656,
+      "fleetManagerProcessRssKb": 81916,
+      "fleetManagerProcessHeapUsedKb": 8623,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 52048,
+        "soak-sigkill-1": 51000,
+        "soak-sigkill-2": 49224,
+        "soak-control-0": 60476,
+        "soak-control-1": 60264,
+        "soak-control-2": 60632,
+        "soak-control-3": 60172,
+        "soak-control-4": 60524,
+        "soak-control-5": 60456,
+        "soak-control-6": 60132,
+        "soak-control-7": 60376,
+        "soak-control-8": 60428,
+        "soak-control-9": 60792,
+        "soak-control-10": 60528,
+        "soak-control-11": 56376,
+        "soak-control-12": 55680,
+        "soak-control-13": 51292,
+        "soak-control-14": 46552
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:50:18.800Z",
+      "elapsedMs": 1580921,
+      "fleetManagerProcessRssKb": 81916,
+      "fleetManagerProcessHeapUsedKb": 8627,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 52048,
+        "soak-sigkill-1": 51000,
+        "soak-sigkill-2": 49224,
+        "soak-control-0": 60476,
+        "soak-control-1": 60264,
+        "soak-control-2": 60632,
+        "soak-control-3": 60172,
+        "soak-control-4": 60524,
+        "soak-control-5": 60456,
+        "soak-control-6": 60132,
+        "soak-control-7": 60376,
+        "soak-control-8": 60428,
+        "soak-control-9": 60792,
+        "soak-control-10": 60528,
+        "soak-control-11": 56376,
+        "soak-control-12": 55680,
+        "soak-control-13": 51292,
+        "soak-control-14": 46552
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:51:35.873Z",
+      "elapsedMs": 1658232,
+      "fleetManagerProcessRssKb": 81916,
+      "fleetManagerProcessHeapUsedKb": 8630,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 52048,
+        "soak-sigkill-1": 51000,
+        "soak-sigkill-2": 49224,
+        "soak-control-0": 60476,
+        "soak-control-1": 60264,
+        "soak-control-2": 60632,
+        "soak-control-3": 60172,
+        "soak-control-4": 60524,
+        "soak-control-5": 60456,
+        "soak-control-6": 60132,
+        "soak-control-7": 60376,
+        "soak-control-8": 60428,
+        "soak-control-9": 60792,
+        "soak-control-10": 60528,
+        "soak-control-11": 56376,
+        "soak-control-12": 55680,
+        "soak-control-13": 51292,
+        "soak-control-14": 46552
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:52:52.414Z",
+      "elapsedMs": 1735319,
+      "fleetManagerProcessRssKb": 81940,
+      "fleetManagerProcessHeapUsedKb": 8634,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 52048,
+        "soak-sigkill-1": 51000,
+        "soak-sigkill-2": 49224,
+        "soak-control-0": 60528,
+        "soak-control-1": 60264,
+        "soak-control-2": 60632,
+        "soak-control-3": 60172,
+        "soak-control-4": 60524,
+        "soak-control-5": 60456,
+        "soak-control-6": 60132,
+        "soak-control-7": 60428,
+        "soak-control-8": 60256,
+        "soak-control-9": 60792,
+        "soak-control-10": 60528,
+        "soak-control-11": 56376,
+        "soak-control-12": 55680,
+        "soak-control-13": 51292,
+        "soak-control-14": 46552
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:53:57.174Z",
+      "elapsedMs": 1800001,
+      "fleetManagerProcessRssKb": 81940,
+      "fleetManagerProcessHeapUsedKb": 8638,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 52048,
+        "soak-sigkill-1": 51000,
+        "soak-sigkill-2": 49224,
+        "soak-control-0": 60532,
+        "soak-control-1": 60124,
+        "soak-control-2": 60736,
+        "soak-control-3": 60088,
+        "soak-control-4": 60688,
+        "soak-control-5": 60460,
+        "soak-control-6": 60248,
+        "soak-control-7": 60440,
+        "soak-control-8": 60256,
+        "soak-control-9": 60848,
+        "soak-control-10": 60648,
+        "soak-control-11": 56488,
+        "soak-control-12": 55552,
+        "soak-control-13": 51404,
+        "soak-control-14": 46468
+      },
+      "activeTenantCount": 18
+    },
+    {
+      "atIso": "2026-10-05T06:54:12.736Z",
+      "elapsedMs": 1816600,
+      "fleetManagerProcessRssKb": 81940,
+      "fleetManagerProcessHeapUsedKb": 9541,
+      "sampledTenantRssKb": {
+        "soak-crashloop-0": null,
+        "soak-crashloop-1": null,
+        "soak-sigkill-0": 52048,
+        "soak-sigkill-1": 51000,
+        "soak-sigkill-2": 49224,
+        "soak-control-0": 60532,
+        "soak-control-1": 60124,
+        "soak-control-2": 60736,
+        "soak-control-3": 60092,
+        "soak-control-4": 60688,
+        "soak-control-5": 60460,
+        "soak-control-6": 60248,
+        "soak-control-7": 60440,
+        "soak-control-8": 60256,
+        "soak-control-9": 60856,
+        "soak-control-10": 60648,
+        "soak-control-11": 56488,
+        "soak-control-12": 55552,
+        "soak-control-13": 51404,
+        "soak-control-14": 46468
+      },
+      "activeTenantCount": 18
+    }
+  ],
+  "faultEvents": [
+    {
+      "atIso": "2026-10-05T06:23:40.587Z",
+      "elapsedMs": 12,
+      "clientId": "soak-crashloop-0",
+      "action": "crash-loop-configured"
+    },
+    {
+      "atIso": "2026-10-05T06:23:40.606Z",
+      "elapsedMs": 31,
+      "clientId": "soak-crashloop-1",
+      "action": "crash-loop-configured"
+    },
+    {
+      "atIso": "2026-10-05T06:32:55.819Z",
+      "elapsedMs": 538858,
+      "clientId": "soak-sigkill-0",
+      "action": "SIGKILL",
+      "pidAtInjection": 65404
+    },
+    {
+      "atIso": "2026-10-05T06:32:55.819Z",
+      "elapsedMs": 538858,
+      "clientId": "soak-sigkill-1",
+      "action": "SIGKILL",
+      "pidAtInjection": 58588
+    },
+    {
+      "atIso": "2026-10-05T06:32:55.820Z",
+      "elapsedMs": 538858,
+      "clientId": "soak-sigkill-2",
+      "action": "SIGKILL",
+      "pidAtInjection": 39840
+    }
+  ],
+  "statusSnapshots": [
+    {
+      "atIso": "2026-10-05T06:24:00.106Z",
+      "elapsedMs": 0,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "running",
+          "pid": 64212,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "running",
+          "pid": 72188,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 65404,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 58588,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 39840,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:25:16.307Z",
+      "elapsedMs": 79539,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "crashed",
+          "consecutiveCrashes": 4,
+          "restartCount": 3,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "crashed",
+          "consecutiveCrashes": 4,
+          "restartCount": 3,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 65404,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 58588,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 39840,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:26:32.589Z",
+      "elapsedMs": 155737,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 65404,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 58588,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 39840,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:27:48.501Z",
+      "elapsedMs": 232016,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 65404,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 58588,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 39840,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:29:05.508Z",
+      "elapsedMs": 307931,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 65404,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 58588,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 39840,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:30:21.085Z",
+      "elapsedMs": 384939,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 65404,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 58588,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 39840,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:31:39.421Z",
+      "elapsedMs": 460514,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 65404,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 58588,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 39840,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:32:55.817Z",
+      "elapsedMs": 538858,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 65404,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 58588,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 39840,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:32:55.817Z",
+      "elapsedMs": 538858,
+      "tenants": [
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:34:13.550Z",
+      "elapsedMs": 615257,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:35:32.288Z",
+      "elapsedMs": 692975,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:36:45.055Z",
+      "elapsedMs": 771725,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:37:57.710Z",
+      "elapsedMs": 844494,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:39:10.509Z",
+      "elapsedMs": 917143,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:40:23.226Z",
+      "elapsedMs": 989937,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:41:37.434Z",
+      "elapsedMs": 1062666,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:42:51.304Z",
+      "elapsedMs": 1136865,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:44:05.200Z",
+      "elapsedMs": 1210730,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:45:18.512Z",
+      "elapsedMs": 1284629,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:46:32.342Z",
+      "elapsedMs": 1357944,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:47:46.227Z",
+      "elapsedMs": 1431778,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:49:01.492Z",
+      "elapsedMs": 1505656,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:50:18.800Z",
+      "elapsedMs": 1580921,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:51:35.873Z",
+      "elapsedMs": 1658232,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:52:52.414Z",
+      "elapsedMs": 1735319,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:53:57.175Z",
+      "elapsedMs": 1800001,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    },
+    {
+      "atIso": "2026-10-05T06:54:12.736Z",
+      "elapsedMs": 1816600,
+      "tenants": [
+        {
+          "clientId": "soak-crashloop-0",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-crashloop-1",
+          "status": "failed",
+          "consecutiveCrashes": 5,
+          "restartCount": 4,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-0",
+          "status": "running",
+          "pid": 47748,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-1",
+          "status": "running",
+          "pid": 72240,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-sigkill-2",
+          "status": "running",
+          "pid": 51116,
+          "consecutiveCrashes": 1,
+          "restartCount": 1,
+          "lastExitCode": 1
+        },
+        {
+          "clientId": "soak-control-0",
+          "status": "running",
+          "pid": 72956,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-1",
+          "status": "running",
+          "pid": 72524,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-2",
+          "status": "running",
+          "pid": 70260,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-3",
+          "status": "running",
+          "pid": 45092,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-4",
+          "status": "running",
+          "pid": 74300,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-5",
+          "status": "running",
+          "pid": 71608,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-6",
+          "status": "running",
+          "pid": 73416,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-7",
+          "status": "running",
+          "pid": 64600,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-8",
+          "status": "running",
+          "pid": 17068,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-9",
+          "status": "running",
+          "pid": 56852,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-10",
+          "status": "running",
+          "pid": 70736,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-11",
+          "status": "running",
+          "pid": 68740,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-12",
+          "status": "running",
+          "pid": 69756,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-13",
+          "status": "running",
+          "pid": 56220,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        },
+        {
+          "clientId": "soak-control-14",
+          "status": "running",
+          "pid": 74728,
+          "consecutiveCrashes": 0,
+          "restartCount": 0
+        }
+      ]
+    }
+  ],
+  "finishedAtIso": "2026-10-05T06:54:14.883Z",
+  "totalElapsedMs": 1924850
+}
