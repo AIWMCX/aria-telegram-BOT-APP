@@ -75,6 +75,22 @@ export interface HostedCommandsDeps {
    * etc.) can never crash a command handler.
    */
   notify: (telegramUserId: number, text: string) => Promise<void>;
+  /**
+   * Entitlement-renewal fix (2026-09-19) — re-issues that client's ARIAE1
+   * entitlement token IN PLACE if it's missing/expired/expiring within
+   * `ENTITLEMENT_RENEWAL_MARGIN_SECONDS` (hosted-pairing-seed.ts's
+   * `renewHostedPairingStateIfNeeded`), and is a no-op if the existing
+   * token is still comfortably valid. Called for EVERY call to
+   * `startHostedEngine` below — not just first-time registration/
+   * conversion — because `seedHostedPairingState` only ever mints a token
+   * ONCE (at create/convert time) with a fixed 7-day TTL; without this,
+   * every hosted tenant older than that TTL would permanently fail the
+   * entitlement gate on its next `/paper_start` (or FleetManager
+   * auto-restart) with no user-facing recovery path. Must be called
+   * BEFORE `fleetManager.spawnTenant()` — if it throws, `startHostedEngine`
+   * must not proceed to spawn (see that function's try/catch below).
+   */
+  renewHostedEntitlementIfNeeded: (clientId: string) => Promise<void>;
 }
 
 export interface HandlerCtx {
@@ -108,6 +124,14 @@ export async function startHostedEngine(deps: HostedCommandsDeps, userId: number
       await deps.convertClientToHosted(client.id);
       converted = true;
     }
+    // Renewal check runs for EVERY call, including the created/converted
+    // branches above — a freshly (re)seeded token is nowhere near its 24h
+    // renewal margin, so this is a cheap no-op there; for an already-hosted
+    // client whose token is missing/expired/expiring soon, this is what
+    // actually keeps it working past its original 7-day TTL. Deliberately
+    // BEFORE spawnTenant() — a thrown renewal must abort the start, never
+    // spawn against a stale/expired token.
+    await deps.renewHostedEntitlementIfNeeded(client.id);
     const handle = await deps.fleetManager.spawnTenant(client.id);
     return { ok: true, created, converted, handle };
   } catch (err) {

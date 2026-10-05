@@ -24,6 +24,7 @@ NOT STARTED / IN PROGRESS / IMPLEMENTED (awaiting review) / REVIEWED-PASS / REVI
 | 6 | Soak the Fleet Manager itself | IMPLEMENTED (awaiting review) | `54ca099`; first re-certification fix `1123008`/`5f92185`; second re-certification fix `ed1db8c` | FAILED x2 — first soak: vacuous isolation checks (fixed). Second review: first fix's per-tenant-FleetManager-instance topology made the in-memory isolation channel structurally unable to detect the bug class it exists to catch (fixed by restoring one shared instance). A THIRD independent review of this second fix still needs to happen. | Depends on: 2, 3 |
 | 7 | Package a pinned, verified aria-engine into the Railway image | REVIEWED-FIXED | `4a8104e`; defect fix `86dee0f` | PASS with 3 minor defects (D1 token-bearing temp dir survives a failed fetch, D2 git stderr could echo the token in some transports, D3 fleet-manager.ts docblock overclaimed the identity gate's coverage on the auto-restart path) — all fixed this cycle, see Log. One blocking OPERATIONAL (not code) condition also raised: `ARIA_ENGINE_COMMIT_SHA` and a scoped fetch credential must be set in Railway's Variables before this can deploy — an owner action item, not tracked as a code defect. | Depends on: 2, 3, 4 |
 | P0 (fix/hosted-pairing-state-seeding) | Hosted `/paper_start` never seeded `pairing-state.json`/entitlement token — real `aria paper start` would fail closed with "Device is not paired" for EVERY hosted tenant, regardless of engine packaging or Fleet Manager correctness | REVIEWED-PASS | `ce0e48d`; SHA record `977d379` | REVIEWED-PASS (2026-09-19, independent adversarial review — see Log). Verified by reproduction, not self-report: genuine reuse of `issueReal1BetaEntitlementToken` (no second signer), private key never leaves `engine-entitlement-signer.ts` and no `.env` in this worktree, real aria-engine modules imported by the tests with both negative controls passing, real-CLI seeded-vs-unseeded control re-run independently, write-before-commit ordering traced in both call sites, 0o600/0o700 modes matched, typecheck clean and 345 PASS / 0 FAIL re-run. Two REQUIRED FOLLOW-UPS before wider rollout, neither blocking merge: (1) the disclosed revocation gap is real and broader — hosted-only tenants get no `engine_entitlements` row at all, so there is no UUID for `/revokeengine`; mitigated by `engine_clients.status='revoked'` and operator-side `stopTenant`; (2) NEW, undisclosed — the 7-day token is minted once and never renewed, so a hosted tenant silently crash-loops on day 8 with a `aria pair <CODE>` instruction it cannot follow. | Depends on: 4 (reuses `registerHostedClient`/`convertClientToHosted`'s existing device-identity call sites and write-before-commit discipline) |
+| P0-follow-up (fix/hosted-entitlement-renewal) | Closes follow-up (2) from the P0 row above: the 7-day ARIAE1 entitlement token is minted exactly ONCE (at tenant create/convert time) with no re-seed path, so every hosted tenant older than 7 days permanently fails the entitlement gate on its next `/paper_start` or FleetManager auto-restart, with an unfollowable "run `aria pair <CODE>`" denial message | DONE — REVIEWED-PASS (Gate B CLOSED, 2026-09-26) | `e2a4a8f`; D1 fix `8f59d62`/`f9fd402`; D2-scoped fix `5a5dcbf`/`c889e7a` | **Gate B CLOSED — ready for inclusion in the combined release candidate.** PASS across all three independent review rounds: D1 (revocation-erasure P0) confirmed closed in rounds 2 and 3; the three D2-scoped round-2 findings (vacuous `[D2]` test, overstated docblock wording, one-sided race disclosure) confirmed fixed by the third independent reviewer, who personally reproduced the revert-and-confirm-fails proof for the new `[D2]` test (see Log, 2026-09-26). One non-blocking doc nit carried as a follow-up (seam-position sentence in the function docblock, see Log). | Depends on: P0 (fix/hosted-pairing-state-seeding) — reuses `issueReal1BetaEntitlementToken`/`writeHostedPairingStateToDisk` and the write-before-spawn ordering that fix established |
 
 ## Stop conditions
 - A task's acceptance criteria cannot be met without violating PAPER-only guardrails (no wallet/signing/broadcast anywhere in the Fleet Manager or spawned processes) → STOP, report.
@@ -849,3 +850,392 @@ NOT STARTED / IN PROGRESS / IMPLEMENTED (awaiting review) / REVIEWED-PASS / REVI
   - **Status**: `REVIEWED-PASS`. Ledger-only update; no code was changed by
     this review. Branch not merged, not rebased, not pushed beyond this
     ledger commit.
+
+- 2026-09-19 — **P0-follow-up implemented: hosted entitlement-token renewal
+  (`fix/hosted-entitlement-renewal`, branched off `fix/hosted-pairing-state-seeding`).**
+  Closes the "NEW, undisclosed" finding from the P0 row's own review above:
+  `seedHostedPairingState` mints a real ARIAE1 token exactly ONCE, with a
+  fixed 7-day TTL (`REAL1_BETA_DURATION_SECONDS`, confirmed by reading
+  `engine-entitlement-signer.ts:20` directly), and nothing ever re-seeds an
+  already-`hosted` client. Left as-is, every hosted tenant older than 7 days
+  would permanently fail the entitlement gate on its next `/paper_start` or
+  FleetManager auto-restart, crash-looping to terminal `failed` with a
+  denial message ("run `aria pair <CODE>`") a Telegram-only hosted user has
+  no way to follow.
+  - **The gap this closes**: `src/fleet/hosted-pairing-seed.ts` gains four
+    new exports — `decodeEntitlementExpiry` (pure, decodes just the `exp`
+    field of an ARIAE1 token without verifying its signature — renewal-need
+    decisions don't require cryptographic trust, and erring toward "can't
+    tell, so renew" on anything unparseable is the safe direction),
+    `entitlementNeedsRenewal` (pure, true when a token is missing/
+    malformed/expired/expiring within `ENTITLEMENT_RENEWAL_MARGIN_SECONDS`
+    = 24h), `readHostedPairingStateFromDisk` (reads pairing-state.json back
+    off disk, `undefined` on missing/corrupt rather than throwing — a
+    corrupt file self-heals via re-seed instead of crashing), and
+    `renewHostedPairingStateIfNeeded` (the actual fix: re-issues the token
+    via the SAME `issueReal1BetaEntitlementToken` call `seedHostedPairingState`
+    already uses — no second signer — and rewrites the file via the SAME
+    `writeHostedPairingStateToDisk`, so the 0o600/0o700 modes and
+    write-semantics are identical, not reimplemented). Unlike
+    `seedHostedPairingState` (always `lastSequence: 0`, correct for a fresh
+    pair/hosted-create), the renewal path PRESERVES `lastSequence` and
+    `clientId` from whatever's already on disk — this is a token refresh
+    for a client that may have already been running and synced past 0, not
+    a re-pair.
+  - **Trigger condition implemented, and why**: `startHostedEngine`
+    (hosted-commands.ts) now calls a new injected dep,
+    `renewHostedEntitlementIfNeeded(clientId)`, at the START of every call —
+    unconditionally, for the newly-created, newly-converted, AND
+    already-hosted branches alike — BEFORE `fleetManager.spawnTenant()`.
+    Wired in `bot.ts` to `renewHostedPairingStateIfNeeded(tenantRuntimeDir(clientId),
+    clientId)`. The 24h margin (`ENTITLEMENT_RENEWAL_MARGIN_SECONDS`) was
+    chosen to comfortably exceed any realistic gap between a hosted
+    tenant's `/paper_start` calls (a dormant user, a bot restart, a
+    Telegram delivery delay) while staying small relative to the 7-day TTL,
+    so a tenant that checks in every day or two is never needlessly
+    re-signed. Calling it for EVERY branch (not just "already hosted") is
+    deliberately redundant-but-cheap: a freshly (re)seeded token from
+    `registerHostedClient`/`convertClientToHosted` is nowhere near the 24h
+    margin, so the renewal check is a genuine, verified no-op there (see
+    tests below) — one call site, no special-casing which branch needs it.
+  - **Mid-session renewal — investigated, NOT needed, evidence recorded
+    rather than assumed**: read aria-engine's `cli.ts` directly and
+    confirmed `checkPaperStartEntitlement` is called EXACTLY ONCE, at the
+    top of `cmdPaperStart`, before the tick loop starts (`cli.ts:451-458`).
+    Also checked `sync/command-handler.ts`'s `refresh_entitlement` case
+    (line 47-52): it only refreshes `lastKnownEntitlementStatus` (the
+    SEPARATE server-revocation cache `checkPaperStartEntitlement` also
+    consults), never re-runs the offline signature/expiry check itself.
+    Conclusion: a token valid at process-start time remains sufficient for
+    the entire run, however long it lasts — so renewing at spawn time
+    (which covers both a fresh `/paper_start` AND a FleetManager
+    auto-restart, since `launch()`'s restart path re-invokes the same
+    `runtimeDirFor`-rooted directory `startHostedEngine` already renewed
+    before the FIRST spawn) is sufficient. No mid-session renewal loop was
+    built, because none is needed — a long-running tenant that's still
+    inside its already-validated-at-startup token never re-checks it, and
+    a tenant that crashes and auto-restarts goes back through
+    `spawnTenant()`, but NOT back through `startHostedEngine`'s renewal
+    call (FleetManager's own `launch()` restart path is internal, not a
+    fresh `/paper_start`) — see the one disclosed residual gap below.
+  - **Disclosed residual gap, not fixed in this branch, narrower than the
+    original P0**: a FleetManager-internal auto-restart (crash-loop
+    backoff, `fleet-manager.ts`'s `launch(entry, isRestart=true)`) calls
+    `this.launch()` directly, not `startHostedEngine` — so it does NOT run
+    through the new renewal check. In practice this only matters for a
+    tenant that (a) has been running continuously past the point its token
+    is within 24h of expiry, AND (b) crashes and auto-restarts during that
+    window, AND (c) no `/paper_start` has been called in the meantime to
+    renew it first. That spawn would use the still-on-disk (soon-to-expire
+    or already-expired) token. This is narrower than the original P0 (it
+    requires a crash landing in a specific ~24h-to-7-day window, not "every
+    tenant past day 7"), and self-heals the next time the user calls
+    `/paper_start` (or the operator manually respawns), but is a real,
+    disclosed gap rather than a silently-assumed-covered case. Flagged
+    here for whoever picks up the next follow-up: the cleanest fix is
+    likely having `FleetManager.launch()` itself call
+    `renewHostedPairingStateIfNeeded` before an `isRestart` launch, which
+    was NOT done in this branch to keep this fix narrowly scoped to the
+    task's literal instruction (renew in `startHostedEngine`/
+    `handlePaperStart`) and avoid entangling `fleet-manager.ts` (already
+    twice-reviewed, DONE) with a new dependency on `hosted-pairing-seed.ts`
+    without its own review cycle.
+  - **Tests — real crypto, not shape checks**: `hosted-pairing-seed.test.ts`
+    gained a hand-signing test helper (`signTestEntitlementToken`) that
+    produces a REAL Ed25519-signed ARIAE1 token against the test's own
+    synthetic entitlement key but with caller-controlled `iat`/`exp` (the
+    real `issueReal1BetaEntitlementToken` always uses `iat = now`, so a
+    genuinely near-expiry token has to be hand-signed to test against, not
+    reimplemented-insecurely). New checks cover: (a) a token expiring in
+    ~1h is renewed, the new token is verified by the REAL
+    `aria-engine` `verifyEntitlement`/`checkPaperStartEntitlement`
+    (imported from the sibling checkout, same pattern as the P0 fix's own
+    tests), with a negative control proving the OLD near-expiry token
+    really would have failed the gate 2h later; (b) a freshly-seeded
+    healthy token is NOT re-signed — asserted both by field equality and a
+    byte-for-byte file-content comparison before/after; (c) a missing/
+    corrupt pairing-state.json self-heals via a fresh seed rather than
+    throwing; (d) two back-to-back renewal calls (the closest reproducible
+    approximation of a race between near-simultaneous `/paper_start` taps,
+    given Node's single-threaded execution — disclosed as a real scope
+    limit, not silently assumed to cover a genuine multi-process race) —
+    the SECOND call correctly recognizes the first one's fix and does not
+    re-renew, and the final on-disk file is always exactly one
+    fully-valid, independently-re-verified token, never a mix. File-mode
+    checks (0o600/0o700 preserved through a renewal) run when
+    `process.platform !== "win32"` (POSIX mode bits aren't meaningfully
+    enforced on this dev machine's OS). `hosted-commands.test.ts` gained a
+    parallel wiring-level block (own env/dynamic-import setup, mirroring
+    hosted-pairing-seed.test.ts, since a static import of
+    `hosted-pairing-seed.js` would pull in `config.js` before this file's
+    env vars could be set) proving `startHostedEngine` itself calls the
+    real renewal function before `spawnTenant()`, that an already-hosted
+    client's near-expiry token is genuinely replaced before the spawn
+    call, that a second immediate `/paper_start` does not re-sign an
+    already-healthy token, and that the brand-new-client create path is
+    unaffected.
+  - **Real end-to-end CLI proof — attempted, partial, honestly bounded**:
+    seeded three real tenant runtime dirs (an already-expired token, a
+    near-expiry-but-not-yet-expired token, and the same near-expiry token
+    after running it through the real `renewHostedPairingStateIfNeeded`)
+    using a synthetic entitlement keypair (same reason as the P0 fix's own
+    proof — the real production `ARIA_ENTITLEMENT_PRIVATE_D` exists only in
+    Railway), then ran the REAL `aria-engine` CLI (`node --import tsx
+    src/cli.ts paper start` from `C:\Users\AIWMC\dev\aria-engine`,
+    `ARIA_RUNTIME_DIR` pointed at each). A control against a completely
+    unseeded dir reproduced the baseline "Device is not paired." All THREE
+    seeded dirs — expired, near-expiry, and renewed alike — produced the
+    IDENTICAL message: "Entitlement signature-invalid — run `aria pair
+    <CODE>` to obtain a fresh entitlement." Reading `entitlement.ts`
+    explains why: `verifyEntitlement` checks the Ed25519 signature BEFORE
+    checking `exp` (`entitlement.ts:92-112`), so with a non-production
+    signing key every token fails at the signature step regardless of
+    expiry — the wrong-key failure masks any expired-vs-not distinction the
+    real CLI could otherwise show. This means the real-CLI proof for THIS
+    fix can only reconfirm gate #1 (pairing state) clears, exactly like the
+    P0 fix's own proof — it CANNOT independently demonstrate the renewed
+    token's improved expiry via the unmodified real binary in this
+    environment. The genuine expiry proof is the unit-level one above,
+    using the REAL `verifyEntitlement`/`checkPaperStartEntitlement`
+    functions with their pre-existing, reviewer-confirmed `publicKeyX`
+    test-injection parameter (not a shape check, not a reimplementation) —
+    disclosed here as the honest ceiling on what a real-CLI run can prove
+    without the production key, rather than claiming a stronger real-CLI
+    proof than what was actually observed.
+  - **Test/typecheck/regression results**: `npm run typecheck` — clean,
+    zero errors. Full `npm test` (all 9 scripts, unchanged script list) —
+    exit 0, zero `❌` lines (`grep -c "❌"` on the full captured output
+    returns `0`). `hosted-pairing-seed.test.ts` standalone: all
+    pre-existing checks plus 27 new renewal-specific checks, all passing.
+    `hosted-commands.test.ts` standalone: all pre-existing checks plus 9
+    new wiring-specific checks, all passing. No regressions in
+    `fleet-manager.test.ts`, `fleet-manager.integration.test.ts`, or
+    `dual-mode-coexistence.test.ts`.
+  - **Status**: `IMPLEMENTED (awaiting review)` — an independent review of
+    this fix has not yet happened.
+  - **Commit**: `e2a4a8f`, pushed to `origin/fix/hosted-entitlement-renewal`.
+
+- 2026-09-19 — **RE-CERTIFICATION after independent-review FAIL on `e2a4a8f`
+  (status stays `IMPLEMENTED (awaiting review)` — a fresh independent review
+  of THIS fix still needs to happen).** An independent reviewer failed the
+  renewal fix above on one P0 and one lower-priority (P2) finding.
+  - **D1 — P0, the blocker, FIXED.** `renewHostedPairingStateIfNeeded`
+    (`src/fleet/hosted-pairing-seed.ts`) read the existing on-disk
+    `pairing-state.json` (which is actually aria-engine's own `PairingState`
+    shape — see `aria-engine/src/pairing-state.ts:38` — including
+    `lastKnownEntitlementStatus`, written by the RUNNING engine on every
+    real sync and consulted by `checkPaperStartEntitlement`,
+    `entitlement-gate.ts:52-55`, to deny with `revoked-by-server` even for
+    an offline-valid, correctly-signed token), but then constructed a BRAND
+    NEW object with only `{clientId, lastSequence, entitlementToken}` and
+    overwrote the whole file — silently erasing `lastKnownEntitlementStatus`
+    and any other field the engine had written. **Concrete exploit
+    reproduced by the reviewer**: admin `/revokeengine <id>` -> tenant's
+    next real sync correctly caches `revoked` -> `/paper_start` correctly
+    denied -> the token later enters its 24h renewal window -> the next
+    `/paper_start` calls renewal, mints a fresh valid token, and silently
+    WIPES the revoked cache in the same write -> the gate now grants
+    access -> the revoked user is back in and can renew indefinitely.
+    **Root cause confirmed exactly as flagged, not assumed**:
+    `readHostedPairingStateFromDisk` does a bare `JSON.parse(...)` (no
+    narrowing of unknown fields at runtime — TypeScript's `HostedPairingState`
+    return-type annotation does not strip actual JS object properties), so
+    the read step was never the problem; the loss happened purely at the
+    WRITE step's object reconstruction. **Fix**: `renewHostedPairingStateIfNeeded`
+    now re-reads the file immediately before writing (`preserveFrom`, see
+    D2 below) and spreads `...preserveFrom` into the new state object
+    FIRST, overriding only `clientId`/`lastSequence` (falling back to the
+    function's arguments only when there is no existing file at all,
+    exactly as before) and `entitlementToken` (when issuance succeeds) —
+    never reconstructing a narrow object from scratch. `HostedPairingState`
+    also gained an explicit (unused-by-this-module) `lastKnownEntitlementStatus?:
+    unknown` field with a docblock explaining it exists only so the type
+    documents what the spread preserves, not because this module ever sets it.
+  - **New exploit-reproduction test** (`src/fleet/hosted-pairing-seed.test.ts`,
+    `[exploit] ...` block): matches the reviewer's own reproduction exactly —
+    (1) writes a pairing-state file with `lastKnownEntitlementStatus:
+    {status: "revoked", ...}` plus a token expiring in ~1h (inside the 24h
+    renewal margin), with a precondition check confirming the REAL
+    `checkPaperStartEntitlement()` genuinely denies with `revoked-by-server`
+    before renewal touches anything; (2) calls the real
+    `renewHostedPairingStateIfNeeded`, confirming it actually renews (mints
+    a genuinely new token, preserves `lastSequence`); (3) reads the file
+    back and asserts `lastKnownEntitlementStatus` is still present and
+    still exactly `"revoked"` (both on disk and on the function's own
+    returned `state`); (4) drives the REAL aria-engine `verifyEntitlement()`
+    (confirming the renewed token is, on its own, genuinely offline-valid —
+    ruling out "the gate just failed for an unrelated reason") and the REAL
+    `checkPaperStartEntitlement()` against the renewed on-disk state,
+    asserting it STILL denies with `revoked-by-server` despite the freshly-
+    signed, otherwise-valid token. All real Ed25519/real verifier, same
+    established convention as this file's other tests — 9 new checks, all
+    passing.
+  - **D2 — P2, FIXED (the straightforward part) + disclosed (the rest).**
+    The renewal read-modify-write wasn't coordinated with the live engine's
+    own concurrent writes to the same file (it writes `lastSequence` on
+    every sync tick), so renewal could rewind `lastSequence` to a stale
+    value, causing the engine's next sync to be rejected as a replay
+    (self-healing via `resyncSequence`, but reproducing a sync-desync
+    signature this program has hit before). **Fix applied (simple, as
+    instructed)**: `renewHostedPairingStateIfNeeded` now takes a SECOND
+    read of the file (`preserveFrom`) immediately before the write, instead
+    of building the written state from the read taken at the top of the
+    function (`existing`, used only for the renewal-need decision) — this
+    narrows the window during which a concurrent engine write would be
+    clobbered, without requiring file-locking. **Not fully closed, disclosed
+    in the docblock rather than silently ignored**: the engine could still
+    write between this second read and this function's own `writeFileSync`
+    — closing that completely needs real file-locking or atomic
+    read-then-write coordination with the live engine process, which is out
+    of scope for this fix cycle. New test (`[D2] ...`) proves the narrowed
+    window actually works: a write simulating a concurrent engine sync
+    tick landing between renewal's two internal reads is picked up (the
+    newer `lastSequence` survives), not clobbered by the earlier, now-stale
+    read.
+  - **Docblock overclaim fixed**: `renewHostedPairingStateIfNeeded`'s
+    docblock used to claim "there is no way for the file to end up torn or
+    holding a mix of old/new fields." Softened to state precisely what is
+    and isn't guaranteed: true for two sequential in-process calls and for
+    `writeFileSync` completing normally; NOT a guarantee against a crash
+    mid-`writeFileSync` — and aria-engine's own `loadPairingState()` does a
+    bare `JSON.parse` with no try/catch, so a genuinely torn file would
+    THROW there, not self-heal (this repo's own
+    `readHostedPairingStateFromDisk` is more defensive, but that only
+    protects renewal's own read, not whatever the spawned engine process
+    reads next).
+  - **Test/typecheck/regression results**: `npm run typecheck` — clean,
+    zero errors. `npx tsx src/fleet/hosted-pairing-seed.test.ts` standalone —
+    all pre-existing checks plus 11 new checks (9 exploit-reproduction + 1
+    D2 spot-check, plus the pre-existing count), all passing, 0 failures.
+    Full `npm test` (all 9 scripts, unchanged script list) — exit 0,
+    `grep -c "❌"` on the full captured output returns `0`, `grep -c "^✅"`
+    returns `404` total across the whole suite — confirming zero
+    regressions in `fleet-manager.test.ts`,
+    `fleet-manager.integration.test.ts`, `hosted-commands.test.ts`,
+    `dual-mode-coexistence.test.ts`, or any of the earlier `test/*.ts`
+    suites.
+  - **Status**: `IMPLEMENTED (awaiting review)` — a fresh independent
+    review of this fix still needs to happen.
+  - **Commit**: `8f59d62`, pushed to `origin/fix/hosted-entitlement-renewal`;
+    branch not merged anywhere.
+
+- 2026-09-19 — **SECOND-ROUND FIX after independent-review FAIL on
+  `8f59d62`/`f9fd402` (D2-scoped findings only — D1, the revocation-erasure
+  P0, was reproduced and confirmed genuinely closed by this second reviewer
+  too, and was NOT touched in this cycle). Status stays
+  `IMPLEMENTED (awaiting review)` — a THIRD independent review, scoped to
+  test rigor and disclosure accuracy on this secondary finding, still needs
+  to happen.** Three findings, all fixed:
+  - **Defect 1 — P2, the `[D2]` test was vacuous. FIXED, option (a)
+    (genuine seam), not option (b) (delete-and-downgrade).** The reviewer
+    proved this empirically: replacing the `preserveFrom` re-read with
+    `const preserveFrom = existing;` — deleting the entire point of the D2
+    change — left the `[D2]` test STILL PASSING. Root cause confirmed
+    exactly as flagged: the old test wrote `lastSequence: 9` to disk
+    BEFORE calling `renewHostedPairingStateIfNeeded` at all, so renewal's
+    very first read already saw `9` — nothing ever landed in the actual
+    window between renewal's read and its write, so the re-read being
+    tested was never exercised. Fix: added an optional
+    `testHooks?: { afterReadBeforeWrite?: () => void }` fourth parameter to
+    `renewHostedPairingStateIfNeeded` (`src/fleet/hosted-pairing-seed.ts`) —
+    a synchronization seam invoked in the exact window between the read and
+    the pre-write re-read, defaulting to a no-op and never passed by any
+    real caller (`hosted-commands.ts`'s `startHostedEngine` calls the
+    3-arg form only). The rewritten `[D2]` test
+    (`src/fleet/hosted-pairing-seed.test.ts`) uses this seam to perform the
+    "live engine" concurrent write (`lastSequence: 9`) from INSIDE
+    renewal's own read-to-write window, then asserts the final written file
+    reflects `9`, not the stale `5` seeded before the call. Chose option
+    (a) over (b) because the seam is small (one optional parameter, one
+    call site, no behavior change for any real caller), keeps the D2
+    mitigation test-provable rather than downgrading it to an unverified
+    claim, and matches the same empirical bar this branch has already been
+    held to twice on D1.
+    - **Empirical proof, same bar as the reviewer's own methodology**:
+      temporarily reverted the pre-write re-read to a single
+      top-of-function read (`const preserveFrom = existing;`, deleting the
+      re-read exactly as the reviewer's own D1 methodology did) and ran the
+      test in isolation — the new `[D2]` test genuinely FAILED (both of its
+      two assertions: `renewal preserves the LATEST lastSequence (9)...`
+      and `the concurrent value was actually persisted to disk...`), while
+      every other check in the file still passed. Restored the fix and
+      re-ran — the full file (92/92 checks) passed again, confirming the
+      test can fail and does fail on the exact regression it exists to
+      catch.
+  - **Defect 2 — P3, "immediately before the write" overstated what's
+    true. FIXED by reordering, not just correcting the wording.** The
+    reviewer measured ~104µs of real work — Ed25519 private-key
+    construction + signing inside `issueReal1BetaEntitlementToken` — sitting
+    between the old re-read and the actual `writeFileSync`, which was also
+    the dominant cost of the ORIGINAL (pre-fix) race window, so the
+    narrowing the docblock claimed was much smaller than "immediately
+    before" implied. Fix: reordered `renewHostedPairingStateIfNeeded` so
+    token signing happens FIRST — using only `resolvedClientId`
+    (`existing?.clientId ?? clientId`), which is available immediately
+    after the function's very first read, with no dependency on the fresh
+    re-read's contents — and the re-read now happens LAST, with nothing
+    but the (no-op-in-production) test seam between it and `writeFileSync`.
+    This was feasible without changing behavior because the new token never
+    actually needed any field from the fresh re-read: `issueReal1BetaEntitlementToken`
+    only needs a `clientId`, and `clientId` cannot change out from under a
+    renewal (the live engine process never rewrites its own `clientId`).
+    Corrected docblock wording (`src/fleet/hosted-pairing-seed.ts`, the
+    `renewHostedPairingStateIfNeeded` docblock and the D2 paragraph above
+    it): now states the re-read is genuinely "the LAST thing before
+    `writeFileSync`" achieved via "signing-before-re-read reordering," and
+    explicitly names what the ORIGINAL pre-fix race window's dominant cost
+    was (the ~104µs Ed25519 signing operation) rather than repeating the
+    unqualified "immediately before" claim.
+  - **Defect 3 — P3, the race disclosure was one-directional. FIXED by
+    disclosing both directions.** The old docblock only discussed
+    renewal's read-modify-write clobbering the live engine's `lastSequence`
+    update. The reviewer found the reverse is equally real: aria-engine's
+    own `savePairingState`/`nextSequence` (`aria-engine/src/pairing-state.ts:57-63`)
+    is ALSO a full-object read-modify-write, so a concurrent engine sync
+    tick can equally clobber renewal's freshly-minted `entitlementToken`
+    back to the stale/expiring one it just replaced. Fixed the docblock
+    (`src/fleet/hosted-pairing-seed.ts`, the `renewHostedPairingStateIfNeeded`
+    docblock) to disclose both directions explicitly, each with its own
+    named self-healing mechanism: (1) renewal clobbering the engine's
+    `lastSequence` self-heals via the engine's own `resyncSequence` on its
+    next rejected sync (cost: one rejected sync attempt); (2) the engine
+    clobbering renewal's fresh token back to stale self-heals because that
+    stale token gets renewed again on the very next `/paper_start`'s
+    `entitlementNeedsRenewal` check (cost: one extra renewal cycle). Neither
+    direction causes data loss or a permanently stuck/denied client.
+  - **Files changed**: `src/fleet/hosted-pairing-seed.ts` (the
+    `afterReadBeforeWrite` seam, the sign-before-re-read reorder, and the
+    corrected/expanded docblock), `src/fleet/hosted-pairing-seed.test.ts`
+    (the rewritten `[D2]` test using the seam, with an explanatory comment
+    on why the old version was vacuous). The D1 exploit test
+    (`[exploit] ...` block) was NOT touched, per instruction — verified by
+    diff review before and after this cycle's edits.
+  - **Test/typecheck/regression results**: `npx tsc --noEmit` — clean, zero
+    errors. `npx tsx src/fleet/hosted-pairing-seed.test.ts` standalone —
+    92/92 checks passing (89 pre-existing + 3 new: the seam-fired check and
+    the two corrected `[D2]` assertions). Full `npm test` (all scripts,
+    unchanged script list) — exit code `0`, `406` total `✅` lines across
+    the whole suite, `grep -c "❌"` on the full captured output returns `0`
+    (the only `Error:`-looking lines in the raw log are expected
+    fail-closed-503 log output from `test/engine-customer-api-contract.ts`'s
+    own "fails closed without Postgres" assertions, not test failures) —
+    confirming zero regressions in `fleet-manager.test.ts`,
+    `fleet-manager.integration.test.ts`, `hosted-commands.test.ts`,
+    `dual-mode-coexistence.test.ts`, or any other suite, and confirming the
+    D1 exploit test still passes unmodified.
+  - **Status**: `IMPLEMENTED (awaiting review)` — a THIRD independent
+    review of this branch still needs to happen, scoped to test rigor and
+    disclosure accuracy on this D2-scoped secondary finding (the core D1
+    P0 has already survived two independent review rounds and is not
+    reopened by this cycle).
+  - **Commit**: `5a5dcbf`, pushed to `origin/fix/hosted-entitlement-renewal`;
+    branch not merged anywhere.
+
+- 2026-09-26 — **THIRD-ROUND INDEPENDENT ADVERSARIAL REVIEW of `5a5dcbf`/`c889e7a`: PASS. Gate B is now CLOSED** (D1 and the D2-scoped fixes are both verified across all three rounds). Branch `fix/hosted-entitlement-renewal` is ready for inclusion in the combined release candidate. Not merged by this review. What this reviewer personally ran or read, not taken from the implementer's account:
+  - **D1 untouched**: ran `git diff f9fd402 c889e7a -- src/fleet/hosted-pairing-seed.test.ts`. The only hunks are in the `[D2]` block (around line 576 onward). The `[exploit]` block (lines 501-556) has zero changed lines, and all its checks still pass, including the real `checkPaperStartEntitlement()` still denying with `revoked-by-server` after renewal.
+  - **Seam is inert in production**: the only production call site is `src/bot.ts:439`, `renewHostedPairingStateIfNeeded(tenantRuntimeDir(clientId), clientId)`. It passes two arguments, so `testHooks` is `undefined`. `hosted-commands.ts` only reaches renewal through the injected `deps.renewHostedEntitlementIfNeeded(client.id)` (line 134). `testHooks` is referenced nowhere outside `hosted-pairing-seed.ts` and its test file.
+  - **Revert-and-confirm-fails, reproduced by this reviewer**: replaced `const preserveFrom = readHostedPairingStateFromDisk(runtimeDir) ?? existing;` with `const preserveFrom = existing;` and ran `npx tsx src/fleet/hosted-pairing-seed.test.ts` on its own. Result: exit 1, `❌ 2 FAILED`. The two failures were exactly `[D2] renewal preserves the LATEST lastSequence (9) ...` and `[D2] the concurrent value was actually persisted to disk ...`. `[D2] the concurrency-simulation seam actually fired` still passed, which proves the hook ran, and every other check, all `[exploit]` checks included, passed. Restored the file with `git checkout --` and re-ran: exit 0, `✅ ALL PASSED`. The test is no longer vacuous.
+  - **Reordering verified against the real code**: `issueReal1BetaEntitlementToken(resolvedClientId, randomUUID())` (line 378) now runs BEFORE the `preserveFrom` re-read (line 395). I read the signer (`src/engine-entitlement-signer.ts:41-52`). The token payload is `{v, iss, sub: clientId, scope, iat: now, exp: iat+TTL, jti}` plus the signing key, so nothing in it comes from the pairing-state file other than `clientId`. Signing earlier therefore cannot change what gets signed. Between the re-read and `writeFileSync` there is now only an object spread, a conditional field assignment, and `writeHostedPairingStateToDisk`'s `existsSync`/`mkdirSync`/`JSON.stringify`. There is no signing, no network call and no further read. Theoretical note, not a defect: the token `sub` comes from the FIRST read's `clientId` while the written `clientId` comes from the re-read. Nothing ever rewrites `clientId` in an existing pairing-state file (aria-engine only writes it in `pairDevice`), so these cannot diverge in practice.
+  - **D3 disclosures verified against aria-engine source** (`aria-engine-impl/src/pairing-state.ts`, identical to `aria-engine/src/pairing-state.ts` apart from line endings). (1) `resyncSequence` exists (lines 74-81). It takes `max(local, server currentSequence)+1` and persists it, and `cli.ts:527-531` calls it on a rejected sync with `currentSequence`, then retries once. A `lastSequence` that renewal clobbered back to a stale value therefore costs one rejected sync, as disclosed. (2) `nextSequence` (lines 57-63) is a genuine full-object read-modify-write (`savePairingState({ ...state, lastSequence: next })`). So is `resyncSequence`, and so is `cli.ts:547-548`'s entitlement-status merge. A concurrent tick can therefore write back an older `entitlementToken`, as disclosed. That self-heals at the next `/paper_start` renewal check. When combined with the already-disclosed FleetManager-internal auto-restart residual gap (auto-restart does not renew), it can at worst reach terminal `failed` until the next `/paper_start`. That is recoverable, not permanently stuck.
+  - **Regression**: `npx tsc --noEmit` exited 0. `npm test` exited 0 with exactly 406 `✅` lines and 0 `❌` lines. The only `Error:` lines in the log are two pino ERROR logs ("DATABASE_URL not configured — Postgres users domain is unavailable"). Their stacks point to `test/engine-customer-api-contract.ts:66` and `:85`, which are the `/api/engine/me` and `/api/engine/command` "fails closed without Postgres -> 503" assertions, and both of those printed ✅. These are intended negative-path logs, not failures.
+  - **One non-blocking doc nit (follow-up, not a Gate B blocker)**: the function docblock at `src/fleet/hosted-pairing-seed.ts:345-348` says the seam is invoked "in the exact window between the pre-write re-read and the write". That is wrong. The code calls it BEFORE the re-read (line 392 comes before line 395), which is the only position where the test can prove anything. The inline comment at lines 388-391 correctly says "between the read above and the re-read below". The round-2 ledger entry's "nothing but the (no-op-in-production) test seam between it and `writeFileSync`" has the same slip. The code and the test are correct, and the slip does not overstate any safety property. If someone "fixed" the code to match the docblock, the `[D2]` test would fail loudly. Recommended one-line wording fix at the next touch of this file.
