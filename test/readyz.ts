@@ -100,6 +100,10 @@ async function scenarioNotConfigured() {
     h.status === 200 && hb.ok === true && hb.postgres?.configured === false && hb.postgres?.ready === false && hb.postgres?.migrations === "skipped");
   check("not configured: /healthz keeps existing fields",
     typeof hb.uptime === "number" && "leads" in hb && "paymentsEnabled" in hb && "release" in hb);
+  const rh = hb.fleet?.rehydration;
+  check("healthz fleet block gains additive rehydration counts (numbers only, existing field kept)",
+    typeof hb.fleet?.available === "boolean" && rh && JSON.stringify(Object.keys(rh).sort()) === JSON.stringify(["queued", "restarting", "running"]) &&
+    Object.values(rh).every((v) => typeof v === "number"));
   const r = await app.request("/readyz");
   const rb = (await r.json()) as any;
   check("not configured: /readyz 200 ready:true", r.status === 200 && rb.ready === true && rb.sqlite === true);

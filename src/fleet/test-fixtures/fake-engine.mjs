@@ -20,6 +20,7 @@
  *                         instead of running until told to stop (simulates a crash)
  *   FAKE_FAIL_ON_START  - if "1", exits(FAKE_EXIT_CODE) immediately instead of
  *                         printing the ready line (simulates "never became healthy")
+ *   FAKE_IGNORE_SIGTERM - if "1", SIGTERM is ignored (wedged engine; only SIGKILL stops it)
  *   FAKE_EXTRA_LINE     - if set, printed to stdout right after the ready marker —
  *                         used by cross-contamination tests to give each tenant's
  *                         process a distinctive, greppable line in its own log file
@@ -84,7 +85,12 @@ if (cmd === "stop") {
     clearLock();
     process.exit(code);
   };
-  process.once("SIGTERM", () => shutdown(0));
+  // FAKE_IGNORE_SIGTERM=1: simulates a wedged engine so shutdownAll's SIGKILL escalation can be tested.
+  if (process.env.FAKE_IGNORE_SIGTERM === "1") {
+    process.on("SIGTERM", () => {});
+  } else {
+    process.once("SIGTERM", () => shutdown(0));
+  }
   process.once("SIGINT", () => shutdown(0));
 
   const crashAfterMs = process.env.FAKE_CRASH_AFTER_MS ? Number(process.env.FAKE_CRASH_AFTER_MS) : null;
