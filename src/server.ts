@@ -29,6 +29,7 @@ import { releaseInfo } from "./release.js";
 import { db } from "./db.js";
 import { getPostgresHealth } from "./pg-health.js";
 import { engineIdentity } from "./fleet/instance.js";
+import { tenantRehydrator } from "./fleet/rehydration-instance.js";
 
 export const app = new Hono();
 
@@ -139,7 +140,11 @@ app.get("/healthz", async (c) => {
     // The fleet is only usable if the engine behind it is. Reporting
     // `fleet.available: true` next to an unavailable engine would recreate
     // the exact misleading signal this block exists to eliminate.
-    fleet: { available: engine.available },
+    // `rehydration` is ADDITIVE and counts-only (no ids, no secrets):
+    // queued = desired=running tenants waiting for a slot/retry, restarting =
+    // being (re)started after a control-plane restart, running = rehydrated
+    // and up.
+    fleet: { available: engine.available, rehydration: tenantRehydrator.counts() },
   });
 });
 

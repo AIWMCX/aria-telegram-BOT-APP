@@ -1,4 +1,46 @@
-import { FleetCapacityError, type FleetManager, type TenantProcessHandle } from "./fleet-manager.js";
+import { FleetCapacityError, FleetShuttingDownError, type FleetManager, type TenantProcessHandle } from "./fleet-manager.js";
+import { EngineIdentityError } from "./engine-identity.js";
+
+/** Shared PAPER disclosure used in every user-facing state. */
+const PAPER_NOTE = "PAPER mode: simulated, no real orders, no wallet.";
+
+export const UNAVAILABLE_MESSAGE =
+  "Hosted PAPER is not available right now. Nothing is wrong with your account; try again later.";
+
+/**
+ * Per-user /paper_start throttle (in-memory). A respawn after
+ * stopped/crashed/failed is limited to one attempt per `minGapMs` and
+ * `maxAttempts` per `windowMs`, so a tester cannot hammer start/stop and
+ * stampede the fleet. Idempotent starts (already starting/running) never
+ * reach it.
+ */
+export class StartThrottle {
+  private readonly attempts = new Map<number, number[]>();
+  constructor(
+    private readonly minGapMs = 15_000,
+    private readonly maxAttempts = 5,
+    private readonly windowMs = 10 * 60_000,
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  /** Returns ms to wait, or 0 when an attempt is allowed now. */
+  waitMs(userId: number): number {
+    const t = this.now();
+    const recent = (this.attempts.get(userId) ?? []).filter((a) => t - a < this.windowMs);
+    this.attempts.set(userId, recent);
+    let wait = 0;
+    const last = recent[recent.length - 1];
+    if (last !== undefined) wait = Math.max(wait, this.minGapMs - (t - last));
+    if (recent.length >= this.maxAttempts) wait = Math.max(wait, this.windowMs - (t - recent[0]!));
+    return Math.max(0, wait);
+  }
+
+  record(userId: number): void {
+    const list = this.attempts.get(userId) ?? [];
+    list.push(this.now());
+    this.attempts.set(userId, list);
+  }
+}
 
 /**
  * Hosted PAPER Engine, Task 4 — the Telegram-facing command logic that
@@ -16,7 +58,10 @@ export interface EngineClientLike {
 }
 
 export interface HostedCommandsDeps {
-  fleetManager: Pick<FleetManager, "spawnTenant" | "stopTenant" | "getTenantStatus">;
+  fleetManager: Pick<FleetManager, "spawnTenant" | "stopTenant" | "getTenantStatus"> &
+    Partial<Pick<FleetManager, "getDesiredState">>;
+  /** Optional per-user start throttle; when absent no throttling happens. */
+  startThrottle?: StartThrottle;
   getLatestActiveClientForUser: (userId: number) => Promise<EngineClientLike | undefined>;
   /** Creates a brand-new hosted-only engine_clients row (device identity + DB insert) — see hosted-device-identity.ts for why a REAL keypair is generated, not a placeholder string. */
   registerHostedClient: (userId: number) => Promise<EngineClientLike>;
@@ -101,7 +146,7 @@ export interface HandlerCtx {
 
 export type StartResult =
   | { ok: true; created: boolean; converted: boolean; handle: TenantProcessHandle }
-  | { ok: false; reason: "capacity" | "error"; message: string };
+  | { ok: false; reason: "capacity" | "error" | "unavailable" | "throttled" | "shutting_down"; message: string };
 
 /**
  * Core start logic (DB + Fleet Manager only, no Telegram I/O — see
@@ -115,6 +160,22 @@ export type StartResult =
 export async function startHostedEngine(deps: HostedCommandsDeps, userId: number): Promise<StartResult> {
   try {
     let client = await deps.getLatestActiveClientForUser(userId);
+    // Throttle only applies to a (re)spawn: an already starting/running
+    // tenant makes this call an idempotent no-op and is never throttled.
+    const existingStatus = client ? deps.fleetManager.getTenantStatus(client.id)?.status : undefined;
+    const isRespawn = existingStatus !== "starting" && existingStatus !== "running";
+    if (isRespawn && deps.startThrottle) {
+      const wait = deps.startThrottle.waitMs(userId);
+      if (wait > 0) {
+        const secs = Math.ceil(wait / 1000);
+        const human = secs >= 90 ? `${Math.ceil(secs / 60)} minutes` : `${secs} seconds`;
+        return {
+          ok: false,
+          reason: "throttled",
+          message: `Please wait about ${human} before starting your hosted PAPER engine again. (${PAPER_NOTE})`,
+        };
+      }
+    }
     let created = false;
     let converted = false;
     if (!client) {
@@ -133,6 +194,7 @@ export async function startHostedEngine(deps: HostedCommandsDeps, userId: number
     // spawn against a stale/expired token.
     await deps.renewHostedEntitlementIfNeeded(client.id);
     const handle = await deps.fleetManager.spawnTenant(client.id);
+    if (isRespawn) deps.startThrottle?.record(userId);
     return { ok: true, created, converted, handle };
   } catch (err) {
     if (err instanceof FleetCapacityError) {
@@ -142,9 +204,15 @@ export async function startHostedEngine(deps: HostedCommandsDeps, userId: number
         message: "ARIA's hosted PAPER fleet is at capacity right now — please try again in a few minutes.",
       };
     }
+    if (err instanceof EngineIdentityError) {
+      return { ok: false, reason: "unavailable", message: UNAVAILABLE_MESSAGE };
+    }
+    if (err instanceof FleetShuttingDownError) {
+      return { ok: false, reason: "shutting_down", message: "ARIA is restarting for an update. Please try again in a minute." };
+    }
     // Never leak a raw error/stack trace to the user — a plain-language
     // message only, matching the rest of bot.ts's error-handling style.
-    return { ok: false, reason: "error", message: "Could not start your hosted PAPER engine — please try again shortly." };
+    return { ok: false, reason: "error", message: "Could not start your hosted PAPER engine (PAPER mode, simulated) — please try again shortly." };
   }
 }
 
@@ -157,7 +225,7 @@ export async function stopHostedEngine(deps: HostedCommandsDeps, userId: number,
   }
   try {
     await deps.fleetManager.stopTenant(client.id, graceful);
-    return { ok: true, message: "Stop requested — your hosted PAPER engine will shut down shortly." };
+    return { ok: true, message: "Stop requested — your hosted PAPER engine (simulated, no real orders) will shut down shortly." };
   } catch {
     return { ok: false, message: "Could not stop your hosted PAPER engine — please try again shortly." };
   }
@@ -191,46 +259,53 @@ function formatDuration(ms: number): string {
 }
 
 /**
- * Renders the REAL `TenantProcessHandle` fields — never a fabricated "all
- * good" if the real state is degraded (crashed/failed), and never an "OFF"
- * state indistinguishable from "started then stopped": `undefined` means
- * literally never started, `status: "stopped"` means it was running and
- * was stopped (deliberately or via a completed graceful shutdown).
+ * Renders the REAL `TenantProcessHandle` fields. `undefined` means literally
+ * never started AND no durable desired-state record; `desiredRunning` with no
+ * handle means the control plane restarted and the engine is being brought
+ * back (rehydration), which is NOT "never started". Internal details (exit
+ * codes, restart counts) stay in structured logs, never in user text.
  */
-export function formatHostedStatusMessage(handle: TenantProcessHandle | undefined): string {
+export function formatHostedStatusMessage(handle: TenantProcessHandle | undefined, opts: { desiredRunning?: boolean } = {}): string {
   const header = "*Hosted PAPER status*";
   if (!handle) {
+    if (opts.desiredRunning) {
+      return [
+        header,
+        "",
+        "Status: 🟡 *Restarting after a service update*",
+        "Your PAPER engine will resume automatically; no action needed.",
+        PAPER_NOTE,
+      ].join("\n");
+    }
     return [header, "", "Status: _Never started_", "", "Use /paper_start to launch your hosted PAPER engine — no local install required."].join("\n");
   }
 
   const lines = [header, ""];
   switch (handle.status) {
     case "starting":
-      lines.push("Status: 🟡 *Starting*");
+      lines.push("Status: 🟡 *Starting* (PAPER)");
       break;
     case "running":
-      lines.push("Status: 🟢 *Running*");
+      lines.push("Status: 🟢 *Running* (PAPER)");
       if (handle.startedAt) {
         lines.push(`Running for: ${formatDuration(Date.now() - new Date(handle.startedAt).getTime())}`);
       }
       break;
     case "stopping":
-      lines.push("Status: 🟡 *Stopping*");
+      lines.push("Status: 🟡 *Stopping* (PAPER)");
       break;
     case "stopped":
-      lines.push("Status: ⚪ *Stopped*");
+      lines.push("Status: ⚪ *Stopped* (PAPER)");
       break;
     case "crashed":
-      lines.push(`Status: 🔴 *Crashed* — retrying automatically (${handle.consecutiveCrashes} consecutive)`);
-      if (handle.lastExitCode !== null && handle.lastExitCode !== undefined) lines.push(`Last exit code: ${handle.lastExitCode}`);
+      lines.push("Status: 🔴 *Crashed* — your PAPER engine is retrying automatically");
       break;
     case "failed":
-      lines.push(`Status: 🔴 *Failed* — gave up retrying after ${handle.consecutiveCrashes} consecutive crashes`);
-      if (handle.lastExitCode !== null && handle.lastExitCode !== undefined) lines.push(`Last exit code: ${handle.lastExitCode}`);
+      lines.push("Status: 🔴 *Failed* — your PAPER engine stopped after repeated crashes and gave up retrying");
       lines.push("Use /paper_start to try again.");
       break;
   }
-  lines.push("", `Total restarts: ${handle.restartCount}`);
+  lines.push("", PAPER_NOTE);
   return lines.join("\n");
 }
 
@@ -280,5 +355,14 @@ export async function handlePaperStop(deps: HostedCommandsDeps, ctx: HandlerCtx)
 /** `/paper_status` command logic — status + DM. */
 export async function handlePaperStatus(deps: HostedCommandsDeps, ctx: HandlerCtx): Promise<void> {
   const handle = await getHostedStatus(deps, ctx.userId);
-  await deps.notify(ctx.telegramUserId, formatHostedStatusMessage(handle));
+  let desiredRunning = false;
+  if (!handle) {
+    try {
+      const client = await deps.getLatestActiveClientForUser(ctx.userId);
+      desiredRunning = client ? deps.fleetManager.getDesiredState?.(client.id) === "running" : false;
+    } catch {
+      desiredRunning = false;
+    }
+  }
+  await deps.notify(ctx.telegramUserId, formatHostedStatusMessage(handle, { desiredRunning }));
 }

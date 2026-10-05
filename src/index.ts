@@ -1,5 +1,5 @@
-import "./db.js"; // ensure schema runs before anything else touches the DB
-import { CONFIG, PAYMENTS_ENABLED, TELEGRAM_WEBHOOK_PATH } from "./config.js";
+import { db } from "./db.js"; // ensure schema runs before anything else touches the DB
+import { CONFIG, PAYMENTS_ENABLED, TELEGRAM_WEBHOOK_PATH, USERS_DOMAIN_ENABLED } from "./config.js";
 import { logger } from "./logger.js";
 import { installProcessErrorHandlers } from "./process-errors.js";
 
@@ -16,6 +16,20 @@ import { runSyncDesyncRepro } from "./engine-sync-desync-repro.js";
 import { startExpiryWarningScheduler } from "./expiry-warnings.js";
 import { startOfflineAlertScheduler } from "./engine-offline-alerts.js";
 import { randomUUID } from "node:crypto";
+import { fleetManager } from "./fleet/instance.js";
+import { tenantRehydrator } from "./fleet/rehydration-instance.js";
+
+/**
+ * Total budget for stopping every hosted tenant on SIGTERM/SIGINT. Railway
+ * sends SIGKILL a short grace period after SIGTERM (the real value is
+ * UNVERIFIED here; its documented default is on the order of seconds, and it
+ * is configurable via RAILWAY_DEPLOYMENT_DRAINING_SECONDS), so we stay well
+ * inside ~10 s: SIGTERM to all tenants at once, SIGKILL stragglers at 75% of
+ * this budget. A 1.5 s watchdog on top guarantees we exit even if something
+ * below hangs; the process 'exit' hook then SIGKILLs any child still alive.
+ */
+const FLEET_SHUTDOWN_BUDGET_MS = 8000;
+const SHUTDOWN_WATCHDOG_MS = FLEET_SHUTDOWN_BUDGET_MS + 1500;
 
 async function main(): Promise<void> {
   logger.info(
@@ -97,6 +111,19 @@ async function main(): Promise<void> {
     logger.error({ err }, "engine-offline alert scheduler failed to start — pairing/sync unaffected");
   }
 
+  // Rehydrate hosted tenants that were desired=running before this
+  // (re)start. ASYNCHRONOUS and fire-and-forget: it must never delay boot or
+  // /healthz, and a failure here must never take the process down. The server
+  // is already listening and migrations have run; the engine identity gate is
+  // applied per-spawn inside FleetManager (unavailable engine => stays
+  // desired=running and is retried by the periodic tick).
+  if (USERS_DOMAIN_ENABLED) {
+    tenantRehydrator.startPeriodic();
+    void tenantRehydrator.rehydrateTenants().catch((err) => {
+      logger.error({ err }, "tenant rehydration sweep crashed outside its own handling");
+    });
+  }
+
   const botProcessId = randomUUID();
   logger.info({ botProcessId, pid: process.pid, startedAt: new Date().toISOString(), transport: CONFIG.TELEGRAM_TRANSPORT }, "BOT_BOOT");
 
@@ -161,9 +188,34 @@ async function main(): Promise<void> {
     void startBot();
   }
 
+  let shuttingDown = false;
   const shutdown = async (sig: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     logger.info({ sig }, "shutting down");
-    if (CONFIG.TELEGRAM_TRANSPORT === "polling") await bot.stop();
+    // Hard stop even if something below hangs; the 'exit' hook kills leftovers.
+    setTimeout(() => {
+      logger.error({}, "shutdown watchdog fired; forcing exit");
+      process.exit(0);
+    }, SHUTDOWN_WATCHDOG_MS).unref();
+    try {
+      // 1. Stop accepting new work: no more rehydration/approval ticks, and
+      //    fleetManager.shutdownAll() latches so spawnTenant() now refuses.
+      tenantRehydrator.stop();
+      // 2. Stop every tenant (desired state is deliberately NOT changed, so
+      //    they come back after the restart).
+      const botStop = CONFIG.TELEGRAM_TRANSPORT === "polling" ? bot.stop().catch(() => undefined) : Promise.resolve();
+      const result = await fleetManager.shutdownAll({ timeoutMs: FLEET_SHUTDOWN_BUDGET_MS });
+      logger.info(result, "fleet shutdown complete");
+      await botStop;
+    } catch (err) {
+      logger.error({ err }, "error during graceful shutdown");
+    }
+    try {
+      db.close();
+    } catch {
+      /* already closed */
+    }
     process.exit(0);
   };
   process.once("SIGINT", () => void shutdown("SIGINT"));
