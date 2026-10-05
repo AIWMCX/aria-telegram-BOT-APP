@@ -470,6 +470,250 @@ async function main() {
     await fm.shutdownAll({ timeoutMs: 4000 });
   }
 
+  // ── 9. review follow-ups (F1-F5) ──
+  const rhBase = (fm: FleetManager, extra: Partial<ConstructorParameters<typeof TenantRehydrator>[0]> = {}) =>
+    new TenantRehydrator({
+      fleet: fm,
+      getClientById: async (id) => client(id),
+      isUserApproved: async () => true,
+      renewHostedEntitlementIfNeeded: async () => {},
+      staggerMs: 0,
+      ...extra,
+    });
+
+  // F1: /paper_stop landing while processOne awaits must NOT be undone.
+  {
+    const root = tmp();
+    writeDesiredState(root, "race-1", "running");
+    const { fm } = makeFm({ tenantsRoot: root });
+    let entered!: () => void;
+    const enteredP = new Promise<void>((r) => (entered = r));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const rh = rhBase(fm, {
+      getClientById: async (id) => {
+        entered();
+        await gate;
+        return client(id);
+      },
+    });
+    const sweep = rh.rehydrateTenants();
+    await enteredP;
+    await fm.stopTenant("race-1", true); // user stops while the sweep is paused in the DB await
+    release();
+    await sweep;
+    check("F1: stop during rehydration's await is not undone (no spawn)", fm.getTenantStatus("race-1") === undefined);
+    check("F1: desired stays stopped", fm.getDesiredState("race-1") === "stopped");
+    check("F1: tenant is no longer pending", !rh.isPending("race-1"));
+
+    // revoke landing mid-processOne (after the first approval check)
+    const root2 = tmp();
+    writeDesiredState(root2, "race-2", "running");
+    const { fm: fm2 } = makeFm({ tenantsRoot: root2 });
+    let approved = true;
+    let release2!: () => void;
+    const gate2 = new Promise<void>((r) => (release2 = r));
+    let renewEntered!: () => void;
+    const renewP = new Promise<void>((r) => (renewEntered = r));
+    const rh2 = rhBase(fm2, {
+      isUserApproved: async () => approved,
+      renewHostedEntitlementIfNeeded: async () => {
+        renewEntered();
+        await gate2;
+      },
+    });
+    const sweep2 = rh2.rehydrateTenants();
+    await renewP;
+    approved = false; // revoked while renewal is in flight
+    release2();
+    await sweep2;
+    check("F1: revoke mid-processOne prevents the spawn", fm2.getTenantStatus("race-2") === undefined && fm2.getDesiredState("race-2") === "stopped");
+  }
+
+  // F2: crashed tenants are covered by checkApprovals; the restart timer re-checks desired state.
+  {
+    process.env.FAKE_FAIL_ON_START = "1";
+    const a = new FleetManager({ engineInvocation: invocation(), tenantsRoot: tmp(), logsRoot: tmp(), restartBackoffMs: 60_000 });
+    await a.spawnTenant("cr-1");
+    await waitFor(() => a.getTenantStatus("cr-1")?.status === "crashed");
+    delete process.env.FAKE_FAIL_ON_START;
+    const rhA = rhBase(a, { isUserApproved: async () => false });
+    await rhA.checkApprovals();
+    check("F2: checkApprovals stops a crashed (restart-pending) tenant whose approval was revoked", a.getTenantStatus("cr-1")?.status === "stopped" && a.getDesiredState("cr-1") === "stopped");
+
+    process.env.FAKE_FAIL_ON_START = "1";
+    const b = new FleetManager({ engineInvocation: invocation(), tenantsRoot: tmp(), logsRoot: tmp(), restartBackoffMs: 200 });
+    await b.spawnTenant("cr-2");
+    await waitFor(() => b.getTenantStatus("cr-2")?.status === "crashed");
+    delete process.env.FAKE_FAIL_ON_START; // a relaunch would now SUCCEED, so a wrongly-fired timer is visible
+    b.setDesiredState("cr-2", "stopped");
+    await sleep(800);
+    check("F2: pending restart timer does not relaunch a tenant whose desired state is stopped", b.getTenantStatus("cr-2")?.status === "stopped" && b.getTenantStatus("cr-2")?.pid === undefined);
+  }
+
+  // F3: bounded retries for permanent-looking failures; honest status afterwards.
+  {
+    const root = tmp();
+    writeDesiredState(root, "perm-1", "running");
+    const { fm } = makeFm({ tenantsRoot: root });
+    const log = capLog();
+    let renewCalls = 0;
+    const rh = rhBase(fm, {
+      renewHostedEntitlementIfNeeded: async () => {
+        renewCalls++;
+        throw new Error("permanent");
+      },
+      maxFailureAttempts: 3,
+      failureBackoffMs: 0,
+      log,
+    });
+    for (let i = 0; i < 6; i++) await rh.rehydrateTenants();
+    check("F3: stops retrying after N attempts (renewal called exactly 3 times)", renewCalls === 3);
+    check("F3: gave up is recorded, desired stays running, not pending", rh.hasGivenUp("perm-1") && fm.getDesiredState("perm-1") === "running" && !rh.isPending("perm-1"));
+    check("F3: giving up is logged exactly once", log.lines.filter((l) => /giving up/.test(l.msg)).length === 1);
+    const msg = formatHostedStatusMessage(undefined, { desiredRunning: true, gaveUp: true });
+    check("F3: status says it needs attention / use /paper_start, not 'no action needed'", /Needs attention/.test(msg) && /paper_start/.test(msg) && !/no action needed/.test(msg) && /PAPER/.test(msg));
+    const sent: string[] = [];
+    await handlePaperStatus(
+      {
+        fleetManager: { getTenantStatus: () => undefined, getDesiredState: () => "running", spawnTenant: async () => ({}) as never, stopTenant: async () => {} },
+        rehydrationState: (id: string) => (rh.hasGivenUp(id) ? "gave_up" : undefined),
+        getLatestActiveClientForUser: async () => ({ id: "perm-1", hosting_mode: "hosted" as const }),
+        notify: async (_u: number, t: string) => void sent.push(t),
+      } as unknown as HostedCommandsDeps,
+      { telegramUserId: 1, userId: 1 },
+    );
+    check("F3: handlePaperStatus surfaces the gave-up state", /Needs attention/.test(sent[0] ?? ""));
+
+    // backoff: a failed tenant is not retried again inside its backoff window
+    const root2 = tmp();
+    writeDesiredState(root2, "perm-2", "running");
+    const { fm: fm2 } = makeFm({ tenantsRoot: root2 });
+    let calls2 = 0;
+    const rh2 = rhBase(fm2, {
+      renewHostedEntitlementIfNeeded: async () => {
+        calls2++;
+        throw new Error("x");
+      },
+      failureBackoffMs: 60_000,
+    });
+    await rh2.rehydrateTenants();
+    await rh2.rehydrateTenants();
+    check("F3: per-tenant backoff skips an immediate retry", calls2 === 1);
+  }
+
+  // F4: SIGKILL escalation, platform-independent (fake tenant process, no OS signals involved).
+  {
+    const mkFake = (exitsOnSigterm: boolean) => {
+      const signals: string[] = [];
+      const listeners: Array<(e: unknown) => void> = [];
+      const tp = {
+        hasExited: false,
+        child: { kill() {} },
+        signal(sig: string) {
+          signals.push(sig);
+          if (sig === "SIGKILL" || (sig === "SIGTERM" && exitsOnSigterm)) {
+            tp.hasExited = true;
+            for (const l of listeners) l({ type: "exit", code: null, signal: sig });
+          }
+        },
+        onEvent(l: (e: unknown) => void) {
+          listeners.push(l);
+        },
+      };
+      return { tp, signals };
+    };
+    const wedged = mkFake(false);
+    const { fm } = makeFm();
+    (fm as unknown as { tenants: Map<string, unknown> }).tenants.set("fk-1", {
+      handle: { clientId: "fk-1", status: "running", restartCount: 0, consecutiveCrashes: 0 },
+      process: wedged.tp,
+    });
+    const t0 = Date.now();
+    const res = await fm.shutdownAll({ timeoutMs: 400 });
+    check("F4: a SIGTERM-ignoring tenant gets SIGTERM then SIGKILL", JSON.stringify(wedged.signals) === JSON.stringify(["SIGTERM", "SIGKILL"]));
+    check("F4: escalation is reported and nothing remains, within the budget", res.killed === 1 && res.remaining === 0 && Date.now() - t0 < 700);
+    const polite = mkFake(true);
+    const { fm: fm2 } = makeFm();
+    (fm2 as unknown as { tenants: Map<string, unknown> }).tenants.set("fk-2", {
+      handle: { clientId: "fk-2", status: "running", restartCount: 0, consecutiveCrashes: 0 },
+      process: polite.tp,
+    });
+    const res2 = await fm2.shutdownAll({ timeoutMs: 400 });
+    check("F4: a cooperative tenant is never SIGKILLed", JSON.stringify(polite.signals) === JSON.stringify(["SIGTERM"]) && res2.killed === 0);
+  }
+
+  // F5: rehydrator's own guards (stopped desired, shutting down, stopped rehydrator).
+  {
+    const root = tmp();
+    writeDesiredState(root, "g-1", "running");
+    writeDesiredState(root, "g-2", "running");
+    const { fm } = makeFm({ tenantsRoot: root });
+    const calls: string[] = [];
+    const rh = rhBase(fm, {
+      concurrency: 1,
+      staggerMs: 150,
+      getClientById: async (id) => {
+        calls.push(id);
+        if (id === "g-1") fm.setDesiredState("g-2", "stopped"); // flips while g-2 is queued
+        return client(id);
+      },
+    });
+    await rh.rehydrateTenants();
+    check("F5: a tenant whose desired state flipped to stopped while queued is skipped before any lookup", !calls.includes("g-2") && fm.getTenantStatus("g-2") === undefined);
+    await fm.shutdownAll({ timeoutMs: 3000 });
+
+    const root2 = tmp();
+    for (const id of ["s-1", "s-2", "s-3"]) writeDesiredState(root2, id, "running");
+    const { fm: fm2 } = makeFm({ tenantsRoot: root2 });
+    const calls2: string[] = [];
+    let sd: Promise<unknown> | undefined;
+    const rh2 = rhBase(fm2, {
+      concurrency: 1,
+      staggerMs: 150,
+      getClientById: async (id) => {
+        calls2.push(id);
+        if (id === "s-1") sd = fm2.shutdownAll({ timeoutMs: 2000 });
+        return client(id);
+      },
+    });
+    await rh2.rehydrateTenants();
+    await sd;
+    check("F5: once shutdown began, the sweep stops processing further tenants", JSON.stringify(calls2) === JSON.stringify(["s-1"]));
+
+    const root3 = tmp();
+    const { fm: fm3 } = makeFm({ tenantsRoot: root3 });
+    await fm3.spawnTenant("st-1");
+    await waitFor(() => fm3.getTenantStatus("st-1")?.status === "running");
+    let lookups = 0;
+    const rh3 = rhBase(fm3, {
+      getClientById: async (id) => {
+        lookups++;
+        return client(id);
+      },
+      isUserApproved: async () => false,
+    });
+    rh3.stop();
+    await rh3.checkApprovals();
+    writeDesiredState(root3, "st-2", "running");
+    await rh3.rehydrateTenants();
+    check("F5: a stopped rehydrator neither re-checks approvals nor sweeps", lookups === 0 && fm3.getTenantStatus("st-1")?.status === "running" && fm3.getTenantStatus("st-2") === undefined);
+    await fm3.shutdownAll({ timeoutMs: 3000 });
+  }
+
+  // Throttle memory: empty keys are not retained.
+  {
+    let now = 5_000_000;
+    const th = new StartThrottle(15_000, 5, 600_000, () => now);
+    th.record(1);
+    th.record(2);
+    now += 700_000;
+    th.waitMs(1);
+    check("throttle drops a user's key once their attempts leave the window", th.size() === 1);
+    th.prune();
+    check("throttle prune() clears fully expired users", th.size() === 0);
+  }
+
   if (failures > 0) {
     console.error(`\n${failures} check(s) FAILED`);
     process.exit(1);

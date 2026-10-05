@@ -1,4 +1,4 @@
-import { FleetCapacityError, type FleetManager, type TenantProcessHandle } from "./fleet-manager.js";
+import { FleetCapacityError, TenantNotDesiredError, type FleetManager, type TenantProcessHandle } from "./fleet-manager.js";
 import { EngineIdentityError } from "./engine-identity.js";
 import { NOOP_LOGGER, type FleetLogger } from "./desired-state.js";
 
@@ -42,7 +42,7 @@ export interface RehydrationClientLike {
 export interface RehydratorDeps {
   fleet: Pick<
     FleetManager,
-    "scanDesiredRunning" | "getDesiredState" | "setDesiredState" | "spawnTenant" | "stopTenant" | "getTenantStatus" | "listActiveTenants" | "isShuttingDown"
+    "scanDesiredRunning" | "getDesiredState" | "setDesiredState" | "spawnTenant" | "stopTenant" | "getTenantStatus" | "listActiveTenants" | "listCrashedTenants" | "isShuttingDown"
   >;
   getClientById: (clientId: string) => Promise<RehydrationClientLike | undefined>;
   isUserApproved: (userId: number) => Promise<boolean>;
@@ -56,6 +56,10 @@ export interface RehydratorDeps {
   retryIntervalMs?: number;
   /** Approval re-check interval for running tenants. Default 5 min. */
   approvalCheckIntervalMs?: number;
+  /** Attempts for PERMANENT-looking failures (renewal/spawn errors) before giving up for this boot. Default 10. Capacity/engine/DB waits stay patient. */
+  maxFailureAttempts?: number;
+  /** Base per-tenant backoff between failed attempts (doubles each time, capped at 30 min). Default = retryIntervalMs. */
+  failureBackoffMs?: number;
 }
 
 export interface RehydrationCounts {
@@ -84,6 +88,11 @@ export class TenantRehydrator {
   private retryTimer?: NodeJS.Timeout;
   private approvalTimer?: NodeJS.Timeout;
   private stopped = false;
+  private readonly maxFailureAttempts: number;
+  private readonly failureBackoffMs: number;
+  private readonly failures = new Map<string, { n: number; nextAt: number }>();
+  /** Tenants we stopped retrying this boot (desired stays running; needs attention). */
+  private readonly gaveUp = new Set<string>();
 
   constructor(private readonly deps: RehydratorDeps) {
     this.log = deps.log ?? NOOP_LOGGER;
@@ -91,6 +100,24 @@ export class TenantRehydrator {
     this.staggerMs = deps.staggerMs ?? 500;
     this.retryIntervalMs = deps.retryIntervalMs ?? 60_000;
     this.approvalCheckIntervalMs = deps.approvalCheckIntervalMs ?? 5 * 60_000;
+    this.maxFailureAttempts = Math.max(1, deps.maxFailureAttempts ?? 10);
+    this.failureBackoffMs = deps.failureBackoffMs ?? this.retryIntervalMs;
+  }
+
+  /** True when rehydration stopped retrying this tenant (permanent-looking failure); desired is still running. */
+  hasGivenUp(clientId: string): boolean {
+    return this.gaveUp.has(clientId);
+  }
+
+  private recordFailure(id: string, reason: string): void {
+    const n = (this.failures.get(id)?.n ?? 0) + 1;
+    const delay = Math.min(this.failureBackoffMs * 2 ** (n - 1), 30 * 60_000);
+    this.failures.set(id, { n, nextAt: Date.now() + delay });
+    if (n >= this.maxFailureAttempts) {
+      this.gaveUp.add(id);
+      this.pending.delete(id);
+      this.log.warn({ clientId: id, reason, attempts: n }, "giving up automatic rehydration for this tenant until next boot (desired stays running; needs attention)");
+    }
   }
 
   /** Counts only (no ids, no secrets) for /healthz. */
@@ -139,6 +166,7 @@ export class TenantRehydrator {
       for (const id of this.deps.fleet.scanDesiredRunning()) {
         const st = this.deps.fleet.getTenantStatus(id)?.status;
         if (st === "starting" || st === "running" || st === "stopping") continue;
+        if (this.gaveUp.has(id)) continue;
         this.pending.add(id);
       }
     } catch (err) {
@@ -201,6 +229,8 @@ export class TenantRehydrator {
       this.pending.delete(id);
       return;
     }
+    const f = this.failures.get(id);
+    if (f && Date.now() < f.nextAt) return; // still backing off after a failure
 
     let client: RehydrationClientLike | undefined;
     let approved: boolean;
@@ -221,21 +251,43 @@ export class TenantRehydrator {
       await this.deps.renewHostedEntitlementIfNeeded(id);
     } catch (err) {
       this.noteOnce(id, "renewal-failed", "warn", "entitlement renewal failed before rehydration spawn; keeping desired=running and retrying", err);
+      this.recordFailure(id, "renewal-failed");
+      return;
+    }
+
+    // Everything above awaited: a revoke or /paper_stop may have landed. Re-check
+    // approval, then spawn with compare-and-set on desired state (see
+    // TenantNotDesiredError) so a stop in this window is never undone.
+    try {
+      if (!(await this.deps.isUserApproved(client.user_id))) {
+        this.markStopped(id, "not-approved");
+        return;
+      }
+    } catch (err) {
+      this.noteOnce(id, "db-unavailable", "warn", "rehydration could not re-verify approval; keeping desired=running and retrying", err);
       return;
     }
 
     try {
-      await fleet.spawnTenant(id);
+      await fleet.spawnTenant(id, { onlyIfDesired: true });
     } catch (err) {
+      if (err instanceof TenantNotDesiredError) {
+        this.pending.delete(id);
+        this.log.info({ clientId: id, reason: "stopped-while-queued" }, "tenant stopped while rehydration was in progress; not spawned");
+        return;
+      }
       if (err instanceof FleetCapacityError) {
         this.noteOnce(id, "capacity", "info", "fleet at capacity; tenant stays queued (desired=running) until a slot frees");
       } else if (err instanceof EngineIdentityError) {
         this.noteOnce(id, "engine-unavailable", "warn", "engine unavailable/unverified; tenant stays desired=running and will be retried");
       } else {
         this.noteOnce(id, "spawn-failed", "warn", "rehydration spawn failed; will retry", err);
+        this.recordFailure(id, "spawn-failed");
       }
       return;
     }
+    this.failures.delete(id);
+    this.gaveUp.delete(id);
     this.pending.delete(id);
     this.spawned.add(id);
     this.lastReason.delete(id);
@@ -261,7 +313,12 @@ export class TenantRehydrator {
     if (this.stopped || this.deps.fleet.isShuttingDown()) return;
     let active: TenantProcessHandle[];
     try {
-      active = this.deps.fleet.listActiveTenants().filter((h) => h.status === "starting" || h.status === "running");
+      // `crashed` (backoff, restart timer pending) must be included: that tenant
+      // holds no live process but WILL be relaunched by its timer.
+      active = [
+        ...this.deps.fleet.listActiveTenants().filter((h) => h.status === "starting" || h.status === "running"),
+        ...this.deps.fleet.listCrashedTenants(),
+      ];
     } catch {
       return;
     }

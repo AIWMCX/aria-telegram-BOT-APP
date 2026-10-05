@@ -71,6 +71,20 @@ export class FleetShuttingDownError extends Error {
   }
 }
 
+/**
+ * Thrown by `spawnTenant(id, { onlyIfDesired: true })` when the tenant's
+ * durable desired state is no longer "running" (a /paper_stop or revoke
+ * landed after the caller decided to spawn). Compare-and-set: the check and
+ * the desired=running write happen in the same synchronous stretch, so the
+ * stop can never be overwritten by a stale spawn.
+ */
+export class TenantNotDesiredError extends Error {
+  constructor(readonly clientId: string) {
+    super(`tenant ${clientId} is no longer desired=running — not spawning`);
+    this.name = "TenantNotDesiredError";
+  }
+}
+
 /** How to invoke the engine CLI for one tenant action. Injectable so tests can point at the fake fixture instead of the real binary. */
 export interface EngineInvocation {
   buildStart(): { command: string; args: string[]; cwd: string };
@@ -346,7 +360,7 @@ export class FleetManager {
    * rejected (the caller must wait for the stop to finish before
    * restarting) to avoid a spawn racing a not-yet-released lock file.
    */
-  async spawnTenant(clientId: string): Promise<TenantProcessHandle> {
+  async spawnTenant(clientId: string, spawnOpts: { onlyIfDesired?: boolean } = {}): Promise<TenantProcessHandle> {
     // Path-safety gate: clientId becomes a directory and a log filename.
     assertValidClientId(clientId);
     if (this.shuttingDown) throw new FleetShuttingDownError();
@@ -409,6 +423,14 @@ export class FleetManager {
       throw new FleetCapacityError(clientId, this.opts.maxConcurrentTenants);
     }
 
+    // Compare-and-set for background callers (rehydration): they decided to
+    // spawn BEFORE awaiting DB/renewal work, so a /paper_stop or revoke may
+    // have written desired=stopped since. No await sits between this read and
+    // the write below, so nothing can interleave. Explicit user starts do not
+    // pass this flag: /paper_start IS the intent that flips desired to running.
+    if (spawnOpts.onlyIfDesired && this.getDesiredState(clientId) !== "running") {
+      throw new TenantNotDesiredError(clientId);
+    }
     // WRITE-BEFORE-ACT: record the user's intent durably BEFORE any process
     // exists. If the control plane dies between this line and the spawn,
     // rehydration on the next boot finds desired=running and starts it. If
@@ -505,6 +527,14 @@ export class FleetManager {
         // restart (status may have moved to "stopping"/"stopped"
         // between schedule and fire), don't resurrect it.
         if (entry.handle.status !== "crashed" || this.shuttingDown) return;
+        // A stop/revoke persisted desired=stopped while this timer was armed
+        // (e.g. written by another path without a live-process stop): never
+        // relaunch against the user's recorded intent.
+        if (this.getDesiredState(clientId) === "stopped") {
+          entry.handle.status = "stopped";
+          entry.restartTimer = undefined;
+          return;
+        }
         this.launch(entry, /* isRestart */ true);
       }, backoffMs);
     });
@@ -708,6 +738,11 @@ export class FleetManager {
 
   getTenantStatus(clientId: string): TenantProcessHandle | undefined {
     return this.tenants.get(clientId)?.handle;
+  }
+
+  /** Tenants in `crashed` (no live process, restart timer pending). */
+  listCrashedTenants(): TenantProcessHandle[] {
+    return [...this.tenants.values()].map((e) => e.handle).filter((h) => h.status === "crashed");
   }
 
   listActiveTenants(): TenantProcessHandle[] {

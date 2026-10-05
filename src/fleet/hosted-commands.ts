@@ -27,7 +27,9 @@ export class StartThrottle {
   waitMs(userId: number): number {
     const t = this.now();
     const recent = (this.attempts.get(userId) ?? []).filter((a) => t - a < this.windowMs);
-    this.attempts.set(userId, recent);
+    // Never keep empty keys: a user who stopped hitting /paper_start must not leak a map entry.
+    if (recent.length === 0) this.attempts.delete(userId);
+    else this.attempts.set(userId, recent);
     let wait = 0;
     const last = recent[recent.length - 1];
     if (last !== undefined) wait = Math.max(wait, this.minGapMs - (t - last));
@@ -39,6 +41,19 @@ export class StartThrottle {
     const list = this.attempts.get(userId) ?? [];
     list.push(this.now());
     this.attempts.set(userId, list);
+    if (this.attempts.size > 256) this.prune();
+  }
+
+  /** Drops every user whose attempts are all outside the window (bounded memory without a timer). */
+  prune(): void {
+    const t = this.now();
+    for (const [u, list] of this.attempts) {
+      if (list.every((a) => t - a >= this.windowMs)) this.attempts.delete(u);
+    }
+  }
+
+  size(): number {
+    return this.attempts.size;
   }
 }
 
@@ -60,6 +75,8 @@ export interface EngineClientLike {
 export interface HostedCommandsDeps {
   fleetManager: Pick<FleetManager, "spawnTenant" | "stopTenant" | "getTenantStatus"> &
     Partial<Pick<FleetManager, "getDesiredState">>;
+  /** Optional: "gave_up" when boot rehydration stopped retrying this tenant (needs attention). */
+  rehydrationState?: (clientId: string) => "gave_up" | undefined;
   /** Optional per-user start throttle; when absent no throttling happens. */
   startThrottle?: StartThrottle;
   getLatestActiveClientForUser: (userId: number) => Promise<EngineClientLike | undefined>;
@@ -265,9 +282,18 @@ function formatDuration(ms: number): string {
  * back (rehydration), which is NOT "never started". Internal details (exit
  * codes, restart counts) stay in structured logs, never in user text.
  */
-export function formatHostedStatusMessage(handle: TenantProcessHandle | undefined, opts: { desiredRunning?: boolean } = {}): string {
+export function formatHostedStatusMessage(handle: TenantProcessHandle | undefined, opts: { desiredRunning?: boolean; gaveUp?: boolean } = {}): string {
   const header = "*Hosted PAPER status*";
   if (!handle) {
+    if (opts.desiredRunning && opts.gaveUp) {
+      return [
+        header,
+        "",
+        "Status: 🔴 *Needs attention* — your PAPER engine could not be restarted automatically after the service update",
+        "Use /paper_start to try again.",
+        PAPER_NOTE,
+      ].join("\n");
+    }
     if (opts.desiredRunning) {
       return [
         header,
@@ -356,13 +382,15 @@ export async function handlePaperStop(deps: HostedCommandsDeps, ctx: HandlerCtx)
 export async function handlePaperStatus(deps: HostedCommandsDeps, ctx: HandlerCtx): Promise<void> {
   const handle = await getHostedStatus(deps, ctx.userId);
   let desiredRunning = false;
+  let gaveUp = false;
   if (!handle) {
     try {
       const client = await deps.getLatestActiveClientForUser(ctx.userId);
       desiredRunning = client ? deps.fleetManager.getDesiredState?.(client.id) === "running" : false;
+      gaveUp = client ? deps.rehydrationState?.(client.id) === "gave_up" : false;
     } catch {
       desiredRunning = false;
     }
   }
-  await deps.notify(ctx.telegramUserId, formatHostedStatusMessage(handle, { desiredRunning }));
+  await deps.notify(ctx.telegramUserId, formatHostedStatusMessage(handle, { desiredRunning, gaveUp }));
 }

@@ -15,6 +15,7 @@ import { listRecentFeedback } from "./feedback.js";
 import { formatPairReply } from "./pair-reply.js";
 import { registerClient, getLatestActiveClientForUser, setHostingMode, rotateClientDeviceIdentityAndSetHosted, type EngineClient } from "./engine-clients.js";
 import { fleetManager, tenantRuntimeDir } from "./fleet/instance.js";
+import { tenantRehydrator } from "./fleet/rehydration-instance.js";
 import { generateHostedDeviceIdentity, writeHostedDeviceIdentityToDisk } from "./fleet/hosted-device-identity.js";
 import { seedHostedPairingState, renewHostedPairingStateIfNeeded } from "./fleet/hosted-pairing-seed.js";
 import { StartThrottle, handlePaperStart, handlePaperStop, handlePaperStatus, formatHostedStatusMessage, type HostedCommandsDeps } from "./fleet/hosted-commands.js";
@@ -419,6 +420,7 @@ const hostedStartThrottle = new StartThrottle();
 const hostedDeps: HostedCommandsDeps = {
   fleetManager,
   startThrottle: hostedStartThrottle,
+  rehydrationState: (clientId) => (tenantRehydrator.hasGivenUp(clientId) ? "gave_up" : undefined),
   getLatestActiveClientForUser,
   registerHostedClient,
   convertClientToHosted,
