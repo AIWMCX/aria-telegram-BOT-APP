@@ -1,6 +1,15 @@
 import path from "node:path";
 import { TenantProcess, buildTenantEnv } from "./tenant-process.js";
 import { EngineIdentityError, type EngineIdentity } from "./engine-identity.js";
+import { CLIENT_ID_PATTERN, assertValidClientId } from "./client-id.js";
+import {
+  NOOP_LOGGER,
+  listDesiredRunning,
+  readDesiredState,
+  writeDesiredState,
+  type DesiredState,
+  type FleetLogger,
+} from "./desired-state.js";
 
 /**
  * Fleet Manager core — Task 2 of the hosted-PAPER-engine program. Spawns,
@@ -51,6 +60,36 @@ export class FleetCapacityError extends Error {
   ) {
     super(`fleet is at capacity (${limit} concurrent tenants) — cannot spawn tenant ${clientId}`);
     this.name = "FleetCapacityError";
+  }
+}
+
+/** Thrown by `spawnTenant()` once `shutdownAll()` has begun: the process is going away, so no new engine may start. */
+export class FleetShuttingDownError extends Error {
+  constructor() {
+    super("fleet manager is shutting down — not starting new tenants");
+    this.name = "FleetShuttingDownError";
+  }
+}
+
+/**
+ * Thrown by `spawnTenant(id, { onlyIfDesired: true })` when the tenant's
+ * durable desired state is no longer "running" (a /paper_stop or revoke
+ * landed after the caller decided to spawn). Compare-and-set: the check and
+ * the desired=running write happen in the same synchronous stretch, so the
+ * stop can never be overwritten by a stale spawn.
+ */
+export class TenantNotDesiredError extends Error {
+  constructor(readonly clientId: string) {
+    super(`tenant ${clientId} is no longer desired=running — not spawning`);
+    this.name = "TenantNotDesiredError";
+  }
+}
+
+/** Thrown by `spawnTenant()` while the tenant is mid-stop. A benign race for background callers, which must not count it as a failure. */
+export class TenantStoppingError extends Error {
+  constructor(readonly clientId: string) {
+    super(`tenant ${clientId} is currently stopping — wait for it to finish before starting again`);
+    this.name = "TenantStoppingError";
   }
 }
 
@@ -174,6 +213,8 @@ export interface FleetManagerOptions {
    * to ship a production fleet with no verification at all.
    */
   verifyEngineIdentity?: () => EngineIdentity;
+  /** Structured logger (the redacting one from src/logger.ts in production). Defaults to a no-op so unit tests need no env/config. */
+  log?: FleetLogger;
 }
 
 interface TenantEntry {
@@ -194,16 +235,23 @@ const DEFAULT_GRACEFUL_STOP_TIMEOUT_MS = 8000;
 const DEFAULT_SIGTERM_TIMEOUT_MS = 4000;
 const DEFAULT_MAX_CONCURRENT_TENANTS = 5;
 
+export { CLIENT_ID_PATTERN, assertValidClientId };
+
+const liveManagers = new Set<FleetManager>();
+let exitHookInstalled = false;
 /**
- * Strict allow-list for tenant ids. Real ids are Postgres UUIDs
- * (engine_clients.id), which this also accepts; `..`, separators, NUL,
- * and anything else that could escape tenantsRoot/logsRoot is rejected.
+ * Last-resort orphan guard: when the Node process exits for any reason that
+ * runs 'exit' handlers (process.exit(), normal end), SIGKILL every tenant
+ * child still alive. It cannot cover the parent being SIGKILLed itself; that
+ * case relies on the container's PID namespace dying with it (UNVERIFIED on
+ * Railway).
  */
-export const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
-export function assertValidClientId(clientId: string): void {
-  if (typeof clientId !== "string" || !CLIENT_ID_PATTERN.test(clientId)) {
-    throw new Error("invalid clientId: must match /^[A-Za-z0-9_-]{1,64}$/");
-  }
+function installExitHook(): void {
+  if (exitHookInstalled) return;
+  exitHookInstalled = true;
+  process.on("exit", () => {
+    for (const fm of liveManagers) fm.killAllSync();
+  });
 }
 
 export class FleetManager {
@@ -212,6 +260,7 @@ export class FleetManager {
   // defaulted to a no-op: a no-op default would be indistinguishable from a
   // real gate that always passes, and `spawnTenant()`'s production refusal
   // below depends on being able to tell "not wired" from "wired and passing".
+  private shuttingDown = false;
   private readonly opts: Required<Omit<FleetManagerOptions, "verifyEngineIdentity">> &
     Pick<FleetManagerOptions, "verifyEngineIdentity">;
 
@@ -224,8 +273,32 @@ export class FleetManager {
       gracefulStopTimeoutMs: DEFAULT_GRACEFUL_STOP_TIMEOUT_MS,
       sigtermTimeoutMs: DEFAULT_SIGTERM_TIMEOUT_MS,
       maxConcurrentTenants: DEFAULT_MAX_CONCURRENT_TENANTS,
+      log: NOOP_LOGGER,
       ...opts,
     };
+    liveManagers.add(this);
+    installExitHook();
+  }
+
+  isShuttingDown(): boolean {
+    return this.shuttingDown;
+  }
+
+  // -- desired state (durable, on the volume; see desired-state.ts) --
+
+  /** Validated desired state for a tenant, or undefined when there is no usable file. */
+  getDesiredState(clientId: string): DesiredState | undefined {
+    return readDesiredState(this.opts.tenantsRoot, clientId, this.opts.log)?.desired;
+  }
+
+  /** Persists desired state ONLY (no process action). Throws on I/O failure. */
+  setDesiredState(clientId: string, desired: DesiredState): void {
+    writeDesiredState(this.opts.tenantsRoot, clientId, desired);
+  }
+
+  /** Client ids with a valid directory name and a valid desired=running file. */
+  scanDesiredRunning(): string[] {
+    return listDesiredRunning(this.opts.tenantsRoot, this.opts.log);
   }
 
   /** Count of tenants currently occupying a process slot (starting/running/stopping — a "stopping" tenant still holds a live OS process until it actually exits). */
@@ -295,9 +368,10 @@ export class FleetManager {
    * rejected (the caller must wait for the stop to finish before
    * restarting) to avoid a spawn racing a not-yet-released lock file.
    */
-  async spawnTenant(clientId: string): Promise<TenantProcessHandle> {
+  async spawnTenant(clientId: string, spawnOpts: { onlyIfDesired?: boolean } = {}): Promise<TenantProcessHandle> {
     // Path-safety gate: clientId becomes a directory and a log filename.
     assertValidClientId(clientId);
+    if (this.shuttingDown) throw new FleetShuttingDownError();
     // Engine build-identity gate (Task 7) — FIRST, before any bookkeeping or
     // slot accounting. A spawn that cannot legitimately happen must not
     // mutate crash counters, consume a capacity slot, or create a handle.
@@ -314,7 +388,7 @@ export class FleetManager {
         return existing.handle;
       }
       if (existing.handle.status === "stopping") {
-        throw new Error(`tenant ${clientId} is currently stopping — wait for it to finish before starting again`);
+        throw new TenantStoppingError(clientId);
       }
       // stopped/crashed/failed: fall through and respawn, reusing the same
       // handle object (restartCount persists). If a restart was already
@@ -356,6 +430,24 @@ export class FleetManager {
     if (this.activeSlotCount() >= this.opts.maxConcurrentTenants) {
       throw new FleetCapacityError(clientId, this.opts.maxConcurrentTenants);
     }
+
+    // Compare-and-set for background callers (rehydration): they decided to
+    // spawn BEFORE awaiting DB/renewal work, so a /paper_stop or revoke may
+    // have written desired=stopped since. No await sits between this read and
+    // the write below, so nothing can interleave. Explicit user starts do not
+    // pass this flag: /paper_start IS the intent that flips desired to running.
+    if (spawnOpts.onlyIfDesired && this.getDesiredState(clientId) !== "running") {
+      throw new TenantNotDesiredError(clientId);
+    }
+    // WRITE-BEFORE-ACT: record the user's intent durably BEFORE any process
+    // exists. If the control plane dies between this line and the spawn,
+    // rehydration on the next boot finds desired=running and starts it. If
+    // this write fails we must NOT spawn: a running engine with no durable
+    // record would be silently lost on the next restart. Placed after the
+    // engine/capacity gates so a start that could not happen right now
+    // (unavailable engine, full fleet) does not leave a surprise
+    // desired=running that a later sweep starts behind the user's back.
+    writeDesiredState(this.opts.tenantsRoot, clientId, "running");
 
     const entry: TenantEntry = existing ?? {
       handle: { clientId, status: "starting", restartCount: 0, consecutiveCrashes: 0 },
@@ -442,7 +534,15 @@ export class FleetManager {
         // Guard: if stopTenant() was called while we were waiting to
         // restart (status may have moved to "stopping"/"stopped"
         // between schedule and fire), don't resurrect it.
-        if (entry.handle.status !== "crashed") return;
+        if (entry.handle.status !== "crashed" || this.shuttingDown) return;
+        // A stop/revoke persisted desired=stopped while this timer was armed
+        // (e.g. written by another path without a live-process stop): never
+        // relaunch against the user's recorded intent.
+        if (this.getDesiredState(clientId) === "stopped") {
+          entry.handle.status = "stopped";
+          entry.restartTimer = undefined;
+          return;
+        }
         this.launch(entry, /* isRestart */ true);
       }, backoffMs);
     });
@@ -478,6 +578,20 @@ export class FleetManager {
    * cooperative desired-state cycle.
    */
   async stopTenant(clientId: string, graceful: boolean): Promise<void> {
+    // WRITE-BEFORE-ACT: persist desired=stopped first, even when there is no
+    // live entry (a tenant still queued for rehydration has no handle but a
+    // desired=running file, and /paper_stop must cancel that too). A failed
+    // write is logged but does not block the stop itself: the user's intent
+    // to stop wins over bookkeeping.
+    try {
+      writeDesiredState(this.opts.tenantsRoot, clientId, "stopped");
+    } catch (err) {
+      this.opts.log.error({ clientId, code: (err as NodeJS.ErrnoException)?.code }, "could not persist desired=stopped; stopping the process anyway");
+    }
+    return this.stopProcess(clientId, graceful);
+  }
+
+  private async stopProcess(clientId: string, graceful: boolean): Promise<void> {
     const entry = this.tenants.get(clientId);
     // "stopped" and "failed" are both terminal, process-less states with no
     // pending restartTimer (a "failed" tenant gave up auto-restarting by
@@ -563,8 +677,80 @@ export class FleetManager {
     return entry.stopInFlight;
   }
 
+  /**
+   * Graceful whole-fleet shutdown for SIGTERM/SIGINT of the control plane.
+   *
+   * Does NOT write desired state: the tenants must come back on the next
+   * boot (that is what rehydration is for). Sends SIGTERM to every live
+   * tenant at once (the engine's own SIGTERM handler is its graceful stop),
+   * escalates to SIGKILL for stragglers at 75% of the budget, and never
+   * waits past `timeoutMs` in total. `remaining` is the count of children
+   * that STILL had not exited (0 in every normal case). Also latches
+   * `shuttingDown` so no new spawn or crash-restart can start.
+   */
+  async shutdownAll(o: { timeoutMs: number }): Promise<{ total: number; exitedOnSigterm: number; killed: number; remaining: number }> {
+    this.shuttingDown = true;
+    const live: TenantProcess[] = [];
+    for (const entry of this.tenants.values()) {
+      if (entry.restartTimer) {
+        clearTimeout(entry.restartTimer);
+        entry.restartTimer = undefined;
+      }
+      if (entry.process && !entry.process.hasExited) {
+        entry.handle.status = "stopping";
+        live.push(entry.process);
+      } else if (entry.handle.status === "crashed" || entry.handle.status === "starting") {
+        entry.handle.status = "stopped";
+      }
+    }
+    const exited = live.map(
+      (tp) =>
+        new Promise<void>((resolve) => {
+          tp.onEvent((e) => {
+            if (e.type === "exit") resolve();
+          });
+          if (tp.hasExited) resolve();
+        }),
+    );
+    const settle = (ms: number) =>
+      new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, Math.max(0, ms));
+        void Promise.all(exited).then(() => {
+          clearTimeout(t);
+          resolve();
+        });
+      });
+    const startedAt = Date.now();
+    for (const tp of live) tp.signal("SIGTERM");
+    await settle(o.timeoutMs * 0.75);
+    const survivors = live.filter((tp) => !tp.hasExited);
+    for (const tp of survivors) tp.signal("SIGKILL");
+    await settle(o.timeoutMs - (Date.now() - startedAt));
+    const remaining = live.filter((tp) => !tp.hasExited).length;
+    return { total: live.length, exitedOnSigterm: live.length - survivors.length, killed: survivors.length, remaining };
+  }
+
+  /** Last-resort synchronous kill of every live child (used by the process 'exit' hook). */
+  killAllSync(): void {
+    for (const entry of this.tenants.values()) {
+      const tp = entry.process;
+      if (tp && !tp.hasExited) {
+        try {
+          tp.child.kill("SIGKILL");
+        } catch {
+          /* already gone */
+        }
+      }
+    }
+  }
+
   getTenantStatus(clientId: string): TenantProcessHandle | undefined {
     return this.tenants.get(clientId)?.handle;
+  }
+
+  /** Tenants in `crashed` (no live process, restart timer pending). */
+  listCrashedTenants(): TenantProcessHandle[] {
+    return [...this.tenants.values()].map((e) => e.handle).filter((h) => h.status === "crashed");
   }
 
   listActiveTenants(): TenantProcessHandle[] {

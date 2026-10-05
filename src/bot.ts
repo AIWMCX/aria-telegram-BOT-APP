@@ -15,9 +15,10 @@ import { listRecentFeedback } from "./feedback.js";
 import { formatPairReply } from "./pair-reply.js";
 import { registerClient, getLatestActiveClientForUser, setHostingMode, rotateClientDeviceIdentityAndSetHosted, type EngineClient } from "./engine-clients.js";
 import { fleetManager, tenantRuntimeDir } from "./fleet/instance.js";
+import { tenantRehydrator } from "./fleet/rehydration-instance.js";
 import { generateHostedDeviceIdentity, writeHostedDeviceIdentityToDisk } from "./fleet/hosted-device-identity.js";
 import { seedHostedPairingState, renewHostedPairingStateIfNeeded } from "./fleet/hosted-pairing-seed.js";
-import { handlePaperStart, handlePaperStop, handlePaperStatus, formatHostedStatusMessage, type HostedCommandsDeps } from "./fleet/hosted-commands.js";
+import { StartThrottle, handlePaperStart, handlePaperStop, handlePaperStatus, formatHostedStatusMessage, type HostedCommandsDeps } from "./fleet/hosted-commands.js";
 import type { Lead } from "./leads.js";
 import type { IssuedLicense } from "./licenses.js";
 
@@ -415,8 +416,12 @@ async function convertClientToHosted(clientId: string): Promise<void> {
  * implemented for these commands, rather than duplicating it in each
  * handler.
  */
+const hostedStartThrottle = new StartThrottle();
 const hostedDeps: HostedCommandsDeps = {
   fleetManager,
+  startThrottle: hostedStartThrottle,
+  onStarted: (clientId) => tenantRehydrator.clearGiveUp(clientId),
+  rehydrationState: (clientId) => (tenantRehydrator.hasGivenUp(clientId) ? "gave_up" : undefined),
   getLatestActiveClientForUser,
   registerHostedClient,
   convertClientToHosted,
