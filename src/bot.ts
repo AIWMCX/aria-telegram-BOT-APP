@@ -332,9 +332,12 @@ bot.command("invite", async (ctx) => {
   const note = ctx.match?.toString().trim() || undefined;
   const { code } = await createInvite(note);
   const link = `https://t.me/${ctx.me.username}?start=${code}`;
+  // IMPORTANT: send this response as plain text. Telegram's legacy
+  // Markdown parser treats underscores inside usernames/Base64URL invite
+  // codes as formatting delimiters, which can visually remove characters
+  // from the actual credential and produce an unusable deep link.
   await ctx.reply(
-    [`✅ Invite created${note ? ` (${esc(note)})` : ""}`, ``, `Send this link:`, link].join("\n"),
-    { parse_mode: "Markdown" },
+    [`✅ Invite created${note ? ` (${note})` : ""}`, "", "Send this link:", link].join("\n"),
   );
 });
 
