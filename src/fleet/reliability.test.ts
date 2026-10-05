@@ -12,7 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { FleetManager, FleetCapacityError, FleetShuttingDownError, type EngineInvocation, type TenantProcessHandle } from "./fleet-manager.js";
+import { FleetManager, FleetCapacityError, FleetShuttingDownError, TenantStoppingError, type EngineInvocation, type TenantProcessHandle } from "./fleet-manager.js";
 import { EngineIdentityError, type EngineIdentity } from "./engine-identity.js";
 import { desiredStatePath, listDesiredRunning, readDesiredState, writeDesiredState, type FleetLogger } from "./desired-state.js";
 import { TenantRehydrator, type RehydrationClientLike } from "./rehydrator.js";
@@ -712,6 +712,132 @@ async function main() {
     check("throttle drops a user's key once their attempts leave the window", th.size() === 1);
     th.prune();
     check("throttle prune() clears fully expired users", th.size() === 0);
+  }
+
+  // ── 10. second re-review leftovers ──
+  {
+    // pause points: stop during renewal, and stop during the SECOND approval check
+    for (const point of ["renewal", "second-approval"] as const) {
+      const root = tmp();
+      const id = `pp-${point}`;
+      writeDesiredState(root, id, "running");
+      const { fm } = makeFm({ tenantsRoot: root });
+      const log = capLog();
+      let entered!: () => void;
+      const enteredP = new Promise<void>((r) => (entered = r));
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      let approvalCalls = 0;
+      const rh = rhBase(fm, {
+        log,
+        maxFailureAttempts: 1,
+        isUserApproved: async () => {
+          approvalCalls++;
+          if (point === "second-approval" && approvalCalls === 2) {
+            entered();
+            await gate;
+          }
+          return true;
+        },
+        renewHostedEntitlementIfNeeded: async () => {
+          if (point === "renewal") {
+            entered();
+            await gate;
+          }
+        },
+      });
+      const sweep = rh.rehydrateTenants();
+      await enteredP;
+      await fm.stopTenant(id, true);
+      release();
+      await sweep;
+      check(`PAUSE-${point}: stop is not undone (no spawn, desired stays stopped)`, fm.getTenantStatus(id) === undefined && fm.getDesiredState(id) === "stopped");
+      check(`PAUSE-${point}: not counted as a failure / no give-up`, !rh.hasGivenUp(id) && !log.lines.some((l) => l.level === "warn"));
+    }
+
+    // (1) benign spawn races are quiet; a stop landing during a failure is not a failure
+    const benign: Array<[string, (id: string, fm: FleetManager) => Error]> = [
+      ["shutting-down", () => new FleetShuttingDownError()],
+      ["tenant-stopping", (id) => new TenantStoppingError(id)],
+      ["stopped-during-failure", (id, fm) => {
+        fm.setDesiredState(id, "stopped");
+        return new Error("boom");
+      }],
+    ];
+    for (const [name, mk] of benign) {
+      const root = tmp();
+      writeDesiredState(root, "q-1", "running");
+      const { fm } = makeFm({ tenantsRoot: root });
+      const log = capLog();
+      fm.spawnTenant = async (id: string) => {
+        throw mk(id, fm);
+      };
+      const rh = rhBase(fm, { log, maxFailureAttempts: 1, failureBackoffMs: 0 });
+      await rh.rehydrateTenants();
+      check(`QUIET-${name}: not recorded as failure (no give-up, no spawn-failed warn)`, !rh.hasGivenUp("q-1") && !log.lines.some((l) => l.obj.reason === "spawn-failed"));
+    }
+    {
+      const root = tmp();
+      writeDesiredState(root, "q-2", "running");
+      const { fm } = makeFm({ tenantsRoot: root });
+      fm.spawnTenant = async () => {
+        throw new Error("real failure");
+      };
+      const rh = rhBase(fm, { maxFailureAttempts: 1, failureBackoffMs: 0 });
+      await rh.rehydrateTenants();
+      check("QUIET-control: a genuine spawn failure while desired=running still counts and gives up", rh.hasGivenUp("q-2"));
+    }
+
+    // (2) give-up flag cleared when the user's own /paper_start succeeds
+    {
+      const root = tmp();
+      writeDesiredState(root, "gu-1", "running");
+      const { fm } = makeFm({ tenantsRoot: root });
+      const rh = rhBase(fm, {
+        renewHostedEntitlementIfNeeded: async () => {
+          throw new Error("x");
+        },
+        maxFailureAttempts: 1,
+        failureBackoffMs: 0,
+      });
+      await rh.rehydrateTenants();
+      check("CLEAR: precondition, tenant gave up", rh.hasGivenUp("gu-1"));
+      const deps = {
+        fleetManager: { getTenantStatus: () => undefined, spawnTenant: async (id: string) => ({ clientId: id, status: "starting", restartCount: 0, consecutiveCrashes: 0 }), stopTenant: async () => {} },
+        onStarted: (id: string) => rh.clearGiveUp(id),
+        getLatestActiveClientForUser: async () => ({ id: "gu-1", hosting_mode: "hosted" as const }),
+        registerHostedClient: async () => ({ id: "gu-1", hosting_mode: "hosted" as const }),
+        convertClientToHosted: async () => {},
+        isUserApproved: async () => true,
+        renewHostedEntitlementIfNeeded: async () => {},
+        notify: async () => {},
+      } as unknown as HostedCommandsDeps;
+      await startHostedEngine(deps, 1);
+      check("CLEAR: successful /paper_start clears the gave-up flag", !rh.hasGivenUp("gu-1"));
+    }
+
+    // (3) gave-up tenants are covered by checkApprovals
+    {
+      const root = tmp();
+      for (const id of ["gv-revoked", "gv-ok"]) writeDesiredState(root, id, "running");
+      const { fm } = makeFm({ tenantsRoot: root });
+      let approvedRevoked = true;
+      const rh = rhBase(fm, {
+        renewHostedEntitlementIfNeeded: async () => {
+          throw new Error("x");
+        },
+        isUserApproved: async (u) => (u === 77 ? approvedRevoked : true),
+        getClientById: async (id) => client(id, id === "gv-revoked" ? 77 : 1),
+        maxFailureAttempts: 1,
+        failureBackoffMs: 0,
+      });
+      await rh.rehydrateTenants();
+      check("GAVEUP-REVOKE: precondition, both gave up with desired=running", rh.hasGivenUp("gv-revoked") && rh.hasGivenUp("gv-ok") && fm.getDesiredState("gv-revoked") === "running");
+      approvedRevoked = false;
+      await rh.checkApprovals();
+      check("GAVEUP-REVOKE: revoked user's gave-up tenant gets desired=stopped and the flag cleared", fm.getDesiredState("gv-revoked") === "stopped" && !rh.hasGivenUp("gv-revoked"));
+      check("GAVEUP-REVOKE: an approved gave-up tenant is untouched", fm.getDesiredState("gv-ok") === "running" && rh.hasGivenUp("gv-ok"));
+    }
   }
 
   if (failures > 0) {

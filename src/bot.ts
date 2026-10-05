@@ -420,6 +420,7 @@ const hostedStartThrottle = new StartThrottle();
 const hostedDeps: HostedCommandsDeps = {
   fleetManager,
   startThrottle: hostedStartThrottle,
+  onStarted: (clientId) => tenantRehydrator.clearGiveUp(clientId),
   rehydrationState: (clientId) => (tenantRehydrator.hasGivenUp(clientId) ? "gave_up" : undefined),
   getLatestActiveClientForUser,
   registerHostedClient,

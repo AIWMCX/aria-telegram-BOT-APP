@@ -1,4 +1,4 @@
-import { FleetCapacityError, TenantNotDesiredError, type FleetManager, type TenantProcessHandle } from "./fleet-manager.js";
+import { FleetCapacityError, FleetShuttingDownError, TenantNotDesiredError, TenantStoppingError, type FleetManager, type TenantProcessHandle } from "./fleet-manager.js";
 import { EngineIdentityError } from "./engine-identity.js";
 import { NOOP_LOGGER, type FleetLogger } from "./desired-state.js";
 
@@ -109,7 +109,24 @@ export class TenantRehydrator {
     return this.gaveUp.has(clientId);
   }
 
-  private recordFailure(id: string, reason: string): void {
+  /** Forget retry/give-up bookkeeping for a tenant (also called when the user's own /paper_start succeeds). */
+  clearGiveUp(clientId: string): void {
+    this.failures.delete(clientId);
+    this.gaveUp.delete(clientId);
+    this.lastReason.delete(clientId);
+  }
+
+  /**
+   * Counts a failure ONLY if the tenant is still desired=running: a stop
+   * that landed meanwhile is not a failure and must not eventually flip the
+   * tenant to "Needs attention". Returns whether it was counted.
+   */
+  private recordFailure(id: string, reason: string): boolean {
+    if (this.deps.fleet.getDesiredState(id) !== "running") {
+      this.pending.delete(id);
+      this.clearGiveUp(id);
+      return false;
+    }
     const n = (this.failures.get(id)?.n ?? 0) + 1;
     const delay = Math.min(this.failureBackoffMs * 2 ** (n - 1), 30 * 60_000);
     this.failures.set(id, { n, nextAt: Date.now() + delay });
@@ -118,6 +135,7 @@ export class TenantRehydrator {
       this.pending.delete(id);
       this.log.warn({ clientId: id, reason, attempts: n }, "giving up automatic rehydration for this tenant until next boot (desired stays running; needs attention)");
     }
+    return true;
   }
 
   /** Counts only (no ids, no secrets) for /healthz. */
@@ -250,8 +268,9 @@ export class TenantRehydrator {
     try {
       await this.deps.renewHostedEntitlementIfNeeded(id);
     } catch (err) {
-      this.noteOnce(id, "renewal-failed", "warn", "entitlement renewal failed before rehydration spawn; keeping desired=running and retrying", err);
-      this.recordFailure(id, "renewal-failed");
+      if (this.recordFailure(id, "renewal-failed")) {
+        this.noteOnce(id, "renewal-failed", "warn", "entitlement renewal failed before rehydration spawn; keeping desired=running and retrying", err);
+      }
       return;
     }
 
@@ -273,6 +292,7 @@ export class TenantRehydrator {
     } catch (err) {
       if (err instanceof TenantNotDesiredError) {
         this.pending.delete(id);
+        this.clearGiveUp(id);
         this.log.info({ clientId: id, reason: "stopped-while-queued" }, "tenant stopped while rehydration was in progress; not spawned");
         return;
       }
@@ -280,9 +300,11 @@ export class TenantRehydrator {
         this.noteOnce(id, "capacity", "info", "fleet at capacity; tenant stays queued (desired=running) until a slot frees");
       } else if (err instanceof EngineIdentityError) {
         this.noteOnce(id, "engine-unavailable", "warn", "engine unavailable/unverified; tenant stays desired=running and will be retried");
-      } else {
+      } else if (err instanceof FleetShuttingDownError || err instanceof TenantStoppingError) {
+        // Benign races (process is going away / tenant mid-stop): quiet, not a failure.
+        return;
+      } else if (this.recordFailure(id, "spawn-failed")) {
         this.noteOnce(id, "spawn-failed", "warn", "rehydration spawn failed; will retry", err);
-        this.recordFailure(id, "spawn-failed");
       }
       return;
     }
@@ -296,6 +318,7 @@ export class TenantRehydrator {
 
   private markStopped(id: string, why: string): void {
     this.pending.delete(id);
+    this.clearGiveUp(id);
     try {
       this.deps.fleet.setDesiredState(id, "stopped");
     } catch (err) {
@@ -322,6 +345,14 @@ export class TenantRehydrator {
     } catch {
       return;
     }
+    // Tenants rehydration gave up on hold no process and no handle, but their
+    // desired=running file would resurrect them next boot and /paper_status
+    // would tell a revoked user "Needs attention": include them so a revoke
+    // sets desired=stopped and clears the flag.
+    const known = new Set(active.map((h) => h.clientId));
+    for (const id of this.gaveUp) {
+      if (!known.has(id)) active.push({ clientId: id, status: "stopped", restartCount: 0, consecutiveCrashes: 0 });
+    }
     for (const h of active) {
       try {
         const client = await this.deps.getClientById(h.clientId);
@@ -329,6 +360,8 @@ export class TenantRehydrator {
         if (client && client.status === "active" && client.hosting_mode === "hosted" && approved) continue;
         this.log.info({ clientId: h.clientId, reason: !client ? "client-missing" : !approved ? "not-approved" : "client-inactive" }, "approval revoked; stopping hosted PAPER tenant");
         await this.deps.fleet.stopTenant(h.clientId, true); // writes desired=stopped first
+        this.clearGiveUp(h.clientId);
+        this.pending.delete(h.clientId);
       } catch (err) {
         this.log.warn({ clientId: h.clientId, errName: (err as Error)?.name }, "approval re-check failed for a tenant; leaving it as is");
       }

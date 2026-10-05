@@ -75,6 +75,8 @@ export interface EngineClientLike {
 export interface HostedCommandsDeps {
   fleetManager: Pick<FleetManager, "spawnTenant" | "stopTenant" | "getTenantStatus"> &
     Partial<Pick<FleetManager, "getDesiredState">>;
+  /** Optional: called after a /paper_start spawn succeeds (clears rehydration give-up bookkeeping). */
+  onStarted?: (clientId: string) => void;
   /** Optional: "gave_up" when boot rehydration stopped retrying this tenant (needs attention). */
   rehydrationState?: (clientId: string) => "gave_up" | undefined;
   /** Optional per-user start throttle; when absent no throttling happens. */
@@ -212,6 +214,11 @@ export async function startHostedEngine(deps: HostedCommandsDeps, userId: number
     await deps.renewHostedEntitlementIfNeeded(client.id);
     const handle = await deps.fleetManager.spawnTenant(client.id);
     if (isRespawn) deps.startThrottle?.record(userId);
+    try {
+      deps.onStarted?.(client.id);
+    } catch {
+      /* bookkeeping hook must never fail a start */
+    }
     return { ok: true, created, converted, handle };
   } catch (err) {
     if (err instanceof FleetCapacityError) {

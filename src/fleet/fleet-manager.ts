@@ -85,6 +85,14 @@ export class TenantNotDesiredError extends Error {
   }
 }
 
+/** Thrown by `spawnTenant()` while the tenant is mid-stop. A benign race for background callers, which must not count it as a failure. */
+export class TenantStoppingError extends Error {
+  constructor(readonly clientId: string) {
+    super(`tenant ${clientId} is currently stopping — wait for it to finish before starting again`);
+    this.name = "TenantStoppingError";
+  }
+}
+
 /** How to invoke the engine CLI for one tenant action. Injectable so tests can point at the fake fixture instead of the real binary. */
 export interface EngineInvocation {
   buildStart(): { command: string; args: string[]; cwd: string };
@@ -380,7 +388,7 @@ export class FleetManager {
         return existing.handle;
       }
       if (existing.handle.status === "stopping") {
-        throw new Error(`tenant ${clientId} is currently stopping — wait for it to finish before starting again`);
+        throw new TenantStoppingError(clientId);
       }
       // stopped/crashed/failed: fall through and respawn, reusing the same
       // handle object (restartCount persists). If a restart was already
