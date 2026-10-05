@@ -1273,3 +1273,10 @@ Conditional pass of the Task 6 review addressed with committed raw evidence (all
 - Concurrency: nothing else of ours ran during either run besides ambient machine load (~33 unrelated node processes existed before starting); typecheck and engine packaging ran between runs, not during.
 - Runbook section 9 corrected (no author-self-test-as-independent-proof; evidence cited with SHAs); section 10 added.
 - Still NOT verified: Linux/Railway, paper mode with a live price feed, real candidate load, long-run leaks, Docker/Railway build.
+
+## RC1 assembly entry - merged reliability + evidence (2026-10-05)
+
+- release/hosted-paper-rc1 = d5ddbb3 + --no-ff merge of origin/release/hosted-paper-rc1-reliability (5197a45, clean) + --no-ff merge of origin/release/hosted-paper-rc1-evidence (5590436; only conflict: this ledger, both sections kept; package.json test chain auto-merged and retains reliability.test.ts).
+- Evidence-branch soak/capacity scripts use only the unchanged public FleetManager API (spawnTenant/stopTenant), typecheck clean, ran unmodified on the merged tree.
+- Merged tree d25662b: typecheck exit 0; full npm test exit 0 (664 check lines, none failing); packaged-engine rehydration E2E (engine 766dcdbc) exit 0, 9 checks, zero orphans; short fake-fixture regression soak (N=5 warmup 30 s, N=20 main 3 min, 3 SIGKILL + 2 crash-loop) exit 0, journal issues 0, orphans 0.
+- New evidence (separate files, certifying files untouched): docs/evidence/*shad25662b_merged-rc1*. The short soak is a regression smoke, NOT a replacement for the 30-min certifying runs, which are on pre-merge trees (b31b816 / 7c9f3b4).

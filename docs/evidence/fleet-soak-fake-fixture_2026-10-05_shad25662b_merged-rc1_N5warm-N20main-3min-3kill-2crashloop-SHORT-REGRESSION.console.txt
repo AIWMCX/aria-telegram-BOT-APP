@@ -1,0 +1,38 @@
+Fleet Manager soak — started 2026-10-05T18:40:13.503Z
+aria-telegram-BOT-APP SHA: d25662b53ba143fe33df71cf00bc39d086fdcef9
+aria-engine branch/SHA: main @ 766dcdbc7aca1dad54d6294729fba1f45a8b6481
+
+=== PHASE 1: WARMUP (N=5) ===
+warmup: all 5 tenants reached running = true
+warmup: pids = 54608, 79076, 74972, 80168, 64476
+warmup: holding steady for 30s...
+warmup: all still running after hold = true, all pids still OS-alive = true
+warmup: all stopped cleanly = true, orphaned pids after stop = []
+
+=== PHASE 2: MAIN SOAK ===
+main soak: N=20 spawned (crash-loop=2, sigkill-target=3, control=15) -- the 2 crash-loop tenants are BY DESIGN expected to reach terminal 'failed' early, so the sustained concurrent count for the bulk of the run is N-2, not N (see the "sustained" fields recorded in evidence below -- do not read N alone as a concurrency claim).
+main soak: all 18 non-crash-loop tenants reached running = true
+[mem @0s] FleetManager-process RSS=78572KB heapUsed=8720KB active=20 tenants={"soak-crashloop-0":56900,"soak-crashloop-1":null,"soak-sigkill-0":56744,"soak-sigkill-1":56860,"soak-sigkill-2":56936,"soak-control-0":56788,"soak-control-1":56848,"soak-control-2":57464,"soak-control-3":57352,"soak-control-4":57560,"soak-control-5":57628,"soak-control-6":57452,"soak-control-7":57552,"soak-control-8":57708,"soak-control-9":57580,"soak-control-10":57640,"soak-control-11":57636,"soak-control-12":57668,"soak-control-13":57800,"soak-control-14":57740}
+[mem @44s] FleetManager-process RSS=78968KB heapUsed=8667KB active=18 tenants={"soak-crashloop-0":null,"soak-crashloop-1":null,"soak-sigkill-0":58296,"soak-sigkill-1":58192,"soak-sigkill-2":58588,"soak-control-0":58192,"soak-control-1":58268,"soak-control-2":57060,"soak-control-3":56916,"soak-control-4":56968,"soak-control-5":57156,"soak-control-6":56908,"soak-control-7":56924,"soak-control-8":56964,"soak-control-9":57072,"soak-control-10":57072,"soak-control-11":57016,"soak-control-12":57232,"soak-control-13":57212,"soak-control-14":57216}
+[mem @83s] FleetManager-process RSS=79216KB heapUsed=9099KB active=18 tenants={"soak-crashloop-0":null,"soak-crashloop-1":null,"soak-sigkill-0":57452,"soak-sigkill-1":57292,"soak-sigkill-2":57720,"soak-control-0":57228,"soak-control-1":57364,"soak-control-2":57696,"soak-control-3":57524,"soak-control-4":57556,"soak-control-5":57720,"soak-control-6":57488,"soak-control-7":57504,"soak-control-8":57544,"soak-control-9":57652,"soak-control-10":57652,"soak-control-11":57540,"soak-control-12":57776,"soak-control-13":57776,"soak-control-14":57824}
+
+--- FAULT INJECTION @83s: SIGKILL 3 tenants directly (bypassing stopTenant) ---
+  SIGKILL sent to soak-sigkill-0 (pid 54916)
+  SIGKILL sent to soak-sigkill-1 (pid 75140)
+  SIGKILL sent to soak-sigkill-2 (pid 12140)
+[mem @123s] FleetManager-process RSS=79232KB heapUsed=9134KB active=18 tenants={"soak-crashloop-0":null,"soak-crashloop-1":null,"soak-sigkill-0":57336,"soak-sigkill-1":57416,"soak-sigkill-2":57460,"soak-control-0":57896,"soak-control-1":58012,"soak-control-2":58276,"soak-control-3":58160,"soak-control-4":58212,"soak-control-5":58324,"soak-control-6":58152,"soak-control-7":58188,"soak-control-8":58204,"soak-control-9":58272,"soak-control-10":58276,"soak-control-11":58204,"soak-control-12":58432,"soak-control-13":58504,"soak-control-14":58468}
+[mem @163s] FleetManager-process RSS=79512KB heapUsed=8814KB active=18 tenants={"soak-crashloop-0":null,"soak-crashloop-1":null,"soak-sigkill-0":57028,"soak-sigkill-1":56804,"soak-sigkill-2":56968,"soak-control-0":58364,"soak-control-1":58476,"soak-control-2":58740,"soak-control-3":58564,"soak-control-4":58576,"soak-control-5":58688,"soak-control-6":58516,"soak-control-7":58488,"soak-control-8":58504,"soak-control-9":58572,"soak-control-10":58572,"soak-control-11":58480,"soak-control-12":58684,"soak-control-13":58680,"soak-control-14":58644}
+[mem @185s] FleetManager-process RSS=79488KB heapUsed=8998KB active=18 tenants={"soak-crashloop-0":null,"soak-crashloop-1":null,"soak-sigkill-0":57372,"soak-sigkill-1":57156,"soak-sigkill-2":57356,"soak-control-0":58364,"soak-control-1":58476,"soak-control-2":58740,"soak-control-3":58564,"soak-control-4":58576,"soak-control-5":58688,"soak-control-6":58516,"soak-control-7":58488,"soak-control-8":58504,"soak-control-9":58572,"soak-control-10":58572,"soak-control-11":58480,"soak-control-12":58684,"soak-control-13":58680,"soak-control-14":58644}
+
+main soak: control tenants (15) completely unaffected (in-memory AND OS-level pid/log-file checks) = true (in-memory=true, OS-level=true)
+main soak: sigkilled tenants (3) auto-recovered with NEW pids = true
+main soak: crash-loop tenants (2) correctly escalated to terminal 'failed' = true
+main soak: journal integrity issues found = 0
+main soak: ready-marker counts = {"soak-crashloop-0":5,"soak-crashloop-1":5,"soak-sigkill-0":2,"soak-sigkill-1":2,"soak-sigkill-2":2,"soak-control-0":1,"soak-control-1":1,"soak-control-2":1,"soak-control-3":1,"soak-control-4":1,"soak-control-5":1,"soak-control-6":1,"soak-control-7":1,"soak-control-8":1,"soak-control-9":1,"soak-control-10":1,"soak-control-11":1,"soak-control-12":1,"soak-control-13":1,"soak-control-14":1}
+
+main soak: stopping all tenants...
+main soak: orphaned pids after full shutdown = []
+main soak: 20 tenants spawned; 18 sustained concurrently from t=44s to t=185s (~2 min) after the 2 crash-loop tenants reached terminal 'failed' by design
+
+Evidence written to C:\Users\AIWMC\dev\aria-telegram-BOT-APP-rc1\scripts\fleet-soak-evidence.json
+Total soak elapsed: 4 min 3s

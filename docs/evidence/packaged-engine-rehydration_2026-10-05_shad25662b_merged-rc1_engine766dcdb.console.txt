@@ -1,0 +1,11 @@
+✅ two tenants ONLINE from the packaged artifact
+✅ shutdownAll stopped both real engines within budget — 42ms, {"total":2,"exitedOnSigterm":2,"killed":0,"remaining":0}
+✅ old pids are gone (zero orphans after shutdown)
+✅ desired state survived shutdown (still running)
+✅ new manager starts with an empty in-memory map
+✅ both tenants rehydrated and ONLINE
+✅ rehydrated tenants are NEW processes (new pids) — old=66588,77864 new=76144,12572
+✅ healthz-style counts report 2 running, 0 queued
+✅ final shutdownAll leaves zero orphans — {"total":2,"exitedOnSigterm":2,"killed":0,"remaining":0}
+
+REAL rehydration E2E passed
