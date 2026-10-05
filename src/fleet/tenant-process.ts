@@ -28,7 +28,9 @@ export interface TenantProcessSpawnOptions {
   runtimeDir: string;
   /** Directory the per-tenant log file is written into (created if missing). */
   logDir: string;
-  /** Extra env vars merged on top of `{ ...process.env, ARIA_RUNTIME_DIR }`. */
+  /** Test/soak stand-ins only; see buildTenantEnv. Never set for the real engine. */
+  passthroughEnvPrefixes?: readonly string[];
+  /** Extra env vars merged on top of the allow-listed base (see buildTenantEnv); secret-looking names are refused. */
   extraEnv?: Record<string, string>;
   /**
    * Substring to watch for on stdout that marks the process as genuinely
@@ -36,6 +38,65 @@ export interface TenantProcessSpawnOptions {
    * `"paper engine started"`-prefixed line; the test fixture matches too.
    */
   readyMarker: string;
+}
+
+/**
+ * The ONLY variables inherited from the control plane's environment by a
+ * tenant engine process. The control plane's environment holds every secret
+ * the product has (Telegram bot token, DATABASE_URL, the license and
+ * entitlement PRIVATE keys, Stripe/Resend keys, the webhook secret); a tenant
+ * engine is a separate process whose output goes to a file on the volume, and
+ * it needs none of them. aria-engine reads exactly one variable of its own
+ * (ARIA_RUNTIME_DIR, set explicitly below); everything else here is the
+ * operating-system basics Node needs to start (PATH, temp dirs, home, locale,
+ * and on Windows SystemRoot/ComSpec/PATHEXT). Matching is case-insensitive
+ * because Windows environment names are.
+ *
+ * Found by an independent review of the hosted-PAPER release candidate
+ * (2026-10-05): the spawn previously used `{ ...process.env }`.
+ */
+export const TENANT_ENV_ALLOWLIST: readonly string[] = [
+  "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC",
+  "TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE",
+  "LANG", "LC_ALL", "TZ", "NODE_ENV",
+];
+
+const SECRET_LOOKING_KEY = /(TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE|DATABASE_URL|API_?KEY|_KEY$|_D$)/i;
+
+/** Pure: builds the environment a tenant process receives. Never throws on parent contents. */
+export function buildTenantEnv(
+  parentEnv: NodeJS.ProcessEnv,
+  extraEnv: Record<string, string> | undefined,
+  runtimeDir: string,
+  /**
+   * TEST/SOAK STAND-INS ONLY: parent variables whose name starts with one of
+   * these prefixes (e.g. "FAKE_" for the fake engine fixture's crash controls)
+   * are also passed. Production never sets this (realEngineInvocation has none).
+   * Prefixes must look like `NAME_` (uppercase, trailing underscore) and a
+   * secret-looking variable is never passed even if it matches one.
+   */
+  passthroughPrefixes: readonly string[] = [],
+): Record<string, string> {
+  for (const p of passthroughPrefixes) {
+    if (!/^[A-Z][A-Z0-9]+_$/.test(p)) throw new Error(`invalid tenant env passthrough prefix "${p}"`);
+  }
+  const allowed = new Set(TENANT_ENV_ALLOWLIST);
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parentEnv)) {
+    if (value === undefined) continue;
+    const viaPrefix = passthroughPrefixes.some((p) => key.startsWith(p)) && !SECRET_LOOKING_KEY.test(key);
+    if (allowed.has(key.toUpperCase()) || viaPrefix) out[key] = value;
+  }
+  for (const [key, value] of Object.entries(extraEnv ?? {})) {
+    if (SECRET_LOOKING_KEY.test(key)) {
+      // Fail loudly: a future caller passing a credential through extraEnv is a bug,
+      // and the tenant's log file is not a place for control-plane secrets.
+      throw new Error(`refusing to pass secret-looking variable "${key}" to a tenant process`);
+    }
+    out[key] = value;
+  }
+  out.ARIA_RUNTIME_DIR = runtimeDir;
+  return out;
 }
 
 export type TenantProcessEvent =
@@ -76,7 +137,7 @@ export class TenantProcess {
 
     this.child = spawn(opts.command, opts.args, {
       cwd: opts.cwd,
-      env: { ...process.env, ...opts.extraEnv, ARIA_RUNTIME_DIR: opts.runtimeDir },
+      env: buildTenantEnv(process.env, opts.extraEnv, opts.runtimeDir, opts.passthroughEnvPrefixes),
       stdio: ["ignore", "pipe", "pipe"],
     });
 

@@ -123,6 +123,7 @@ function fakeInvocation(): EngineInvocation {
     buildStart: () => ({ command: process.execPath, args: [FIXTURE, "start"], cwd: __dirname }),
     buildStop: () => ({ command: process.execPath, args: [FIXTURE, "stop"], cwd: __dirname }),
     readyMarker: "paper engine started",
+    testEnvPassthroughPrefixes: ["FAKE_"],
   };
 }
 

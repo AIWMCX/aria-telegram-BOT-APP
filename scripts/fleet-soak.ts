@@ -82,6 +82,7 @@ function fakeInvocation(): EngineInvocation {
     buildStart: () => ({ command: process.execPath, args: [FIXTURE, "start"], cwd: __dirname }),
     buildStop: () => ({ command: process.execPath, args: [FIXTURE, "stop"], cwd: __dirname }),
     readyMarker: READY_MARKER,
+    testEnvPassthroughPrefixes: ["FAKE_"],
   };
 }
 
@@ -131,6 +132,7 @@ function mainSoakInvocation(): EngineInvocation {
     buildStart: () => ({ command: process.execPath, args: [MAIN_SOAK_FIXTURE, "start"], cwd: __dirname }),
     buildStop: () => ({ command: process.execPath, args: [MAIN_SOAK_FIXTURE, "stop"], cwd: __dirname }),
     readyMarker: READY_MARKER,
+    testEnvPassthroughPrefixes: ["FAKE_"],
   };
 }
 

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { TenantProcess } from "./tenant-process.js";
+import { TenantProcess, buildTenantEnv } from "./tenant-process.js";
 import { EngineIdentityError, type EngineIdentity } from "./engine-identity.js";
 
 /**
@@ -60,6 +60,13 @@ export interface EngineInvocation {
   buildStop(): { command: string; args: string[]; cwd: string };
   /** Substring on stdout that marks a just-started process as genuinely running. */
   readyMarker: string;
+  /**
+   * TEST/SOAK STAND-INS ONLY (e.g. ["FAKE_"] for the fake engine fixture's crash
+   * controls): extra parent-env prefixes forwarded to the child. The real
+   * engine invocation never sets this, so a production tenant receives only
+   * the allow-listed basics + ARIA_RUNTIME_DIR (see buildTenantEnv).
+   */
+  testEnvPassthroughPrefixes?: readonly string[];
 }
 
 /** Default invocation: run the real aria-engine CLI via tsx, unmodified, from the sibling checkout. */
@@ -375,6 +382,7 @@ export class FleetManager {
       runtimeDir,
       logDir: this.opts.logsRoot,
       readyMarker: this.opts.engineInvocation.readyMarker,
+      passthroughEnvPrefixes: this.opts.engineInvocation.testEnvPassthroughPrefixes,
     });
     entry.process = tp;
     entry.handle.pid = tp.pid;
@@ -530,7 +538,7 @@ export class FleetManager {
           await new Promise<void>((resolve) => {
             const ctrl = spawn(command, args, {
               cwd,
-              env: { ...process.env, ARIA_RUNTIME_DIR: runtimeDir },
+              env: buildTenantEnv(process.env, undefined, runtimeDir, this.opts.engineInvocation.testEnvPassthroughPrefixes),
               stdio: "ignore",
             });
             ctrl.once("exit", () => resolve());
