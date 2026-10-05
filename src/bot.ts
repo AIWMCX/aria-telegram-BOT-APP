@@ -13,6 +13,10 @@ import { getNotifyPromotions, setNotifyPromotions } from "./leads.js";
 import { trackEvent, getFunnelCounts } from "./funnel.js";
 import { listRecentFeedback } from "./feedback.js";
 import { formatPairReply } from "./pair-reply.js";
+import { registerClient, getLatestActiveClientForUser, setHostingMode, rotateClientDeviceIdentityAndSetHosted, type EngineClient } from "./engine-clients.js";
+import { fleetManager, tenantRuntimeDir } from "./fleet/instance.js";
+import { generateHostedDeviceIdentity, writeHostedDeviceIdentityToDisk } from "./fleet/hosted-device-identity.js";
+import { handlePaperStart, handlePaperStop, handlePaperStatus, formatHostedStatusMessage, type HostedCommandsDeps } from "./fleet/hosted-commands.js";
 import type { Lead } from "./leads.js";
 import type { IssuedLicense } from "./licenses.js";
 
@@ -232,6 +236,239 @@ bot.command("pair", async (ctx) => {
   }
 });
 
+/**
+ * Hosted PAPER Engine, Task 4 — creates a brand-new hosted-only
+ * `engine_clients` row for a user who has NEVER run `aria pair <code>`
+ * locally. Per the wider product direction (no terminal, no local pairing
+ * step required for hosted PAPER), `/paper_start` must be able to work for
+ * such a user on its own.
+ *
+ * `device_public_key` is NOT NULL UNIQUE — see
+ * src/fleet/hosted-device-identity.ts's docblock for the full reasoning on
+ * why a REAL Ed25519 keypair is generated here (matching aria-engine's own
+ * local-keystore.ts contract) rather than a synthetic placeholder string:
+ * a placeholder can't ever produce a valid device signature, which would
+ * silently break the hosted engine's very first sync call. The keypair is
+ * generated here (not inside hosted-device-identity.ts) so the SAME
+ * `publicKeyX` is used for both the DB row and the pre-seeded identity
+ * file, with the DB insert happening first — the identity file is written
+ * to the tenant's runtime directory only once we have the real
+ * `client.id` the Fleet Manager will use as that directory's name.
+ */
+async function registerHostedClient(userId: number): Promise<EngineClient> {
+  const identity = generateHostedDeviceIdentity();
+
+  const client = await registerClient({
+    userId,
+    devicePublicKey: identity.publicKeyX,
+    deviceName: "Hosted PAPER (ARIA-managed)",
+    platform: "hosted",
+  });
+  // Disk write BEFORE the hosting_mode commit — see the Task 4 SECOND REVIEW
+  // FIX (2026-09-18) docblock on convertClientToHosted below for the full
+  // crash-safety reasoning (the `registerClient` INSERT above is the
+  // exception among the two flows here: `hosting_mode` defaults to 'local'
+  // at INSERT time per the migration, so this INSERT alone can never put a
+  // half-provisioned row into `hosting_mode: 'hosted'` — only the
+  // `setHostingMode` call directly below can. If the process dies between
+  // the INSERT and here, the row exists with `hosting_mode: 'local'`, which
+  // is exactly the state `startHostedEngine`'s `!client` branch does NOT
+  // match — but its `else if (client.hosting_mode !== "hosted")` branch
+  // DOES, so a retry runs `convertClientToHosted` on this same row, not a
+  // second `registerHostedClient` — self-healing, not a duplicate row).
+  writeHostedDeviceIdentityToDisk(tenantRuntimeDir(client.id), identity);
+  await setHostingMode(client.id, "hosted");
+  return { ...client, hosting_mode: "hosted" };
+}
+
+/**
+ * Hosted PAPER Engine, Task 4 REVIEW FIX (2026-09-18) — the real
+ * implementation behind `HostedCommandsDeps.convertClientToHosted` (see that
+ * interface field's docblock in hosted-commands.ts for the full bug writeup,
+ * and the ledger's Task 4 Log entry for the design-decision writeup on
+ * rotating this row in place rather than creating a second one).
+ *
+ * Fixes a real P0 in commit a0c5ff5: `startHostedEngine`'s
+ * `else if (client.hosting_mode !== "hosted")` branch used to call bare
+ * `setHostingMode(client.id, "hosted")` — flipping the DB flag but writing
+ * NOTHING to disk. That branch only runs for a client row that was
+ * originally paired via the LOCAL `aria pair <code>` CLI flow, which
+ * generates its keypair on the user's own machine and sends only the PUBLIC
+ * key to the server — the control plane never had, and can never recover,
+ * that row's private key. When `spawnTenant()` then boots the real
+ * `aria-engine` CLI into a fresh, empty per-tenant runtime directory,
+ * aria-engine's own `loadOrCreateDeviceIdentity()` finds no
+ * `state/device-identity.json` there and silently generates a BRAND-NEW,
+ * unrelated keypair — one that can never match the OLD `device_public_key`
+ * already stored in this row. `spawnTenant()` succeeds and reports
+ * "running", but every subsequent `/api/engine/sync` call from that hosted
+ * process fails signature verification: permanently, silently, with no
+ * visible error at the point of failure.
+ *
+ * The fix mirrors `registerHostedClient` above exactly — same
+ * `generateHostedDeviceIdentity()` keypair generation, same
+ * `writeHostedDeviceIdentityToDisk` call into the SAME tenant runtime
+ * directory `spawnTenant()` will point `ARIA_RUNTIME_DIR` at — with one
+ * difference: instead of INSERTing a new row (`registerClient`), it UPDATEs
+ * this EXISTING row's `device_public_key` to match the freshly generated key
+ * (`rotateClientDeviceIdentity` — `registerClient`/`registerHostedClient`
+ * only ever INSERT; there was no existing UPDATE-a-key primitive).
+ *
+ * This is a deliberate, disclosed, one-way identity rotation: the user's
+ * ORIGINAL local device identity for THIS client_id is intentionally
+ * superseded. If they later run the local CLI again on their own machine
+ * with that original identity, its signatures will no longer match this
+ * row and it will need to re-pair via `/pair` to get a fresh row — the same
+ * "no automatic path back to local" limitation `setHostingMode`'s own
+ * docstring already discloses for the mode flip itself. Rotating THIS row
+ * in place (rather than creating a second engine_clients row for the hosted
+ * identity) was chosen because the rest of this codebase already commits to
+ * "one row per user's active client, mutated in place across hosting-mode
+ * transitions" — `getLatestActiveClientForUser` returns exactly one row per
+ * user, and hosted-commands.test.ts's existing security-isolation contract
+ * asserts `spawnTenant` is called with the SAME client id across a hosting-
+ * mode transition, not a newly minted one. A second row would silently
+ * violate both.
+ *
+ * Task 4 SECOND REVIEW FIX (2026-09-18) — reordered to disk-write-THEN-
+ * DB-commit (was DB-write-then-disk-write). The original ordering committed
+ * `rotateClientDeviceIdentity` (new key) and `setHostingMode` (flip to
+ * "hosted") to the DB BEFORE `writeHostedDeviceIdentityToDisk` ran. If the
+ * process crashed in that window (after the DB commit, before the disk
+ * write landed), the row was left durably in `hosting_mode: "hosted"` with
+ * a `device_public_key` that had NO corresponding identity file anywhere on
+ * disk. The next `/paper_start` call's `else if (client.hosting_mode !==
+ * "hosted")` guard in `startHostedEngine` would then be FALSE for that row
+ * (it already reads "hosted"), so `convertClientToHosted` would never run
+ * again — `spawnTenant` would be called directly against an empty runtime
+ * dir, reintroducing the exact original P0 (silent, permanent sync
+ * failure) under a narrow crash window instead of guaranteeing it.
+ *
+ * The disk write is now genuinely first, and the DB update — the durable
+ * "point of no return" — happens LAST, only after `writeHostedDeviceIdentityToDisk`
+ * has returned successfully (a synchronous call; if it throws — disk full,
+ * permissions — this function throws before the DB call runs, so the DB is
+ * provably never touched in that case). The two DB writes the old code made
+ * separately (`rotateClientDeviceIdentity` then `setHostingMode`) are now
+ * ONE atomic `rotateClientDeviceIdentityAndSetHosted` UPDATE (engine-clients.ts)
+ * so there is no intermediate "key rotated but still local" state either —
+ * this makes the whole flow self-healing under a crash on either side of
+ * that single remaining boundary:
+ *   - Crash after the disk write but before the DB UPDATE commits: the row
+ *     is untouched — still `hosting_mode: "local"` with its ORIGINAL
+ *     `device_public_key`. The next `/paper_start` call takes the exact
+ *     same `else if` branch again and calls `convertClientToHosted` again
+ *     from scratch: `generateHostedDeviceIdentity()` produces a fresh
+ *     keypair, `writeHostedDeviceIdentityToDisk` OVERWRITES the incomplete
+ *     file from the crashed attempt (safe — that file was never referenced
+ *     by any committed DB row and never used for a real sync), and the one
+ *     atomic UPDATE then commits the new key together with the mode flip.
+ *     No leftover inconsistent state survives a retry.
+ *   - Crash during/after the DB UPDATE: by then the disk file is already
+ *     genuinely in place and the single UPDATE either fully committed or
+ *     didn't — there is no partial-commit state to reason about.
+ * See hosted-commands.test.ts's "crash-safety" block for a test that
+ * genuinely exercises the first scenario (forces the DB update to throw
+ * AFTER the disk write has really happened, then asserts a retry
+ * self-heals).
+ */
+async function convertClientToHosted(clientId: string): Promise<void> {
+  const identity = generateHostedDeviceIdentity();
+  // Disk write first: the durable DB commit below only ever runs once the
+  // identity genuinely exists on disk where spawnTenant() will look for it.
+  // The DB side is ONE atomic UPDATE (rotateClientDeviceIdentityAndSetHosted)
+  // rather than two sequential calls — see that function's docblock
+  // (engine-clients.ts) for why a single statement is required for the
+  // self-healing property to hold with no intermediate inconsistent state.
+  writeHostedDeviceIdentityToDisk(tenantRuntimeDir(clientId), identity);
+  await rotateClientDeviceIdentityAndSetHosted(clientId, identity.publicKeyX);
+}
+
+/**
+ * Single `HostedCommandsDeps` object shared by all three hosted-PAPER
+ * commands below — real Fleet Manager, real DB lookups, and the ONE place
+ * the existing `try { await bot.api.sendMessage(...) } catch { logger.warn(...) }`
+ * pattern (matching every `notify*` function elsewhere in this file) is
+ * implemented for these commands, rather than duplicating it in each
+ * handler.
+ */
+const hostedDeps: HostedCommandsDeps = {
+  fleetManager,
+  getLatestActiveClientForUser,
+  registerHostedClient,
+  convertClientToHosted,
+  isUserApproved,
+  notify: async (telegramUserId, text) => {
+    try {
+      await bot.api.sendMessage(telegramUserId, text, { parse_mode: "Markdown" });
+    } catch (err) {
+      logger.warn({ err }, "hosted PAPER command DM failed — they may not have started the bot chat");
+    }
+  },
+};
+
+/**
+ * `/paper_start` — hosted-PAPER start. Chosen over extending `/pair`
+ * (which is specifically the LOCAL-device pairing flow — a hosted tenant
+ * has no local device at all) and over extending `/status` (which today
+ * is the license-status view, a different concept from engine process
+ * state). `paper_` prefix matches aria-engine's own `aria paper start`
+ * CLI vocabulary from the design spec's Task 4 section, so a user who's
+ * seen either surface recognizes the other.
+ */
+bot.command("paper_start", async (ctx) => {
+  const tgId = ctx.from?.id;
+  if (!tgId) return;
+  if (!USERS_DOMAIN_ENABLED) { await ctx.reply("Hosted PAPER isn't available yet."); return; }
+  try {
+    const user = await upsertUserFromTelegram({
+      id: tgId, username: ctx.from?.username, first_name: ctx.from?.first_name, last_name: ctx.from?.last_name,
+    });
+    await handlePaperStart(hostedDeps, { telegramUserId: tgId, userId: user.id });
+  } catch (err) {
+    logger.error({ err }, "paper_start command failed");
+    await ctx.reply("Something went wrong starting your hosted PAPER engine. Try again shortly.");
+  }
+});
+
+/** `/paper_stop` — hosted-PAPER stop, wired to FleetManager.stopTenant(). */
+bot.command("paper_stop", async (ctx) => {
+  const tgId = ctx.from?.id;
+  if (!tgId) return;
+  if (!USERS_DOMAIN_ENABLED) { await ctx.reply("Hosted PAPER isn't available yet."); return; }
+  try {
+    const user = await getUserByTelegramId(tgId);
+    if (!user) { await ctx.reply("No account found yet — use /start first."); return; }
+    await handlePaperStop(hostedDeps, { telegramUserId: tgId, userId: user.id });
+  } catch (err) {
+    logger.error({ err }, "paper_stop command failed");
+    await ctx.reply("Something went wrong stopping your hosted PAPER engine. Try again shortly.");
+  }
+});
+
+/**
+ * `/paper_status` — real `TenantProcessHandle` state, never a fabricated
+ * "all good". A user who never ran /paper_start gets an honest "never
+ * started" (no DB lookup even needed for that case) rather than the same
+ * message a stopped tenant would show.
+ */
+bot.command("paper_status", async (ctx) => {
+  const tgId = ctx.from?.id;
+  if (!tgId) return;
+  if (!USERS_DOMAIN_ENABLED) { await ctx.reply("Hosted PAPER isn't available yet."); return; }
+  try {
+    const user = await getUserByTelegramId(tgId);
+    if (!user) {
+      await hostedDeps.notify(tgId, formatHostedStatusMessage(undefined));
+      return;
+    }
+    await handlePaperStatus(hostedDeps, { telegramUserId: tgId, userId: user.id });
+  } catch (err) {
+    logger.error({ err }, "paper_status command failed");
+    await ctx.reply("Something went wrong checking your hosted PAPER engine status. Try again shortly.");
+  }
+});
+
 bot.command("support", async (ctx) => {
   // Was pointing at PUBLIC_URL + "/docs", a route that has never existed —
   // every tap 404'd. Points at the real Terms/Privacy/Risk/Refund/Support
@@ -311,6 +548,9 @@ bot.command("help", async (ctx) => {
       `/start — open the terminal, get access`,
       `/license (or /status) — your current plan and expiry`,
       `/pair — get a code to connect your local ARIA engine`,
+      `/paper_start — start your PAPER engine on ARIA's infrastructure (no local install needed)`,
+      `/paper_stop — stop your hosted PAPER engine`,
+      `/paper_status — check your hosted PAPER engine's status`,
       `/support — contact us, terms & risk disclosure`,
       `/notifications — manage promo/engine-alert preferences`,
       `/help — this message`, ``,

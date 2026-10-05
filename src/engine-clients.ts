@@ -11,6 +11,8 @@ import { pgPool } from "./db-pg.js";
  * signing credential.
  */
 export type EngineClientStatus = "active" | "revoked";
+/** Added by the hosting-mode migration (1789169021631) — see that file's docblock. 'local' is the default for every pre-existing row. */
+export type EngineHostingMode = "local" | "hosted";
 
 export interface EngineClient {
   id: string; // uuid
@@ -25,6 +27,7 @@ export interface EngineClient {
   paired_at: string;
   revoked_at: string | null;
   offline_notified_at: string | null;
+  hosting_mode: EngineHostingMode;
 }
 
 function requirePool() {
@@ -145,5 +148,84 @@ export async function revokeClient(id: string): Promise<void> {
   await pool.query(
     `UPDATE engine_clients SET status = 'revoked', revoked_at = now() WHERE id = $1`,
     [id],
+  );
+}
+
+/**
+ * Hosted PAPER Engine, Task 4 — flips a client's `hosting_mode`. Used by the
+ * new hosted-start command handler to mark a client as Fleet-Manager-owned
+ * (either a freshly created hosted-only row, or an existing local-CLI-paired
+ * row the user is now also choosing to run hosted). Never flips a client
+ * BACK to 'local' automatically — that would need its own explicit
+ * "run locally instead" UX this task doesn't build.
+ */
+export async function setHostingMode(id: string, mode: EngineHostingMode): Promise<void> {
+  const pool = requirePool();
+  await pool.query(`UPDATE engine_clients SET hosting_mode = $2 WHERE id = $1`, [id, mode]);
+}
+
+/**
+ * Hosted PAPER Engine, Task 4 REVIEW FIX (2026-09-18) — rotates an EXISTING
+ * row's `device_public_key` in place. `registerClient`/`registerHostedClient`
+ * only ever INSERT a fresh row; there was no primitive for updating the key
+ * on a row that already exists, which is exactly what converting a
+ * previously-'local' client to 'hosted' needs.
+ *
+ * Why this is needed at all: a client row that was paired via the LOCAL
+ * `aria pair <code>` flow has a `device_public_key` whose private half only
+ * ever existed on the user's own machine — the control plane never had it.
+ * If that same row is later converted to 'hosted' (see bot.ts's
+ * `convertClientToHosted`), the Fleet Manager spawns a real `aria-engine`
+ * CLI into a brand-new, empty per-tenant runtime directory; that process's
+ * own `loadOrCreateDeviceIdentity()` would otherwise silently generate an
+ * unrelated keypair there (no `state/device-identity.json` to find), which
+ * could never match the OLD key already stored in this row — every
+ * subsequent `/api/engine/sync` call would then fail signature verification,
+ * permanently and silently. The caller generates a fresh, real Ed25519
+ * keypair (via `generateHostedDeviceIdentity()`, the SAME helper
+ * `registerHostedClient` uses for a brand-new row) and writes it to the
+ * tenant's runtime directory BEFORE calling this — this function's only job
+ * is to make the DB row agree with what's now on disk.
+ *
+ * This is a deliberate, one-way identity rotation, not a bug being papered
+ * over: the row's original (locally-paired) identity is intentionally
+ * superseded. If the user later runs the local CLI again with that original
+ * identity, it will no longer match this row and will need to re-pair via
+ * `/pair` — see the ledger's Task 4 Log entry for the full design-decision
+ * writeup (rotate this row in place vs. a separate row per hosting mode).
+ */
+export async function rotateClientDeviceIdentity(id: string, newPublicKey: string): Promise<void> {
+  const pool = requirePool();
+  await pool.query(`UPDATE engine_clients SET device_public_key = $2 WHERE id = $1`, [id, newPublicKey]);
+}
+
+/**
+ * Hosted PAPER Engine, Task 4 SECOND REVIEW FIX (2026-09-18) — atomic
+ * combination of `rotateClientDeviceIdentity` + `setHostingMode(..., "hosted")`
+ * into ONE UPDATE statement, used by `bot.ts`'s `convertClientToHosted`.
+ *
+ * Why this needs to be one statement rather than the two sequential calls
+ * `convertClientToHosted` used to make: the caller's crash-safety contract
+ * depends on the DB commit being a single indivisible "point of no return"
+ * that happens strictly AFTER the identity file is genuinely written to
+ * disk. Two separate UPDATE calls leave a real gap between them — a crash
+ * between `rotateClientDeviceIdentity` committing and `setHostingMode`
+ * committing would leave the row with a ROTATED key but `hosting_mode`
+ * still `"local"`, which is a real (if narrower) inconsistency: the row's
+ * local pairing is already broken (key changed) but the row doesn't yet
+ * say "hosted" either. A single UPDATE touching both columns is atomic by
+ * Postgres's own single-statement guarantee — it commits both changes
+ * together or neither, so there is no intermediate state to reason about
+ * at all, and the retry-from-`/paper_start` self-healing story (see
+ * `convertClientToHosted`'s docblock in bot.ts) only has ONE boundary to
+ * cross: before this call (row still fully `"local"` with its original
+ * key — retry re-runs the whole conversion from scratch) or after it (row
+ * fully `"hosted"` with the new key, matching what's already on disk).
+ */
+export async function rotateClientDeviceIdentityAndSetHosted(id: string, newPublicKey: string): Promise<void> {
+  const pool = requirePool();
+  await pool.query(
+    `UPDATE engine_clients SET device_public_key = $2, hosting_mode = 'hosted' WHERE id = $1`,
+    [id, newPublicKey],
   );
 }
