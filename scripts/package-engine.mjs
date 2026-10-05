@@ -37,6 +37,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { scrubbedChildEnv } from "./package-engine-env.mjs";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
@@ -54,7 +55,7 @@ function arg(name) {
 }
 
 function run(cmd, args, cwd) {
-  return execFileSync(cmd, args, { cwd, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
+  return execFileSync(cmd, args, { cwd, env: scrubbedChildEnv(), stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
 }
 
 // Redact any occurrence of the (secret) token from text before it is ever
@@ -147,6 +148,7 @@ console.log("[package-engine] npm ci --include=dev");
 // local production-equivalent test can produce a real artifact on Windows.
 execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", ["ci", "--include=dev", "--no-audit", "--no-fund"], {
   cwd: dest,
+  env: scrubbedChildEnv(), // no git/registry credentials visible to the engine's install scripts
   stdio: "inherit",
   // Node >=20.12 refuses to spawn .cmd files without a shell (EINVAL, CVE-2024-27980).
   // Windows-only; the args above are constants, so no injection surface. Linux/Docker unchanged.

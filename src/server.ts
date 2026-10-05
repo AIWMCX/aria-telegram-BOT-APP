@@ -30,6 +30,7 @@ import { db } from "./db.js";
 import { getPostgresHealth } from "./pg-health.js";
 import { engineIdentity } from "./fleet/instance.js";
 import { tenantRehydrator } from "./fleet/rehydration-instance.js";
+import { FLEET_FLAGS } from "./config.js";
 
 export const app = new Hono();
 
@@ -144,7 +145,8 @@ app.get("/healthz", async (c) => {
     // queued = desired=running tenants waiting for a slot/retry, restarting =
     // being (re)started after a control-plane restart, running = rehydrated
     // and up.
-    fleet: { available: engine.available, rehydration: tenantRehydrator.counts() },
+    // `enabled` is the FLEET_ENABLED kill switch; a disabled fleet is never "available".
+    fleet: { enabled: FLEET_FLAGS.enabled, available: FLEET_FLAGS.enabled && engine.available, rehydration: tenantRehydrator.counts() },
   });
 });
 

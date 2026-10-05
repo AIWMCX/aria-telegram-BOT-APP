@@ -1,5 +1,5 @@
 import { db } from "./db.js"; // ensure schema runs before anything else touches the DB
-import { CONFIG, PAYMENTS_ENABLED, TELEGRAM_WEBHOOK_PATH, USERS_DOMAIN_ENABLED } from "./config.js";
+import { CONFIG, FLEET_FLAGS, PAYMENTS_ENABLED, TELEGRAM_WEBHOOK_PATH, USERS_DOMAIN_ENABLED } from "./config.js";
 import { logger } from "./logger.js";
 import { installProcessErrorHandlers } from "./process-errors.js";
 
@@ -117,7 +117,9 @@ async function main(): Promise<void> {
   // is already listening and migrations have run; the engine identity gate is
   // applied per-spawn inside FleetManager (unavailable engine => stays
   // desired=running and is retried by the periodic tick).
-  if (USERS_DOMAIN_ENABLED) {
+  if (!FLEET_FLAGS.enabled) {
+    logger.info({}, "hosted PAPER fleet is DISABLED (FLEET_ENABLED not true): no rehydration, no spawns; desired state on the volume is left untouched");
+  } else if (USERS_DOMAIN_ENABLED) {
     tenantRehydrator.startPeriodic();
     void tenantRehydrator.rehydrateTenants().catch((err) => {
       logger.error({ err }, "tenant rehydration sweep crashed outside its own handling");

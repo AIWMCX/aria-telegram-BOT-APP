@@ -83,7 +83,7 @@ Fill in `.env` (names are in `.env.template`):
 - NEW: `TELEGRAM_WEBHOOK_SECRET` (`openssl rand -hex 32`) - must NOT be the old value, which leaked into Railway logs (2026-09-26 audit). `POSTGRES_PASSWORD` (`openssl rand -hex 24`).
 - `PUBLIC_URL` = the final https URL (section 5), no trailing slash. `TELEGRAM_TRANSPORT=webhook`. Plus `TELEGRAM_BOT_TOKEN`, `RESEND_API_KEY`, `ADMIN_EMAIL`, `FROM_EMAIL` and the Stripe values as on Railway.
 
-- Hosted PAPER engine build inputs (REQUIRED, the image build fails closed without them): `ARIA_ENGINE_COMMIT_SHA` (exact 40-char commit of the aria-engine repo) and `ARIA_ENGINE_GIT_TOKEN` (read-only token for it). **aria-engine is a PRIVATE repo: a host without read access to AIWMCX/aria-engine cannot build this image.** The token is used only in the builder stage and is not in the final image. Optional runtime tuning: `FLEET_MAX_CONCURRENT_TENANTS` (default 5; use 12 for ~10 concurrent testers; leave it unset rather than empty).
+- Hosted PAPER engine build inputs (REQUIRED, the image build fails closed without them): `ARIA_ENGINE_COMMIT_SHA` (exact 40-char commit of the aria-engine repo) and `ARIA_ENGINE_GIT_TOKEN` (read-only token for it). **aria-engine is a PRIVATE repo: a host without read access to AIWMCX/aria-engine cannot build this image.** The token is used only in the builder stage and is not in the final image. Hosted fleet runtime switches: `FLEET_ENABLED` (default false = fleet dark), `FLEET_ALLOWED_TELEGRAM_IDS` (founder-only first deploy), `FLEET_MAX_CONCURRENT_TENANTS` (default 3; an empty value is treated as unset), `FLEET_MIN_FREE_MEMORY_MB` (default 400), and `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=15` on Railway. Full ordered checklist, kill switch (`/fleet_stop_all`) and rollback: section 12 below and the "Hosted PAPER fleet: deploy hardening" section of docs/FLEET_MANAGER_RUNBOOK.md.
 
 Import old data (only if you exported in section 1). Put the two files in a folder, named exactly `aria.pgdump` and `aria.sqlite` (e.g. `deploy/import/aria.pgdump` and `deploy/import/aria.sqlite`), then:
 
@@ -169,3 +169,24 @@ Method: portable EnterpriseDB PostgreSQL 17.5 zip, user-level initdb on 127.0.0.
 - Expected and harmless in the test: setWebhook returned 401 because the token was a dummy.
 
 NOT verified: docker build, docker compose up, the app healthcheck inside the image, cloudflared, backup.sh/restore.sh end to end (only their pg_dump/pg_restore/VACUUM INTO steps were exercised, not through `docker compose exec`), arm64. `docker compose config` (with and without the tunnel profile) passed.
+
+## 12. Hosted PAPER fleet: deploy and rollback
+
+Short form; the full table of switches, the cap-sizing formula and what is
+unverified are in the "Hosted PAPER fleet: deploy hardening" section of
+`docs/FLEET_MANAGER_RUNBOOK.md`.
+
+Before enabling: check the `invites` table for other approved users; set
+`ARIA_ENGINE_GIT_TOKEN`, `ARIA_ENGINE_COMMIT_SHA=766dcdbc7aca1dad54d6294729fba1f45a8b6481`,
+`FLEET_ENABLED=true`, `FLEET_ALLOWED_TELEGRAM_IDS=<founder>`,
+`FLEET_MAX_CONCURRENT_TENANTS=3`, `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=15`
+(on non-Railway hosts the equivalent is giving the container a stop grace of
+at least 15 s, e.g. compose `stop_grace_period: 15s`). Then verify `/healthz`
+(`engine.available`, `engine.sha`, `fleet.enabled`, `fleet.available`),
+run founder `/paper_start` -> `/paper_status` -> `/paper_stop`, and do one
+redeploy to confirm rehydration before widening access.
+
+Rollback / kill switch: admin `/fleet_stop_all` (stops all tenants and marks
+them stopped), then `FLEET_ENABLED=false` and redeploy. `/healthz`
+`fleet.enabled:false` confirms. The Docker image build and Linux runtime
+behaviour have not been verified.

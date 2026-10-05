@@ -51,6 +51,13 @@ export async function upsertUserFromTelegram(identity: TelegramIdentity): Promis
   return rows[0]!;
 }
 
+/** Internal-id lookup (used by fleet access checks that only have users.id). */
+export async function getUserById(id: number): Promise<User | undefined> {
+  const pool = requirePool();
+  const { rows } = await pool.query<User>(`SELECT * FROM users WHERE id = $1`, [id]);
+  return rows[0];
+}
+
 export async function getUserByTelegramId(telegramUserId: number): Promise<User | undefined> {
   const pool = requirePool();
   const { rows } = await pool.query<User>(`SELECT * FROM users WHERE telegram_user_id = $1`, [telegramUserId]);

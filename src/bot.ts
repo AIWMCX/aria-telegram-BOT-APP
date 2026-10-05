@@ -16,6 +16,7 @@ import { formatPairReply } from "./pair-reply.js";
 import { registerClient, getLatestActiveClientForUser, setHostingMode, rotateClientDeviceIdentityAndSetHosted, type EngineClient } from "./engine-clients.js";
 import { fleetManager, tenantRuntimeDir } from "./fleet/instance.js";
 import { tenantRehydrator } from "./fleet/rehydration-instance.js";
+import { fleetAccess } from "./fleet/access-instance.js";
 import { generateHostedDeviceIdentity, writeHostedDeviceIdentityToDisk } from "./fleet/hosted-device-identity.js";
 import { seedHostedPairingState, renewHostedPairingStateIfNeeded } from "./fleet/hosted-pairing-seed.js";
 import { StartThrottle, handlePaperStart, handlePaperStop, handlePaperStatus, formatHostedStatusMessage, type HostedCommandsDeps } from "./fleet/hosted-commands.js";
@@ -420,6 +421,7 @@ const hostedStartThrottle = new StartThrottle();
 const hostedDeps: HostedCommandsDeps = {
   fleetManager,
   startThrottle: hostedStartThrottle,
+  isFleetAccessible: (tgId) => fleetAccess.isTelegramIdAllowed(tgId),
   onStarted: (clientId) => tenantRehydrator.clearGiveUp(clientId),
   rehydrationState: (clientId) => (tenantRehydrator.hasGivenUp(clientId) ? "gave_up" : undefined),
   getLatestActiveClientForUser,
@@ -697,6 +699,23 @@ bot.command("revoke", async (ctx) => {
  * reflects the new status live; no separate command needs to be enqueued
  * for this specific effect.
  */
+/**
+ * Fleet kill switch (admin only): stop EVERY hosted tenant and persist
+ * desired=stopped for all of them so nothing comes back on the next restart.
+ * Pair with FLEET_ENABLED=false for a full rollback (see the runbook).
+ */
+bot.command("fleet_stop_all", async (ctx) => {
+  if (!(await requireAdmin(ctx, "fleet_stop_all"))) return;
+  try {
+    const { count } = await fleetManager.stopAllTenants();
+    logger.warn({ count, admin: ctx.from?.id }, "fleet_stop_all executed");
+    await ctx.reply(`Stopped ${count} hosted PAPER tenant${count === 1 ? "" : "s"} and set their desired state to stopped.`);
+  } catch (err) {
+    logger.error({ err: describeBotError(err) }, "fleet_stop_all failed");
+    await ctx.reply("fleet_stop_all failed — check logs.");
+  }
+});
+
 bot.command("revokeengine", async (ctx) => {
   if (!(await requireAdmin(ctx, "revokeengine"))) return;
   const entitlementId = ctx.match?.toString().trim();

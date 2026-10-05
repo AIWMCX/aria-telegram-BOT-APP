@@ -1,4 +1,4 @@
-import { FleetCapacityError, FleetShuttingDownError, TenantNotDesiredError, TenantStoppingError, type FleetManager, type TenantProcessHandle } from "./fleet-manager.js";
+import { FleetCapacityError, FleetLowMemoryError, FleetShuttingDownError, TenantNotDesiredError, TenantStoppingError, type FleetManager, type TenantProcessHandle } from "./fleet-manager.js";
 import { EngineIdentityError } from "./engine-identity.js";
 import { NOOP_LOGGER, type FleetLogger } from "./desired-state.js";
 
@@ -296,7 +296,9 @@ export class TenantRehydrator {
         this.log.info({ clientId: id, reason: "stopped-while-queued" }, "tenant stopped while rehydration was in progress; not spawned");
         return;
       }
-      if (err instanceof FleetCapacityError) {
+      if (err instanceof FleetLowMemoryError) {
+        this.noteOnce(id, "low-memory", "info", "not enough free memory to start another tenant; stays queued (desired=running) until memory frees");
+      } else if (err instanceof FleetCapacityError) {
         this.noteOnce(id, "capacity", "info", "fleet at capacity; tenant stays queued (desired=running) until a slot frees");
       } else if (err instanceof EngineIdentityError) {
         this.noteOnce(id, "engine-unavailable", "warn", "engine unavailable/unverified; tenant stays desired=running and will be retried");

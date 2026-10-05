@@ -58,7 +58,7 @@ WORKDIR /opt
 # stage below copies the checked-out TREE, not this stage's environment or
 # history, and package-engine.mjs deletes `.git` (and the token-bearing
 # remote URL with it) before the copy. It is never echoed to the build log.
-COPY scripts/package-engine.mjs /tmp/package-engine.mjs
+COPY scripts/package-engine.mjs scripts/package-engine-env.mjs /tmp/
 RUN node /tmp/package-engine.mjs --sha "$ARIA_ENGINE_COMMIT_SHA" --url "$ARIA_ENGINE_GIT_URL" --dest /opt/aria-engine
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { createWriteStream, type WriteStream } from "node:fs";
+import { createWriteStream, renameSync, statSync, type WriteStream } from "node:fs";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
@@ -99,6 +99,20 @@ export function buildTenantEnv(
   return out;
 }
 
+/** Tenant logs are append-only across restarts; rotate at spawn once one exceeds this (keeps one previous generation). */
+export const MAX_TENANT_LOG_BYTES = 20 * 1024 * 1024;
+
+/** If `logPath` is larger than `maxBytes`, move it to `<logPath>.1` (replacing any older one). Never throws. */
+export function rotateLogIfLarge(logPath: string, maxBytes: number): boolean {
+  try {
+    if (statSync(logPath).size <= maxBytes) return false;
+    renameSync(logPath, `${logPath}.1`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export type TenantProcessEvent =
   | { type: "ready" }
   | { type: "exit"; code: number | null; signal: NodeJS.Signals | null };
@@ -129,6 +143,7 @@ export class TenantProcess {
     // not silently re-permission anything on an existing volume.
     mkdirSync(opts.logDir, { recursive: true, mode: 0o700 });
     this.logPath = path.join(opts.logDir, `${opts.clientId}.log`);
+    rotateLogIfLarge(this.logPath, MAX_TENANT_LOG_BYTES);
     this.logStream = createWriteStream(this.logPath, { flags: "a" });
 
     this.readyPromise = new Promise((resolve) => {

@@ -1,4 +1,4 @@
-import { CONFIG } from "../config.js";
+import { CONFIG, FLEET_FLAGS } from "../config.js";
 import { logger } from "../logger.js";
 import { FleetManager, realEngineInvocation } from "./fleet-manager.js";
 import { resolveEngineIdentity, type EngineIdentity } from "./engine-identity.js";
@@ -40,8 +40,9 @@ export const fleetManager = new FleetManager({
   log: logger,
   tenantsRoot: CONFIG.FLEET_TENANTS_ROOT,
   logsRoot: CONFIG.FLEET_LOGS_ROOT,
-  ...(CONFIG.FLEET_MAX_CONCURRENT_TENANTS !== undefined
-    ? { maxConcurrentTenants: CONFIG.FLEET_MAX_CONCURRENT_TENANTS }
+  minFreeMemoryBytes: FLEET_FLAGS.minFreeMemoryMb * 1024 * 1024,
+  ...(FLEET_FLAGS.maxConcurrentTenants !== undefined
+    ? { maxConcurrentTenants: FLEET_FLAGS.maxConcurrentTenants }
     : {}),
 });
 

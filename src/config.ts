@@ -106,9 +106,9 @@ const Env = z.object({
   FLEET_TENANTS_ROOT: z.string().default("./data/tenants"),
   FLEET_LOGS_ROOT: z.string().default("./data/tenant-logs"),
   // Left unset by default so FleetManager's own documented default
-  // (5 concurrent tenants, see fleet-manager.ts) applies — only overridden
-  // here if an operator explicitly wants a different cap.
-  FLEET_MAX_CONCURRENT_TENANTS: z.coerce.number().int().positive().optional(),
+  // (3 concurrent tenants, see fleet-manager.ts) applies. An EMPTY string
+  // (a Railway variable present but blank) is treated as unset, not as 0.
+  FLEET_MAX_CONCURRENT_TENANTS: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.coerce.number().int().positive().optional()),
 });
 
 const parsed = Env.safeParse(process.env);
@@ -134,6 +134,20 @@ if (CONFIG.TELEGRAM_TRANSPORT === "webhook" && !CONFIG.TELEGRAM_WEBHOOK_SECRET) 
   console.error("❌ TELEGRAM_TRANSPORT=webhook requires TELEGRAM_WEBHOOK_SECRET to be set.");
   process.exit(1);
 }
+
+// Hosted-fleet deploy switches (FLEET_ENABLED opt-in kill switch, optional
+// founder-only allow-list, memory floor, cap). A malformed value refuses to
+// boot with a clear message rather than silently enabling or widening access.
+import { parseFleetFlags, type FleetFlags } from "./fleet/fleet-config.js";
+function loadFleetFlags(): FleetFlags {
+  try {
+    return parseFleetFlags(process.env);
+  } catch (err) {
+    console.error(`❌ ${(err as Error).message}`);
+    process.exit(1);
+  }
+}
+export const FLEET_FLAGS: FleetFlags = loadFleetFlags();
 
 export const TELEGRAM_WEBHOOK_PATH = "/api/telegram/webhook";
 

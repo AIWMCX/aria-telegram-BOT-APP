@@ -69,9 +69,10 @@ speculative fix bolted onto this task.
 
 ## 2. Concurrent-tenant cap
 
-- `FleetManagerOptions.maxConcurrentTenants` — default **5**. Matches the
-  plan's own starting-point language ("`MAX_HOSTED_USERS=3 or 5`") for the
-  first cohort of hosted users.
+- `FleetManagerOptions.maxConcurrentTenants` — default **3** (was 5; lowered
+  for the first deploy, see "Hosted PAPER fleet: deploy hardening" at the end
+  of this file for the sizing formula). Set at deploy time with the
+  `FLEET_MAX_CONCURRENT_TENANTS` env var.
 - Counted as "occupying a slot": any tenant currently in `starting`,
   `running`, or `stopping` status (`stopping` still holds a live OS process
   until it actually exits, so it still counts).
@@ -80,10 +81,10 @@ speculative fix bolted onto this task.
   silently drops the request or queues it. The caller (Task 4's Telegram
   handler) is expected to catch this and tell the user "the fleet is full,
   try again shortly" rather than a generic failure.
-- **Raising the limit**: pass a higher `maxConcurrentTenants` when
-  constructing the `FleetManager` (wherever it's instantiated in
-  `src/index.ts` / wherever Task 4 wires it up). There is no live/dynamic
-  reconfiguration — raising it requires a redeploy. Before raising it,
+- **Raising the limit**: set `FLEET_MAX_CONCURRENT_TENANTS` (read by
+  `src/config.ts`, passed to the `FleetManager` in `src/fleet/instance.ts`;
+  empty = unset). There is no live/dynamic reconfiguration — raising it
+  requires a redeploy. Before raising it,
   confirm the container's actual vCPU/RAM budget (Railway dashboard →
   Settings → Resources) can comfortably hold `new_limit × per-tenant RSS`
   plus headroom for the Fleet Manager's own process and the existing bot/API
@@ -713,3 +714,70 @@ Capacity read: ~1.2 GB for 10 idle shadow tenants plus ~80 MB control plane on
 Windows; no meaningful growth over 15 min. NOT verified: Linux/Railway memory
 accounting, paper mode with a live price feed, real candidate-processing load, runs
 longer than 15 min (slow leaks), more than 10 tenants.
+
+## Hosted PAPER fleet: deploy hardening (RC1 deploy branch)
+
+Everything here is code-verified by `src/fleet/deploy-hardening.test.ts` on
+Windows with the fake engine. **Docker image build and Linux behaviour
+(SIGTERM timing, cgroup memory files, real RSS) are NOT verified.**
+
+### Switches (all `FLEET_*` values are validated at boot; a malformed value refuses to boot)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `FLEET_ENABLED` | **false** (opt-in) | Kill switch. `true`/`1` enables; `false`/`0`/unset/empty disables; anything else fails boot. When false: `/paper_*` answer "Hosted PAPER is not available right now", rehydration and the approval re-check never start, nothing spawns, desired-state files are left untouched, `/healthz` shows `fleet.enabled:false` and `fleet.available:false`. |
+| `FLEET_ALLOWED_TELEGRAM_IDS` | unset | Comma list of numeric Telegram ids. Unset/empty = every approved user (when enabled). Set = only those ids, enforced in `/paper_*`, in rehydration (others get desired=stopped) and in the 5-minute approval check (their running tenants are stopped). Use it for a founder-only first deploy. |
+| `FLEET_MAX_CONCURRENT_TENANTS` | **3** | Concurrent engine cap. Empty string is treated as unset. |
+| `FLEET_MIN_FREE_MEMORY_MB` | 400 | A NEW spawn is refused (user sees the generic "at capacity" message; rehydration keeps the tenant queued with desired=running) when free container memory is below this. Reads cgroup v2/v1 `memory.max`-`memory.current` when present, else `os.freemem()`; the smaller wins. `0` disables. Crash-restarts of already-admitted tenants are not gated. |
+| `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` | set **15** | Gives the control plane time between SIGTERM and SIGKILL. `src/index.ts` stops all tenants within an 8 s budget (watchdog 9.5 s); Railway's own default grace is short and was not measured. |
+
+### Sizing the cap
+
+`cap = floor((RAM_MB * 0.7 - 250) / 200)` (70% of RAM usable, 250 MB for the
+control plane, ~200 MB budgeted per engine; measured ~115 MB RSS per shadow
+engine on Windows, Linux unmeasured). 1 GB -> 2, 2 GB -> 5, 4 GB -> 13 by the
+formula; the default of 3 is the conservative first-deploy value. Do not use
+the old "12 for ten testers" suggestion unless the plan has about 4 GB.
+Raising the cap is an env-var change plus a redeploy
+(`FLEET_MAX_CONCURRENT_TENANTS`), not a code change.
+
+### Ordered deploy checklist
+
+1. Check the `invites` table: which users are `activated`/`paired`/`active`?
+   Anyone approved can use hosted PAPER once the fleet is enabled; use
+   `FLEET_ALLOWED_TELEGRAM_IDS` to limit the first deploy to the founder.
+2. BEFORE merging/deploying set on the Railway service:
+   `ARIA_ENGINE_GIT_TOKEN` (read-only token for the private aria-engine repo),
+   `ARIA_ENGINE_COMMIT_SHA=766dcdbc7aca1dad54d6294729fba1f45a8b6481`,
+   `FLEET_ENABLED=true`, `FLEET_ALLOWED_TELEGRAM_IDS=<founder id>`,
+   `FLEET_MAX_CONCURRENT_TENANTS=3`, `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=15`.
+   (Leave `FLEET_ENABLED` unset to ship the code dark.) The git token is
+   scrubbed from the environment of every child process `package-engine.mjs`
+   runs (including `npm ci`).
+3. Merge/deploy. Confirm `/healthz`: `engine.available:true`,
+   `engine.compatible:true`, `engine.sha` equals the pinned sha,
+   `fleet.enabled:true`, `fleet.available:true`, `fleet.rehydration` all zero.
+4. As the founder: `/paper_start`, then `/paper_status` (expect Running,
+   PAPER wording), then `/paper_stop`, then `/paper_status` (Stopped).
+5. Redeploy-rehydration check: `/paper_start`, trigger a redeploy, watch
+   `/healthz` `fleet.rehydration` counts, then `/paper_status` must read
+   Running (not "Never started"). Only then widen or clear
+   `FLEET_ALLOWED_TELEGRAM_IDS`.
+
+### Kill switch and rollback
+
+- **Fast stop (no redeploy needed):** send `/fleet_stop_all` as the admin
+  (`ADMIN_TELEGRAM_CHAT_ID`). It stops every tenant, writes desired=stopped
+  for all of them (including ones only waiting for rehydration) and replies
+  with the count. Nothing comes back on restart.
+- **Full rollback:** set `FLEET_ENABLED=false` and redeploy. Rehydration and
+  spawns stop; desired-state files stay, so re-enabling later brings
+  `desired=running` tenants back (run `/fleet_stop_all` first if you do not
+  want that). To drop the feature entirely, redeploy the previous image.
+- `fleet.enabled` in `/healthz` is the quick check that the switch took.
+
+### Tenant logs
+
+Per-tenant logs append across restarts under `FLEET_LOGS_ROOT`; at spawn a log
+over 20 MB is renamed to `<id>.log.1` (one generation kept), so a tenant uses
+at most about 40 MB of volume.

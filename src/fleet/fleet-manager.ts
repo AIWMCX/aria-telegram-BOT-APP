@@ -2,6 +2,7 @@ import path from "node:path";
 import { TenantProcess, buildTenantEnv } from "./tenant-process.js";
 import { EngineIdentityError, type EngineIdentity } from "./engine-identity.js";
 import { CLIENT_ID_PATTERN, assertValidClientId } from "./client-id.js";
+import { readAvailableMemoryBytes } from "./memory.js";
 import {
   NOOP_LOGGER,
   listDesiredRunning,
@@ -93,6 +94,22 @@ export class TenantStoppingError extends Error {
   }
 }
 
+/**
+ * Thrown by `spawnTenant()` when available container memory is below the
+ * configured floor. Same user-facing treatment as capacity ("try later"), and
+ * like capacity it leaves desired state untouched so rehydration keeps the
+ * tenant queued.
+ */
+export class FleetLowMemoryError extends Error {
+  constructor(
+    readonly availableBytes: number,
+    readonly floorBytes: number,
+  ) {
+    super(`not enough free memory to start another tenant (${Math.floor(availableBytes / 1048576)} MB free, floor ${Math.floor(floorBytes / 1048576)} MB)`);
+    this.name = "FleetLowMemoryError";
+  }
+}
+
 /** How to invoke the engine CLI for one tenant action. Injectable so tests can point at the fake fixture instead of the real binary. */
 export interface EngineInvocation {
   buildStart(): { command: string; args: string[]; cwd: string };
@@ -174,7 +191,7 @@ export interface FleetManagerOptions {
    * Maximum number of tenants allowed in `starting`/`running`/`stopping`
    * status at once. `spawnTenant()` REJECTS (throws `FleetCapacityError`)
    * once this many slots are occupied, rather than silently dropping or
-   * queuing the request. Default 5, matching the plan's own starting-point
+   * queuing the request. Default 3 (see DEFAULT_MAX_CONCURRENT_TENANTS), previously 5, matching the plan's own starting-point
    * language ("MAX_HOSTED_USERS=3 or 5") for the first cohort — this is
    * the PRIMARY defense against resource exhaustion in this runtime (see
    * `docs/FLEET_MANAGER_RUNBOOK.md`'s "Resource-limit mechanism" section
@@ -213,6 +230,14 @@ export interface FleetManagerOptions {
    * to ship a production fleet with no verification at all.
    */
   verifyEngineIdentity?: () => EngineIdentity;
+  /**
+   * Refuse a NEW spawn when available memory is below this many bytes
+   * (default 400 MB; 0 disables). Crash-restarts of an already-admitted
+   * tenant are not gated.
+   */
+  minFreeMemoryBytes?: number;
+  /** Injectable for tests; default reads cgroup v2/v1 limits, else os.freemem(). */
+  readAvailableMemoryBytes?: () => number;
   /** Structured logger (the redacting one from src/logger.ts in production). Defaults to a no-op so unit tests need no env/config. */
   log?: FleetLogger;
 }
@@ -233,7 +258,16 @@ const DEFAULT_SUSTAINED_HEALTHY_MS = 60 * 1000;
 const DEFAULT_MAX_CONSECUTIVE_CRASHES = 5;
 const DEFAULT_GRACEFUL_STOP_TIMEOUT_MS = 8000;
 const DEFAULT_SIGTERM_TIMEOUT_MS = 4000;
-const DEFAULT_MAX_CONCURRENT_TENANTS = 5;
+/**
+ * Default cap = 3 (was 5). Sizing formula for the Railway plan:
+ *   cap = floor((RAM_MB * 0.7 - 250) / 200)
+ * i.e. 70% of RAM usable, 250 MB for the control plane, ~200 MB budgeted per
+ * engine (Windows measurement: ~115 MB RSS per shadow engine, see the
+ * runbook). Linux numbers are UNVERIFIED; 3 is the conservative first-deploy
+ * value. Override with FLEET_MAX_CONCURRENT_TENANTS.
+ */
+const DEFAULT_MAX_CONCURRENT_TENANTS = 3;
+const DEFAULT_MIN_FREE_MEMORY_BYTES = 400 * 1024 * 1024;
 
 export { CLIENT_ID_PATTERN, assertValidClientId };
 
@@ -274,6 +308,8 @@ export class FleetManager {
       sigtermTimeoutMs: DEFAULT_SIGTERM_TIMEOUT_MS,
       maxConcurrentTenants: DEFAULT_MAX_CONCURRENT_TENANTS,
       log: NOOP_LOGGER,
+      minFreeMemoryBytes: DEFAULT_MIN_FREE_MEMORY_BYTES,
+      readAvailableMemoryBytes: () => readAvailableMemoryBytes(),
       ...opts,
     };
     liveManagers.add(this);
@@ -431,6 +467,13 @@ export class FleetManager {
       throw new FleetCapacityError(clientId, this.opts.maxConcurrentTenants);
     }
 
+    // Memory guard: a NEW spawn needs headroom. Placed with the other gates,
+    // BEFORE any desired-state write, so a refusal leaves rehydration's queued
+    // tenant exactly as it was.
+    if (this.opts.minFreeMemoryBytes > 0) {
+      const avail = this.opts.readAvailableMemoryBytes();
+      if (avail < this.opts.minFreeMemoryBytes) throw new FleetLowMemoryError(avail, this.opts.minFreeMemoryBytes);
+    }
     // Compare-and-set for background callers (rehydration): they decided to
     // spawn BEFORE awaiting DB/renewal work, so a /paper_stop or revoke may
     // have written desired=stopped since. No await sits between this read and
@@ -728,6 +771,18 @@ export class FleetManager {
     await settle(o.timeoutMs - (Date.now() - startedAt));
     const remaining = live.filter((tp) => !tp.hasExited).length;
     return { total: live.length, exitedOnSigterm: live.length - survivors.length, killed: survivors.length, remaining };
+  }
+
+  /**
+   * Admin kill switch: stop EVERY tenant and persist desired=stopped for all
+   * of them (live ones, crashed ones, and ones that exist only as a
+   * desired=running file waiting for rehydration). Returns how many distinct
+   * tenants were processed.
+   */
+  async stopAllTenants(): Promise<{ count: number }> {
+    const ids = new Set<string>([...this.tenants.keys(), ...this.scanDesiredRunning()]);
+    await Promise.all([...ids].map((id) => this.stopTenant(id, true).catch(() => undefined)));
+    return { count: ids.size };
   }
 
   /** Last-resort synchronous kill of every live child (used by the process 'exit' hook). */

@@ -1,4 +1,4 @@
-import { FleetCapacityError, FleetShuttingDownError, type FleetManager, type TenantProcessHandle } from "./fleet-manager.js";
+import { FleetCapacityError, FleetLowMemoryError, FleetShuttingDownError, type FleetManager, type TenantProcessHandle } from "./fleet-manager.js";
 import { EngineIdentityError } from "./engine-identity.js";
 
 /** Shared PAPER disclosure used in every user-facing state. */
@@ -75,6 +75,12 @@ export interface EngineClientLike {
 export interface HostedCommandsDeps {
   fleetManager: Pick<FleetManager, "spawnTenant" | "stopTenant" | "getTenantStatus"> &
     Partial<Pick<FleetManager, "getDesiredState">>;
+  /**
+   * Optional access gate (FLEET_ENABLED kill switch + founder-only allow-list).
+   * When it returns false the command answers with the generic "not
+   * available right now" message and does nothing else. Absent = open.
+   */
+  isFleetAccessible?: (telegramUserId: number) => boolean;
   /** Optional: called after a /paper_start spawn succeeds (clears rehydration give-up bookkeeping). */
   onStarted?: (clientId: string) => void;
   /** Optional: "gave_up" when boot rehydration stopped retrying this tenant (needs attention). */
@@ -221,7 +227,7 @@ export async function startHostedEngine(deps: HostedCommandsDeps, userId: number
     }
     return { ok: true, created, converted, handle };
   } catch (err) {
-    if (err instanceof FleetCapacityError) {
+    if (err instanceof FleetCapacityError || err instanceof FleetLowMemoryError) {
       return {
         ok: false,
         reason: "capacity",
@@ -344,6 +350,10 @@ export function formatHostedStatusMessage(handle: TenantProcessHandle | undefine
 
 /** `/paper_start` command logic — approval gate + start + DM. */
 export async function handlePaperStart(deps: HostedCommandsDeps, ctx: HandlerCtx): Promise<void> {
+  if (deps.isFleetAccessible && !deps.isFleetAccessible(ctx.telegramUserId)) {
+    await deps.notify(ctx.telegramUserId, UNAVAILABLE_MESSAGE);
+    return;
+  }
   if (!(await deps.isUserApproved(ctx.userId))) {
     await deps.notify(
       ctx.telegramUserId,
@@ -381,12 +391,20 @@ export async function handlePaperStart(deps: HostedCommandsDeps, ctx: HandlerCtx
 
 /** `/paper_stop` command logic — stop + DM. */
 export async function handlePaperStop(deps: HostedCommandsDeps, ctx: HandlerCtx): Promise<void> {
+  if (deps.isFleetAccessible && !deps.isFleetAccessible(ctx.telegramUserId)) {
+    await deps.notify(ctx.telegramUserId, UNAVAILABLE_MESSAGE);
+    return;
+  }
   const result = await stopHostedEngine(deps, ctx.userId);
   await deps.notify(ctx.telegramUserId, `${result.ok ? "🛑" : "⚠️"} ${result.message}`);
 }
 
 /** `/paper_status` command logic — status + DM. */
 export async function handlePaperStatus(deps: HostedCommandsDeps, ctx: HandlerCtx): Promise<void> {
+  if (deps.isFleetAccessible && !deps.isFleetAccessible(ctx.telegramUserId)) {
+    await deps.notify(ctx.telegramUserId, UNAVAILABLE_MESSAGE);
+    return;
+  }
   const handle = await getHostedStatus(deps, ctx.userId);
   let desiredRunning = false;
   let gaveUp = false;

@@ -104,6 +104,7 @@ async function scenarioNotConfigured() {
   check("healthz fleet block gains additive rehydration counts (numbers only, existing field kept)",
     typeof hb.fleet?.available === "boolean" && rh && JSON.stringify(Object.keys(rh).sort()) === JSON.stringify(["queued", "restarting", "running"]) &&
     Object.values(rh).every((v) => typeof v === "number"));
+  check("healthz fleet block reports enabled:false by default and available:false (kill switch)", hb.fleet?.enabled === false && hb.fleet?.available === false);
   const r = await app.request("/readyz");
   const rb = (await r.json()) as any;
   check("not configured: /readyz 200 ready:true", r.status === 200 && rb.ready === true && rb.sqlite === true);

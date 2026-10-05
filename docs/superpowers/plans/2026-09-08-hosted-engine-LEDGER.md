@@ -1280,3 +1280,8 @@ Conditional pass of the Task 6 review addressed with committed raw evidence (all
 - Evidence-branch soak/capacity scripts use only the unchanged public FleetManager API (spawnTenant/stopTenant), typecheck clean, ran unmodified on the merged tree.
 - Merged tree d25662b: typecheck exit 0; full npm test exit 0 (664 check lines, none failing); packaged-engine rehydration E2E (engine 766dcdbc) exit 0, 9 checks, zero orphans; short fake-fixture regression soak (N=5 warmup 30 s, N=20 main 3 min, 3 SIGKILL + 2 crash-loop) exit 0, journal issues 0, orphans 0.
 - New evidence (separate files, certifying files untouched): docs/evidence/*shad25662b_merged-rc1*. The short soak is a regression smoke, NOT a replacement for the 30-min certifying runs, which are on pre-merge trees (b31b816 / 7c9f3b4).
+
+## Deploy hardening (branch rc1-deploy-hardening, after merging origin/main ed19021)
+
+- FLEET_ENABLED opt-in kill switch (default false), FLEET_ALLOWED_TELEGRAM_IDS founder-only list (enforced in commands, rehydration, approval re-check), admin `/fleet_stop_all`, validated FLEET_* config (blank FLEET_MAX_CONCURRENT_TENANTS = unset), default cap 3, free-memory guard before NEW spawns (cgroup v2/v1 else os.freemem), package-engine child processes get a credential-scrubbed env, tenant log rotation at 20 MB, runbooks updated. /invite plain-text fix from main preserved.
+- UNVERIFIED: Docker image build, Linux (cgroup files, SIGTERM timing, RSS), Railway grace period.
