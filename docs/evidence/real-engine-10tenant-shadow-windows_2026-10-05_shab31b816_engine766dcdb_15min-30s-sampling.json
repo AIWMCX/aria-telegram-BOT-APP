@@ -1,0 +1,3983 @@
+{
+  "startedAtIso": "2026-10-05T18:19:43.789Z",
+  "platform": "win32 10.0.26200 (Windows)",
+  "mode": "shadow start (NOT paper mode)",
+  "marketSource": "offline stub JSON-RPC at 127.0.0.1:18899 (rpc.url pre-seeded); zero external endpoints",
+  "engineSha": "766dcdbc7aca1dad54d6294729fba1f45a8b6481",
+  "controlPlaneSha": "b31b8166323b93353b48844ab1cb7ba5550ff2c7",
+  "nodeVersion": "v24.15.0",
+  "cpus": 20,
+  "params": {
+    "N": 10,
+    "DURATION_MS": 900000,
+    "SAMPLE_MS": 30000,
+    "KILL_AT_MS": 420000,
+    "maxConcurrentTenants": 12
+  },
+  "startToRunningMs": {
+    "cap-tenant-0": 1180,
+    "cap-tenant-1": 1180,
+    "cap-tenant-2": 1180,
+    "cap-tenant-3": 1180,
+    "cap-tenant-4": 1180,
+    "cap-tenant-5": 1180,
+    "cap-tenant-6": 1180,
+    "cap-tenant-7": 1180,
+    "cap-tenant-8": 1180,
+    "cap-tenant-9": 1962
+  },
+  "samples": [
+    {
+      "atIso": "2026-10-05T18:19:47.848Z",
+      "elapsedMs": 2019,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 86048,
+        "heapUsedKB": 10551,
+        "wsKB": 86048,
+        "privKB": 93224
+      },
+      "stub": {
+        "wsKB": 68548,
+        "privKB": 32616
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 118048,
+          "privKB": 170544,
+          "cpuSec": 1.22,
+          "rootWsKB": 99580,
+          "rootPrivKB": 115140
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 118468,
+          "privKB": 171904,
+          "cpuSec": 1.36,
+          "rootWsKB": 99708,
+          "rootPrivKB": 115708
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 118096,
+          "privKB": 171232,
+          "cpuSec": 1.34,
+          "rootWsKB": 99168,
+          "rootPrivKB": 114748
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 77252,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 118436,
+          "privKB": 170696,
+          "cpuSec": 1.27,
+          "rootWsKB": 99920,
+          "rootPrivKB": 114872
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 117724,
+          "privKB": 171344,
+          "cpuSec": 1.34,
+          "rootWsKB": 99176,
+          "rootPrivKB": 115332
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 117928,
+          "privKB": 171576,
+          "cpuSec": 1.14,
+          "rootWsKB": 99344,
+          "rootPrivKB": 115860
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 118652,
+          "privKB": 174324,
+          "cpuSec": 1.19,
+          "rootWsKB": 100128,
+          "rootPrivKB": 117928
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 119020,
+          "privKB": 171112,
+          "cpuSec": 1.19,
+          "rootWsKB": 100028,
+          "rootPrivKB": 114848
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 118804,
+          "privKB": 173400,
+          "cpuSec": 1.06,
+          "rootWsKB": 100232,
+          "rootPrivKB": 116760
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 118444,
+          "privKB": 171964,
+          "cpuSec": 1.09,
+          "rootWsKB": 100252,
+          "rootPrivKB": 116844
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:20:19.806Z",
+      "elapsedMs": 33977,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 77324,
+        "heapUsedKB": 8724,
+        "wsKB": 77196,
+        "privKB": 80620
+      },
+      "stub": {
+        "wsKB": 68472,
+        "privKB": 31768
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 106048,
+          "privKB": 146664,
+          "cpuSec": 1.66,
+          "rootWsKB": 87596,
+          "rootPrivKB": 91292
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 105312,
+          "privKB": 146440,
+          "cpuSec": 1.61,
+          "rootWsKB": 87276,
+          "rootPrivKB": 91072
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 105688,
+          "privKB": 147016,
+          "cpuSec": 1.66,
+          "rootWsKB": 86776,
+          "rootPrivKB": 90564
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 77252,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 105380,
+          "privKB": 146456,
+          "cpuSec": 1.64,
+          "rootWsKB": 86872,
+          "rootPrivKB": 90656
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 105856,
+          "privKB": 146792,
+          "cpuSec": 1.58,
+          "rootWsKB": 87336,
+          "rootPrivKB": 90840
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 105480,
+          "privKB": 146204,
+          "cpuSec": 1.45,
+          "rootWsKB": 87128,
+          "rootPrivKB": 90776
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 105680,
+          "privKB": 146956,
+          "cpuSec": 1.58,
+          "rootWsKB": 87172,
+          "rootPrivKB": 90592
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 106208,
+          "privKB": 147096,
+          "cpuSec": 1.58,
+          "rootWsKB": 87232,
+          "rootPrivKB": 90864
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 105760,
+          "privKB": 146924,
+          "cpuSec": 1.33,
+          "rootWsKB": 87208,
+          "rootPrivKB": 90336
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 105720,
+          "privKB": 146224,
+          "cpuSec": 1.48,
+          "rootWsKB": 87544,
+          "rootPrivKB": 91136
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:20:51.554Z",
+      "elapsedMs": 65725,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 77848,
+        "heapUsedKB": 8953,
+        "wsKB": 77848,
+        "privKB": 81244
+      },
+      "stub": {
+        "wsKB": 69132,
+        "privKB": 31980
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 107184,
+          "privKB": 147448,
+          "cpuSec": 1.84,
+          "rootWsKB": 88732,
+          "rootPrivKB": 92076
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 106316,
+          "privKB": 147128,
+          "cpuSec": 1.8,
+          "rootWsKB": 88280,
+          "rootPrivKB": 91760
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 106596,
+          "privKB": 147336,
+          "cpuSec": 1.91,
+          "rootWsKB": 87684,
+          "rootPrivKB": 90884
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 77252,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 107016,
+          "privKB": 148036,
+          "cpuSec": 1.86,
+          "rootWsKB": 88500,
+          "rootPrivKB": 92228
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 106648,
+          "privKB": 146896,
+          "cpuSec": 1.75,
+          "rootWsKB": 88124,
+          "rootPrivKB": 90944
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 106392,
+          "privKB": 146852,
+          "cpuSec": 1.69,
+          "rootWsKB": 88036,
+          "rootPrivKB": 91424
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 106796,
+          "privKB": 147616,
+          "cpuSec": 1.72,
+          "rootWsKB": 88288,
+          "rootPrivKB": 91252
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 107296,
+          "privKB": 147748,
+          "cpuSec": 1.72,
+          "rootWsKB": 88316,
+          "rootPrivKB": 91516
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 106836,
+          "privKB": 147832,
+          "cpuSec": 1.42,
+          "rootWsKB": 88244,
+          "rootPrivKB": 91204
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 106592,
+          "privKB": 146752,
+          "cpuSec": 1.56,
+          "rootWsKB": 88416,
+          "rootPrivKB": 91664
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:21:23.571Z",
+      "elapsedMs": 97742,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 78172,
+        "heapUsedKB": 9324,
+        "wsKB": 78152,
+        "privKB": 81244
+      },
+      "stub": {
+        "wsKB": 69684,
+        "privKB": 32580
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 108492,
+          "privKB": 148704,
+          "cpuSec": 2,
+          "rootWsKB": 90040,
+          "rootPrivKB": 93332
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 107644,
+          "privKB": 148584,
+          "cpuSec": 2,
+          "rootWsKB": 89608,
+          "rootPrivKB": 93216
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 107972,
+          "privKB": 148476,
+          "cpuSec": 2.16,
+          "rootWsKB": 89060,
+          "rootPrivKB": 92024
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 77252,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 108356,
+          "privKB": 149676,
+          "cpuSec": 2,
+          "rootWsKB": 89832,
+          "rootPrivKB": 93860
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 107540,
+          "privKB": 147996,
+          "cpuSec": 1.89,
+          "rootWsKB": 89012,
+          "rootPrivKB": 92044
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 107768,
+          "privKB": 148768,
+          "cpuSec": 1.78,
+          "rootWsKB": 89412,
+          "rootPrivKB": 93340
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 108168,
+          "privKB": 149400,
+          "cpuSec": 1.92,
+          "rootWsKB": 89652,
+          "rootPrivKB": 93028
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 108560,
+          "privKB": 149692,
+          "cpuSec": 1.89,
+          "rootWsKB": 89580,
+          "rootPrivKB": 93460
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 108152,
+          "privKB": 149644,
+          "cpuSec": 1.55,
+          "rootWsKB": 89520,
+          "rootPrivKB": 92976
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 107880,
+          "privKB": 148368,
+          "cpuSec": 1.73,
+          "rootWsKB": 89704,
+          "rootPrivKB": 93280
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:21:55.510Z",
+      "elapsedMs": 129681,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 78520,
+        "heapUsedKB": 9353,
+        "wsKB": 78520,
+        "privKB": 81244
+      },
+      "stub": {
+        "wsKB": 69968,
+        "privKB": 33404
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 109008,
+          "privKB": 149752,
+          "cpuSec": 2.2,
+          "rootWsKB": 91320,
+          "rootPrivKB": 95148
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 107536,
+          "privKB": 148304,
+          "cpuSec": 2.23,
+          "rootWsKB": 90844,
+          "rootPrivKB": 94280
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 108732,
+          "privKB": 149356,
+          "cpuSec": 2.31,
+          "rootWsKB": 90520,
+          "rootPrivKB": 93736
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 77252,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 108528,
+          "privKB": 149436,
+          "cpuSec": 2.23,
+          "rootWsKB": 90572,
+          "rootPrivKB": 94260
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 108176,
+          "privKB": 149076,
+          "cpuSec": 2.14,
+          "rootWsKB": 90692,
+          "rootPrivKB": 94212
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 107040,
+          "privKB": 147928,
+          "cpuSec": 1.95,
+          "rootWsKB": 90248,
+          "rootPrivKB": 94100
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 108488,
+          "privKB": 150152,
+          "cpuSec": 2.09,
+          "rootWsKB": 90948,
+          "rootPrivKB": 94868
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 108796,
+          "privKB": 149508,
+          "cpuSec": 2.11,
+          "rootWsKB": 90904,
+          "rootPrivKB": 94492
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 107764,
+          "privKB": 149036,
+          "cpuSec": 1.72,
+          "rootWsKB": 90128,
+          "rootPrivKB": 93488
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 108584,
+          "privKB": 149232,
+          "cpuSec": 1.92,
+          "rootWsKB": 90708,
+          "rootPrivKB": 94464
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:22:27.390Z",
+      "elapsedMs": 161561,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 78900,
+        "heapUsedKB": 9549,
+        "wsKB": 78900,
+        "privKB": 81496
+      },
+      "stub": {
+        "wsKB": 70504,
+        "privKB": 33256
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 110308,
+          "privKB": 151124,
+          "cpuSec": 2.34,
+          "rootWsKB": 92620,
+          "rootPrivKB": 96520
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 108912,
+          "privKB": 149472,
+          "cpuSec": 2.36,
+          "rootWsKB": 92216,
+          "rootPrivKB": 95448
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 110092,
+          "privKB": 151004,
+          "cpuSec": 2.45,
+          "rootWsKB": 91880,
+          "rootPrivKB": 95384
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 77252,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 110400,
+          "privKB": 151884,
+          "cpuSec": 2.48,
+          "rootWsKB": 92444,
+          "rootPrivKB": 96708
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 109692,
+          "privKB": 151232,
+          "cpuSec": 2.3,
+          "rootWsKB": 92208,
+          "rootPrivKB": 96368
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 109004,
+          "privKB": 150020,
+          "cpuSec": 2.13,
+          "rootWsKB": 92212,
+          "rootPrivKB": 96192
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 109864,
+          "privKB": 151408,
+          "cpuSec": 2.3,
+          "rootWsKB": 92324,
+          "rootPrivKB": 96124
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 110248,
+          "privKB": 151308,
+          "cpuSec": 2.25,
+          "rootWsKB": 92352,
+          "rootPrivKB": 96292
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 109120,
+          "privKB": 150428,
+          "cpuSec": 1.89,
+          "rootWsKB": 91484,
+          "rootPrivKB": 94880
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 110440,
+          "privKB": 150840,
+          "cpuSec": 2.16,
+          "rootWsKB": 92564,
+          "rootPrivKB": 96072
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:22:59.302Z",
+      "elapsedMs": 193473,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 79252,
+        "heapUsedKB": 8755,
+        "wsKB": 79232,
+        "privKB": 82552
+      },
+      "stub": {
+        "wsKB": 70624,
+        "privKB": 33268
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111756,
+          "privKB": 152288,
+          "cpuSec": 2.45,
+          "rootWsKB": 94068,
+          "rootPrivKB": 97684
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 110444,
+          "privKB": 150948,
+          "cpuSec": 2.45,
+          "rootWsKB": 93720,
+          "rootPrivKB": 96892
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111640,
+          "privKB": 152432,
+          "cpuSec": 2.56,
+          "rootWsKB": 93428,
+          "rootPrivKB": 96812
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 77252,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111996,
+          "privKB": 153040,
+          "cpuSec": 2.64,
+          "rootWsKB": 94040,
+          "rootPrivKB": 97864
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111172,
+          "privKB": 152408,
+          "cpuSec": 2.42,
+          "rootWsKB": 93688,
+          "rootPrivKB": 97544
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 110560,
+          "privKB": 151268,
+          "cpuSec": 2.25,
+          "rootWsKB": 93708,
+          "rootPrivKB": 97376
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111336,
+          "privKB": 152840,
+          "cpuSec": 2.42,
+          "rootWsKB": 93796,
+          "rootPrivKB": 97556
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111752,
+          "privKB": 152696,
+          "cpuSec": 2.38,
+          "rootWsKB": 93856,
+          "rootPrivKB": 97680
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 110828,
+          "privKB": 152156,
+          "cpuSec": 2.03,
+          "rootWsKB": 93192,
+          "rootPrivKB": 96608
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111748,
+          "privKB": 151808,
+          "cpuSec": 2.28,
+          "rootWsKB": 93872,
+          "rootPrivKB": 97040
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:23:31.559Z",
+      "elapsedMs": 225730,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 79496,
+        "heapUsedKB": 9120,
+        "wsKB": 79472,
+        "privKB": 82552
+      },
+      "stub": {
+        "wsKB": 70744,
+        "privKB": 35132
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112604,
+          "privKB": 154288,
+          "cpuSec": 2.59,
+          "rootWsKB": 94916,
+          "rootPrivKB": 99684
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 110568,
+          "privKB": 151896,
+          "cpuSec": 2.61,
+          "rootWsKB": 93840,
+          "rootPrivKB": 97840
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112192,
+          "privKB": 152684,
+          "cpuSec": 2.72,
+          "rootWsKB": 93980,
+          "rootPrivKB": 97064
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 77252,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112792,
+          "privKB": 154056,
+          "cpuSec": 2.89,
+          "rootWsKB": 94836,
+          "rootPrivKB": 98880
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111716,
+          "privKB": 153532,
+          "cpuSec": 2.53,
+          "rootWsKB": 94232,
+          "rootPrivKB": 98668
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 110716,
+          "privKB": 151844,
+          "cpuSec": 2.42,
+          "rootWsKB": 93860,
+          "rootPrivKB": 97952
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111916,
+          "privKB": 153324,
+          "cpuSec": 2.63,
+          "rootWsKB": 94376,
+          "rootPrivKB": 98040
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112404,
+          "privKB": 154360,
+          "cpuSec": 2.52,
+          "rootWsKB": 94508,
+          "rootPrivKB": 99344
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111656,
+          "privKB": 153112,
+          "cpuSec": 2.2,
+          "rootWsKB": 94020,
+          "rootPrivKB": 97564
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112400,
+          "privKB": 153576,
+          "cpuSec": 2.58,
+          "rootWsKB": 94524,
+          "rootPrivKB": 98808
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:24:03.479Z",
+      "elapsedMs": 257650,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 79760,
+        "heapUsedKB": 9155,
+        "wsKB": 79740,
+        "privKB": 82556
+      },
+      "stub": {
+        "wsKB": 70452,
+        "privKB": 33060
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112160,
+          "privKB": 153892,
+          "cpuSec": 2.81,
+          "rootWsKB": 95368,
+          "rootPrivKB": 100184
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111004,
+          "privKB": 152440,
+          "cpuSec": 2.8,
+          "rootWsKB": 94360,
+          "rootPrivKB": 98472
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111672,
+          "privKB": 153464,
+          "cpuSec": 2.95,
+          "rootWsKB": 94740,
+          "rootPrivKB": 99124
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 77252,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111948,
+          "privKB": 153220,
+          "cpuSec": 3.13,
+          "rootWsKB": 95272,
+          "rootPrivKB": 99324
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111332,
+          "privKB": 152992,
+          "cpuSec": 2.77,
+          "rootWsKB": 94744,
+          "rootPrivKB": 99024
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111344,
+          "privKB": 152312,
+          "cpuSec": 2.58,
+          "rootWsKB": 94408,
+          "rootPrivKB": 98340
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111396,
+          "privKB": 152820,
+          "cpuSec": 2.84,
+          "rootWsKB": 94752,
+          "rootPrivKB": 98432
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111672,
+          "privKB": 153692,
+          "cpuSec": 2.72,
+          "rootWsKB": 94984,
+          "rootPrivKB": 99884
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111784,
+          "privKB": 153400,
+          "cpuSec": 2.47,
+          "rootWsKB": 94384,
+          "rootPrivKB": 98092
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111944,
+          "privKB": 153000,
+          "cpuSec": 2.83,
+          "rootWsKB": 95092,
+          "rootPrivKB": 99256
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:24:35.562Z",
+      "elapsedMs": 289733,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 79740,
+        "heapUsedKB": 9358,
+        "wsKB": 79740,
+        "privKB": 81956
+      },
+      "stub": {
+        "wsKB": 70876,
+        "privKB": 33412
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112020,
+          "privKB": 152688,
+          "cpuSec": 3,
+          "rootWsKB": 95228,
+          "rootPrivKB": 98980
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 110860,
+          "privKB": 151976,
+          "cpuSec": 2.95,
+          "rootWsKB": 94184,
+          "rootPrivKB": 97976
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111620,
+          "privKB": 152084,
+          "cpuSec": 3.09,
+          "rootWsKB": 94684,
+          "rootPrivKB": 97744
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 77252,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111564,
+          "privKB": 151820,
+          "cpuSec": 3.14,
+          "rootWsKB": 94876,
+          "rootPrivKB": 97908
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111284,
+          "privKB": 152352,
+          "cpuSec": 2.88,
+          "rootWsKB": 94696,
+          "rootPrivKB": 98384
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111360,
+          "privKB": 152096,
+          "cpuSec": 2.67,
+          "rootWsKB": 94380,
+          "rootPrivKB": 98060
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111320,
+          "privKB": 152520,
+          "cpuSec": 2.95,
+          "rootWsKB": 94676,
+          "rootPrivKB": 98132
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111504,
+          "privKB": 152668,
+          "cpuSec": 2.86,
+          "rootWsKB": 94816,
+          "rootPrivKB": 98860
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111592,
+          "privKB": 152396,
+          "cpuSec": 2.63,
+          "rootWsKB": 94192,
+          "rootPrivKB": 97088
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111480,
+          "privKB": 151992,
+          "cpuSec": 3.02,
+          "rootWsKB": 94628,
+          "rootPrivKB": 98248
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:25:07.571Z",
+      "elapsedMs": 321742,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 80076,
+        "heapUsedKB": 9553,
+        "wsKB": 80076,
+        "privKB": 82024
+      },
+      "stub": {
+        "wsKB": 71620,
+        "privKB": 34284
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112668,
+          "privKB": 153252,
+          "cpuSec": 3.11,
+          "rootWsKB": 95756,
+          "rootPrivKB": 99472
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111320,
+          "privKB": 152096,
+          "cpuSec": 3.03,
+          "rootWsKB": 94528,
+          "rootPrivKB": 98028
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112016,
+          "privKB": 152452,
+          "cpuSec": 3.2,
+          "rootWsKB": 94964,
+          "rootPrivKB": 98044
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 77252,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112260,
+          "privKB": 152364,
+          "cpuSec": 3.27,
+          "rootWsKB": 95452,
+          "rootPrivKB": 98380
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111852,
+          "privKB": 152572,
+          "cpuSec": 3,
+          "rootWsKB": 95148,
+          "rootPrivKB": 98536
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112096,
+          "privKB": 152760,
+          "cpuSec": 2.83,
+          "rootWsKB": 95000,
+          "rootPrivKB": 98660
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111828,
+          "privKB": 153136,
+          "cpuSec": 3.06,
+          "rootWsKB": 95064,
+          "rootPrivKB": 98676
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112264,
+          "privKB": 153148,
+          "cpuSec": 3.08,
+          "rootWsKB": 95452,
+          "rootPrivKB": 99264
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112088,
+          "privKB": 152880,
+          "cpuSec": 2.73,
+          "rootWsKB": 94568,
+          "rootPrivKB": 97500
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112184,
+          "privKB": 152708,
+          "cpuSec": 3.23,
+          "rootWsKB": 95212,
+          "rootPrivKB": 98892
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:25:39.710Z",
+      "elapsedMs": 353881,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 80476,
+        "heapUsedKB": 8778,
+        "wsKB": 80412,
+        "privKB": 83332
+      },
+      "stub": {
+        "wsKB": 71376,
+        "privKB": 33956
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112924,
+          "privKB": 153492,
+          "cpuSec": 3.2,
+          "rootWsKB": 96012,
+          "rootPrivKB": 99712
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111856,
+          "privKB": 152780,
+          "cpuSec": 3.16,
+          "rootWsKB": 95064,
+          "rootPrivKB": 98712
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112124,
+          "privKB": 152436,
+          "cpuSec": 3.31,
+          "rootWsKB": 95072,
+          "rootPrivKB": 98028
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 77252,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112548,
+          "privKB": 152892,
+          "cpuSec": 3.34,
+          "rootWsKB": 95740,
+          "rootPrivKB": 98908
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112188,
+          "privKB": 152824,
+          "cpuSec": 3.16,
+          "rootWsKB": 95484,
+          "rootPrivKB": 98788
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112412,
+          "privKB": 152848,
+          "cpuSec": 2.91,
+          "rootWsKB": 95296,
+          "rootPrivKB": 98740
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112272,
+          "privKB": 153888,
+          "cpuSec": 3.16,
+          "rootWsKB": 95508,
+          "rootPrivKB": 99428
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112328,
+          "privKB": 153016,
+          "cpuSec": 3.2,
+          "rootWsKB": 95508,
+          "rootPrivKB": 99124
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112304,
+          "privKB": 152904,
+          "cpuSec": 2.81,
+          "rootWsKB": 94784,
+          "rootPrivKB": 97524
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112408,
+          "privKB": 152928,
+          "cpuSec": 3.39,
+          "rootWsKB": 95428,
+          "rootPrivKB": 99104
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:26:11.490Z",
+      "elapsedMs": 385661,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 80680,
+        "heapUsedKB": 8975,
+        "wsKB": 80608,
+        "privKB": 83344
+      },
+      "stub": {
+        "wsKB": 71796,
+        "privKB": 34368
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113224,
+          "privKB": 153408,
+          "cpuSec": 3.45,
+          "rootWsKB": 96416,
+          "rootPrivKB": 99724
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111988,
+          "privKB": 152600,
+          "cpuSec": 3.3,
+          "rootWsKB": 95124,
+          "rootPrivKB": 98460
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112044,
+          "privKB": 152404,
+          "cpuSec": 3.47,
+          "rootWsKB": 95080,
+          "rootPrivKB": 98084
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 77252,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112304,
+          "privKB": 152480,
+          "cpuSec": 3.55,
+          "rootWsKB": 95560,
+          "rootPrivKB": 98560
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112060,
+          "privKB": 152356,
+          "cpuSec": 3.33,
+          "rootWsKB": 95260,
+          "rootPrivKB": 98224
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112388,
+          "privKB": 152772,
+          "cpuSec": 3.09,
+          "rootWsKB": 95524,
+          "rootPrivKB": 98920
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112368,
+          "privKB": 153920,
+          "cpuSec": 3.28,
+          "rootWsKB": 95572,
+          "rootPrivKB": 99428
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112712,
+          "privKB": 153172,
+          "cpuSec": 3.31,
+          "rootWsKB": 95892,
+          "rootPrivKB": 99280
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112348,
+          "privKB": 153004,
+          "cpuSec": 3,
+          "rootWsKB": 94836,
+          "rootPrivKB": 97632
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112784,
+          "privKB": 153060,
+          "cpuSec": 3.5,
+          "rootWsKB": 95692,
+          "rootPrivKB": 99116
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:26:43.484Z",
+      "elapsedMs": 417655,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 80812,
+        "heapUsedKB": 9169,
+        "wsKB": 80804,
+        "privKB": 83276
+      },
+      "stub": {
+        "wsKB": 72152,
+        "privKB": 34760
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113324,
+          "privKB": 153364,
+          "cpuSec": 3.61,
+          "rootWsKB": 96536,
+          "rootPrivKB": 99748
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112244,
+          "privKB": 152776,
+          "cpuSec": 3.45,
+          "rootWsKB": 95380,
+          "rootPrivKB": 98668
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 111992,
+          "privKB": 152272,
+          "cpuSec": 3.64,
+          "rootWsKB": 95048,
+          "rootPrivKB": 98016
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 77252,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112372,
+          "privKB": 152692,
+          "cpuSec": 3.81,
+          "rootWsKB": 95652,
+          "rootPrivKB": 98840
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112300,
+          "privKB": 152572,
+          "cpuSec": 3.52,
+          "rootWsKB": 95520,
+          "rootPrivKB": 98504
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112524,
+          "privKB": 152648,
+          "cpuSec": 3.23,
+          "rootWsKB": 95680,
+          "rootPrivKB": 98860
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112316,
+          "privKB": 153816,
+          "cpuSec": 3.48,
+          "rootWsKB": 95544,
+          "rootPrivKB": 99392
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112728,
+          "privKB": 153012,
+          "cpuSec": 3.47,
+          "rootWsKB": 95928,
+          "rootPrivKB": 99184
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112564,
+          "privKB": 153396,
+          "cpuSec": 3.11,
+          "rootWsKB": 95076,
+          "rootPrivKB": 98092
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112812,
+          "privKB": 152924,
+          "cpuSec": 3.72,
+          "rootWsKB": 95744,
+          "rootPrivKB": 99048
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:27:15.688Z",
+      "elapsedMs": 449859,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 81076,
+        "heapUsedKB": 9364,
+        "wsKB": 81012,
+        "privKB": 83292
+      },
+      "stub": {
+        "wsKB": 72408,
+        "privKB": 35024
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113652,
+          "privKB": 153608,
+          "cpuSec": 3.83,
+          "rootWsKB": 96860,
+          "rootPrivKB": 99992
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112440,
+          "privKB": 153684,
+          "cpuSec": 3.72,
+          "rootWsKB": 95568,
+          "rootPrivKB": 99576
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113120,
+          "privKB": 154044,
+          "cpuSec": 3.92,
+          "rootWsKB": 96168,
+          "rootPrivKB": 99780
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 77252,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112904,
+          "privKB": 153500,
+          "cpuSec": 4.13,
+          "rootWsKB": 96184,
+          "rootPrivKB": 99648
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112752,
+          "privKB": 152508,
+          "cpuSec": 3.75,
+          "rootWsKB": 95972,
+          "rootPrivKB": 98440
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112948,
+          "privKB": 153020,
+          "cpuSec": 3.58,
+          "rootWsKB": 96104,
+          "rootPrivKB": 99232
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113040,
+          "privKB": 153320,
+          "cpuSec": 3.89,
+          "rootWsKB": 96268,
+          "rootPrivKB": 98896
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113068,
+          "privKB": 153592,
+          "cpuSec": 3.69,
+          "rootWsKB": 96252,
+          "rootPrivKB": 99748
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113484,
+          "privKB": 153672,
+          "cpuSec": 3.3,
+          "rootWsKB": 95996,
+          "rootPrivKB": 98368
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112896,
+          "privKB": 152868,
+          "cpuSec": 4.02,
+          "rootWsKB": 95820,
+          "rootPrivKB": 98984
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:27:47.859Z",
+      "elapsedMs": 482030,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 81268,
+        "heapUsedKB": 8857,
+        "wsKB": 81268,
+        "privKB": 83612
+      },
+      "stub": {
+        "wsKB": 72840,
+        "privKB": 36240
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113824,
+          "privKB": 153792,
+          "cpuSec": 3.98,
+          "rootWsKB": 96964,
+          "rootPrivKB": 100112
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112676,
+          "privKB": 153752,
+          "cpuSec": 3.8,
+          "rootWsKB": 95804,
+          "rootPrivKB": 99644
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113316,
+          "privKB": 153436,
+          "cpuSec": 4.11,
+          "rootWsKB": 96308,
+          "rootPrivKB": 99116
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 56072,
+          "restartCount": 1,
+          "procCount": 1,
+          "wsKB": 72920,
+          "privKB": 70472,
+          "cpuSec": 0.91,
+          "rootWsKB": 72920,
+          "rootPrivKB": 70472
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112816,
+          "privKB": 152664,
+          "cpuSec": 3.84,
+          "rootWsKB": 96036,
+          "rootPrivKB": 98596
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112532,
+          "privKB": 152424,
+          "cpuSec": 3.67,
+          "rootWsKB": 95688,
+          "rootPrivKB": 98636
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113092,
+          "privKB": 153380,
+          "cpuSec": 4,
+          "rootWsKB": 96320,
+          "rootPrivKB": 98956
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113292,
+          "privKB": 154104,
+          "cpuSec": 3.91,
+          "rootWsKB": 96444,
+          "rootPrivKB": 100228
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112948,
+          "privKB": 153144,
+          "cpuSec": 3.41,
+          "rootWsKB": 96032,
+          "rootPrivKB": 98416
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113336,
+          "privKB": 153116,
+          "cpuSec": 4.17,
+          "rootWsKB": 96260,
+          "rootPrivKB": 99232
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:28:19.777Z",
+      "elapsedMs": 513948,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 81496,
+        "heapUsedKB": 9048,
+        "wsKB": 81468,
+        "privKB": 84068
+      },
+      "stub": {
+        "wsKB": 73012,
+        "privKB": 35868
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114004,
+          "privKB": 154296,
+          "cpuSec": 4.19,
+          "rootWsKB": 97144,
+          "rootPrivKB": 100616
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113124,
+          "privKB": 154284,
+          "cpuSec": 3.91,
+          "rootWsKB": 96220,
+          "rootPrivKB": 100144
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113596,
+          "privKB": 154132,
+          "cpuSec": 4.27,
+          "rootWsKB": 96588,
+          "rootPrivKB": 99812
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 56072,
+          "restartCount": 1,
+          "procCount": 1,
+          "wsKB": 73968,
+          "privKB": 70860,
+          "cpuSec": 1.09,
+          "rootWsKB": 73968,
+          "rootPrivKB": 70860
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113108,
+          "privKB": 153208,
+          "cpuSec": 3.98,
+          "rootWsKB": 96328,
+          "rootPrivKB": 99140
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 112992,
+          "privKB": 153356,
+          "cpuSec": 3.81,
+          "rootWsKB": 96084,
+          "rootPrivKB": 99504
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113060,
+          "privKB": 153376,
+          "cpuSec": 4.19,
+          "rootWsKB": 96288,
+          "rootPrivKB": 98952
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113228,
+          "privKB": 153428,
+          "cpuSec": 4.11,
+          "rootWsKB": 96372,
+          "rootPrivKB": 99544
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113476,
+          "privKB": 154368,
+          "cpuSec": 3.55,
+          "rootWsKB": 96520,
+          "rootPrivKB": 99600
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113328,
+          "privKB": 153076,
+          "cpuSec": 4.34,
+          "rootWsKB": 96368,
+          "rootPrivKB": 99312
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:28:51.635Z",
+      "elapsedMs": 545806,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 81504,
+        "heapUsedKB": 9238,
+        "wsKB": 81504,
+        "privKB": 84076
+      },
+      "stub": {
+        "wsKB": 73428,
+        "privKB": 36588
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114136,
+          "privKB": 154444,
+          "cpuSec": 4.39,
+          "rootWsKB": 97276,
+          "rootPrivKB": 100764
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113472,
+          "privKB": 154544,
+          "cpuSec": 4.06,
+          "rootWsKB": 96568,
+          "rootPrivKB": 100404
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113720,
+          "privKB": 154304,
+          "cpuSec": 4.42,
+          "rootWsKB": 96712,
+          "rootPrivKB": 99984
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 56072,
+          "restartCount": 1,
+          "procCount": 1,
+          "wsKB": 74652,
+          "privKB": 72008,
+          "cpuSec": 1.25,
+          "rootWsKB": 74652,
+          "rootPrivKB": 72008
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113264,
+          "privKB": 153388,
+          "cpuSec": 4.11,
+          "rootWsKB": 96484,
+          "rootPrivKB": 99320
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113316,
+          "privKB": 153696,
+          "cpuSec": 3.97,
+          "rootWsKB": 96408,
+          "rootPrivKB": 99844
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113320,
+          "privKB": 154416,
+          "cpuSec": 4.41,
+          "rootWsKB": 96548,
+          "rootPrivKB": 99992
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113524,
+          "privKB": 153756,
+          "cpuSec": 4.3,
+          "rootWsKB": 96668,
+          "rootPrivKB": 99872
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113604,
+          "privKB": 154500,
+          "cpuSec": 3.69,
+          "rootWsKB": 96624,
+          "rootPrivKB": 99700
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113796,
+          "privKB": 153536,
+          "cpuSec": 4.53,
+          "rootWsKB": 96836,
+          "rootPrivKB": 99772
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:29:23.628Z",
+      "elapsedMs": 577799,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 81564,
+        "heapUsedKB": 9430,
+        "wsKB": 81564,
+        "privKB": 84136
+      },
+      "stub": {
+        "wsKB": 73692,
+        "privKB": 37412
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114536,
+          "privKB": 154996,
+          "cpuSec": 4.56,
+          "rootWsKB": 97676,
+          "rootPrivKB": 101316
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113880,
+          "privKB": 154996,
+          "cpuSec": 4.25,
+          "rootWsKB": 96956,
+          "rootPrivKB": 100824
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113960,
+          "privKB": 154580,
+          "cpuSec": 4.56,
+          "rootWsKB": 96952,
+          "rootPrivKB": 100260
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 56072,
+          "restartCount": 1,
+          "procCount": 1,
+          "wsKB": 75904,
+          "privKB": 73752,
+          "cpuSec": 1.42,
+          "rootWsKB": 75904,
+          "rootPrivKB": 73752
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113660,
+          "privKB": 153732,
+          "cpuSec": 4.2,
+          "rootWsKB": 96880,
+          "rootPrivKB": 99664
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113728,
+          "privKB": 154108,
+          "cpuSec": 4.14,
+          "rootWsKB": 96820,
+          "rootPrivKB": 100256
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113596,
+          "privKB": 154784,
+          "cpuSec": 4.56,
+          "rootWsKB": 96824,
+          "rootPrivKB": 100360
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114104,
+          "privKB": 154360,
+          "cpuSec": 4.44,
+          "rootWsKB": 97240,
+          "rootPrivKB": 100468
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113824,
+          "privKB": 154784,
+          "cpuSec": 3.83,
+          "rootWsKB": 96832,
+          "rootPrivKB": 99976
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114048,
+          "privKB": 153688,
+          "cpuSec": 4.69,
+          "rootWsKB": 97068,
+          "rootPrivKB": 99916
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:29:55.742Z",
+      "elapsedMs": 609913,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 81604,
+        "heapUsedKB": 9621,
+        "wsKB": 81604,
+        "privKB": 84204
+      },
+      "stub": {
+        "wsKB": 73472,
+        "privKB": 36588
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114832,
+          "privKB": 155196,
+          "cpuSec": 4.72,
+          "rootWsKB": 97860,
+          "rootPrivKB": 101388
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114112,
+          "privKB": 155116,
+          "cpuSec": 4.38,
+          "rootWsKB": 97144,
+          "rootPrivKB": 100896
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114132,
+          "privKB": 154800,
+          "cpuSec": 4.66,
+          "rootWsKB": 97000,
+          "rootPrivKB": 100340
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 56072,
+          "restartCount": 1,
+          "procCount": 1,
+          "wsKB": 77168,
+          "privKB": 74540,
+          "cpuSec": 1.59,
+          "rootWsKB": 77168,
+          "rootPrivKB": 74540
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113880,
+          "privKB": 153868,
+          "cpuSec": 4.36,
+          "rootWsKB": 97056,
+          "rootPrivKB": 99736
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113800,
+          "privKB": 154224,
+          "cpuSec": 4.27,
+          "rootWsKB": 96876,
+          "rootPrivKB": 100340
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113648,
+          "privKB": 154880,
+          "cpuSec": 4.75,
+          "rootWsKB": 96856,
+          "rootPrivKB": 100424
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114268,
+          "privKB": 154408,
+          "cpuSec": 4.64,
+          "rootWsKB": 97464,
+          "rootPrivKB": 100564
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113948,
+          "privKB": 154944,
+          "cpuSec": 4.08,
+          "rootWsKB": 96868,
+          "rootPrivKB": 100040
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114280,
+          "privKB": 153968,
+          "cpuSec": 4.88,
+          "rootWsKB": 97120,
+          "rootPrivKB": 100000
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:30:27.817Z",
+      "elapsedMs": 641988,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 81680,
+        "heapUsedKB": 8864,
+        "wsKB": 81680,
+        "privKB": 84232
+      },
+      "stub": {
+        "wsKB": 74032,
+        "privKB": 37176
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114992,
+          "privKB": 155320,
+          "cpuSec": 4.86,
+          "rootWsKB": 98020,
+          "rootPrivKB": 101512
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114252,
+          "privKB": 155160,
+          "cpuSec": 4.48,
+          "rootWsKB": 97252,
+          "rootPrivKB": 100908
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114180,
+          "privKB": 155864,
+          "cpuSec": 4.86,
+          "rootWsKB": 97048,
+          "rootPrivKB": 101404
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 56072,
+          "restartCount": 1,
+          "procCount": 1,
+          "wsKB": 78516,
+          "privKB": 75884,
+          "cpuSec": 1.78,
+          "rootWsKB": 78516,
+          "rootPrivKB": 75884
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113960,
+          "privKB": 154956,
+          "cpuSec": 4.53,
+          "rootWsKB": 97136,
+          "rootPrivKB": 100824
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113824,
+          "privKB": 154240,
+          "cpuSec": 4.36,
+          "rootWsKB": 96900,
+          "rootPrivKB": 100356
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113652,
+          "privKB": 154880,
+          "cpuSec": 4.95,
+          "rootWsKB": 96860,
+          "rootPrivKB": 100424
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114380,
+          "privKB": 154424,
+          "cpuSec": 4.8,
+          "rootWsKB": 97576,
+          "rootPrivKB": 100580
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113140,
+          "privKB": 153728,
+          "cpuSec": 4.19,
+          "rootWsKB": 96052,
+          "rootPrivKB": 98816
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114284,
+          "privKB": 153972,
+          "cpuSec": 5.06,
+          "rootWsKB": 97124,
+          "rootPrivKB": 100004
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:30:59.802Z",
+      "elapsedMs": 673973,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 81648,
+        "heapUsedKB": 9055,
+        "wsKB": 81648,
+        "privKB": 84168
+      },
+      "stub": {
+        "wsKB": 74300,
+        "privKB": 39052
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 115384,
+          "privKB": 156076,
+          "cpuSec": 5.06,
+          "rootWsKB": 98428,
+          "rootPrivKB": 102300
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113908,
+          "privKB": 154492,
+          "cpuSec": 4.63,
+          "rootWsKB": 96920,
+          "rootPrivKB": 100272
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114416,
+          "privKB": 155880,
+          "cpuSec": 5.09,
+          "rootWsKB": 97300,
+          "rootPrivKB": 101452
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 56072,
+          "restartCount": 1,
+          "procCount": 1,
+          "wsKB": 79704,
+          "privKB": 78016,
+          "cpuSec": 1.94,
+          "rootWsKB": 79704,
+          "rootPrivKB": 78016
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114536,
+          "privKB": 155576,
+          "cpuSec": 4.75,
+          "rootWsKB": 97728,
+          "rootPrivKB": 101476
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113588,
+          "privKB": 153500,
+          "cpuSec": 4.56,
+          "rootWsKB": 96680,
+          "rootPrivKB": 99648
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114136,
+          "privKB": 155064,
+          "cpuSec": 5.08,
+          "rootWsKB": 97360,
+          "rootPrivKB": 100640
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114204,
+          "privKB": 154664,
+          "cpuSec": 4.98,
+          "rootWsKB": 97364,
+          "rootPrivKB": 100788
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113604,
+          "privKB": 154704,
+          "cpuSec": 4.31,
+          "rootWsKB": 96532,
+          "rootPrivKB": 99824
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114184,
+          "privKB": 154616,
+          "cpuSec": 5.33,
+          "rootWsKB": 97036,
+          "rootPrivKB": 100680
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:31:31.930Z",
+      "elapsedMs": 706101,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 81648,
+        "heapUsedKB": 9246,
+        "wsKB": 81648,
+        "privKB": 84168
+      },
+      "stub": {
+        "wsKB": 74492,
+        "privKB": 39052
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114824,
+          "privKB": 155240,
+          "cpuSec": 5.33,
+          "rootWsKB": 97816,
+          "rootPrivKB": 101400
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113900,
+          "privKB": 154672,
+          "cpuSec": 4.8,
+          "rootWsKB": 96912,
+          "rootPrivKB": 100452
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114568,
+          "privKB": 155888,
+          "cpuSec": 5.22,
+          "rootWsKB": 97444,
+          "rootPrivKB": 101452
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 56072,
+          "restartCount": 1,
+          "procCount": 1,
+          "wsKB": 80088,
+          "privKB": 78588,
+          "cpuSec": 2.05,
+          "rootWsKB": 80088,
+          "rootPrivKB": 78588
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113928,
+          "privKB": 154636,
+          "cpuSec": 4.86,
+          "rootWsKB": 97120,
+          "rootPrivKB": 100536
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113704,
+          "privKB": 153552,
+          "cpuSec": 4.67,
+          "rootWsKB": 96796,
+          "rootPrivKB": 99700
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113880,
+          "privKB": 154016,
+          "cpuSec": 5.19,
+          "rootWsKB": 97104,
+          "rootPrivKB": 99592
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114288,
+          "privKB": 153896,
+          "cpuSec": 5.2,
+          "rootWsKB": 97448,
+          "rootPrivKB": 100020
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113624,
+          "privKB": 154504,
+          "cpuSec": 4.53,
+          "rootWsKB": 96544,
+          "rootPrivKB": 99616
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114156,
+          "privKB": 154200,
+          "cpuSec": 5.45,
+          "rootWsKB": 97000,
+          "rootPrivKB": 100256
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:32:03.951Z",
+      "elapsedMs": 738122,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 81648,
+        "heapUsedKB": 9436,
+        "wsKB": 81648,
+        "privKB": 84168
+      },
+      "stub": {
+        "wsKB": 74368,
+        "privKB": 36896
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114896,
+          "privKB": 155304,
+          "cpuSec": 5.47,
+          "rootWsKB": 97816,
+          "rootPrivKB": 101400
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114048,
+          "privKB": 154740,
+          "cpuSec": 4.97,
+          "rootWsKB": 97024,
+          "rootPrivKB": 100488
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114140,
+          "privKB": 154984,
+          "cpuSec": 5.53,
+          "rootWsKB": 97004,
+          "rootPrivKB": 100540
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 56072,
+          "restartCount": 1,
+          "procCount": 1,
+          "wsKB": 79732,
+          "privKB": 77588,
+          "cpuSec": 2.22,
+          "rootWsKB": 79732,
+          "rootPrivKB": 77588
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114052,
+          "privKB": 154636,
+          "cpuSec": 5.09,
+          "rootWsKB": 97244,
+          "rootPrivKB": 100536
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113808,
+          "privKB": 153656,
+          "cpuSec": 4.86,
+          "rootWsKB": 96796,
+          "rootPrivKB": 99700
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113912,
+          "privKB": 154184,
+          "cpuSec": 5.42,
+          "rootWsKB": 97104,
+          "rootPrivKB": 99728
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114496,
+          "privKB": 154024,
+          "cpuSec": 5.34,
+          "rootWsKB": 97524,
+          "rootPrivKB": 100020
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113440,
+          "privKB": 154320,
+          "cpuSec": 4.66,
+          "rootWsKB": 96544,
+          "rootPrivKB": 99616
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114476,
+          "privKB": 154628,
+          "cpuSec": 5.55,
+          "rootWsKB": 97368,
+          "rootPrivKB": 100732
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:32:36.344Z",
+      "elapsedMs": 770515,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 81648,
+        "heapUsedKB": 9627,
+        "wsKB": 81648,
+        "privKB": 84168
+      },
+      "stub": {
+        "wsKB": 74740,
+        "privKB": 37936
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114976,
+          "privKB": 155428,
+          "cpuSec": 5.64,
+          "rootWsKB": 97896,
+          "rootPrivKB": 101524
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114216,
+          "privKB": 154764,
+          "cpuSec": 5.09,
+          "rootWsKB": 97192,
+          "rootPrivKB": 100512
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114268,
+          "privKB": 154984,
+          "cpuSec": 5.72,
+          "rootWsKB": 97132,
+          "rootPrivKB": 100540
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 56072,
+          "restartCount": 1,
+          "procCount": 1,
+          "wsKB": 79840,
+          "privKB": 76980,
+          "cpuSec": 2.38,
+          "rootWsKB": 79840,
+          "rootPrivKB": 76980
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114212,
+          "privKB": 154664,
+          "cpuSec": 5.27,
+          "rootWsKB": 97400,
+          "rootPrivKB": 100564
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113860,
+          "privKB": 153716,
+          "cpuSec": 4.94,
+          "rootWsKB": 96848,
+          "rootPrivKB": 99760
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113972,
+          "privKB": 154252,
+          "cpuSec": 5.61,
+          "rootWsKB": 97164,
+          "rootPrivKB": 99796
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114640,
+          "privKB": 154040,
+          "cpuSec": 5.5,
+          "rootWsKB": 97668,
+          "rootPrivKB": 100036
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113556,
+          "privKB": 154412,
+          "cpuSec": 4.83,
+          "rootWsKB": 96604,
+          "rootPrivKB": 99644
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114608,
+          "privKB": 154628,
+          "cpuSec": 5.77,
+          "rootWsKB": 97500,
+          "rootPrivKB": 100732
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:33:08.717Z",
+      "elapsedMs": 802888,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 81712,
+        "heapUsedKB": 8849,
+        "wsKB": 81712,
+        "privKB": 84168
+      },
+      "stub": {
+        "wsKB": 75216,
+        "privKB": 38464
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 115092,
+          "privKB": 155588,
+          "cpuSec": 5.84,
+          "rootWsKB": 98012,
+          "rootPrivKB": 101684
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114276,
+          "privKB": 154788,
+          "cpuSec": 5.19,
+          "rootWsKB": 97252,
+          "rootPrivKB": 100536
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114556,
+          "privKB": 155244,
+          "cpuSec": 5.91,
+          "rootWsKB": 97420,
+          "rootPrivKB": 100800
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 56072,
+          "restartCount": 1,
+          "procCount": 1,
+          "wsKB": 80172,
+          "privKB": 77268,
+          "cpuSec": 2.56,
+          "rootWsKB": 80172,
+          "rootPrivKB": 77268
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114444,
+          "privKB": 154820,
+          "cpuSec": 5.45,
+          "rootWsKB": 97632,
+          "rootPrivKB": 100720
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113940,
+          "privKB": 153800,
+          "cpuSec": 5.06,
+          "rootWsKB": 96920,
+          "rootPrivKB": 99836
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114032,
+          "privKB": 154328,
+          "cpuSec": 5.8,
+          "rootWsKB": 97204,
+          "rootPrivKB": 99840
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114728,
+          "privKB": 154100,
+          "cpuSec": 5.67,
+          "rootWsKB": 97724,
+          "rootPrivKB": 100064
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113632,
+          "privKB": 154508,
+          "cpuSec": 4.97,
+          "rootWsKB": 96672,
+          "rootPrivKB": 99740
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114872,
+          "privKB": 154860,
+          "cpuSec": 5.89,
+          "rootWsKB": 97764,
+          "rootPrivKB": 100964
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:33:41.250Z",
+      "elapsedMs": 835421,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 81104,
+        "heapUsedKB": 9042,
+        "wsKB": 81104,
+        "privKB": 83104
+      },
+      "stub": {
+        "wsKB": 75304,
+        "privKB": 38476
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 115208,
+          "privKB": 155648,
+          "cpuSec": 6.05,
+          "rootWsKB": 98120,
+          "rootPrivKB": 101744
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114352,
+          "privKB": 154932,
+          "cpuSec": 5.33,
+          "rootWsKB": 97328,
+          "rootPrivKB": 100680
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114684,
+          "privKB": 155244,
+          "cpuSec": 6,
+          "rootWsKB": 97548,
+          "rootPrivKB": 100800
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 56072,
+          "restartCount": 1,
+          "procCount": 1,
+          "wsKB": 80248,
+          "privKB": 77076,
+          "cpuSec": 2.69,
+          "rootWsKB": 80248,
+          "rootPrivKB": 77076
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114636,
+          "privKB": 154904,
+          "cpuSec": 5.73,
+          "rootWsKB": 97824,
+          "rootPrivKB": 100804
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114072,
+          "privKB": 153924,
+          "cpuSec": 5.22,
+          "rootWsKB": 97044,
+          "rootPrivKB": 99952
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114120,
+          "privKB": 154428,
+          "cpuSec": 6,
+          "rootWsKB": 97292,
+          "rootPrivKB": 99940
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114764,
+          "privKB": 154160,
+          "cpuSec": 5.84,
+          "rootWsKB": 97752,
+          "rootPrivKB": 100124
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113768,
+          "privKB": 154644,
+          "cpuSec": 5.19,
+          "rootWsKB": 96792,
+          "rootPrivKB": 99860
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 115088,
+          "privKB": 154952,
+          "cpuSec": 6.05,
+          "rootWsKB": 97920,
+          "rootPrivKB": 100984
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:34:13.862Z",
+      "elapsedMs": 868033,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 81108,
+        "heapUsedKB": 9235,
+        "wsKB": 81044,
+        "privKB": 83744
+      },
+      "stub": {
+        "wsKB": 75304,
+        "privKB": 38612
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 115336,
+          "privKB": 156964,
+          "cpuSec": 6.2,
+          "rootWsKB": 98192,
+          "rootPrivKB": 102996
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114460,
+          "privKB": 155300,
+          "cpuSec": 5.5,
+          "rootWsKB": 97436,
+          "rootPrivKB": 101048
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114956,
+          "privKB": 156296,
+          "cpuSec": 6.23,
+          "rootWsKB": 97740,
+          "rootPrivKB": 101772
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 56072,
+          "restartCount": 1,
+          "procCount": 1,
+          "wsKB": 80020,
+          "privKB": 76888,
+          "cpuSec": 2.77,
+          "rootWsKB": 80020,
+          "rootPrivKB": 76888
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114764,
+          "privKB": 155344,
+          "cpuSec": 5.95,
+          "rootWsKB": 97888,
+          "rootPrivKB": 101180
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114148,
+          "privKB": 154232,
+          "cpuSec": 5.45,
+          "rootWsKB": 97120,
+          "rootPrivKB": 100260
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114096,
+          "privKB": 154372,
+          "cpuSec": 6.16,
+          "rootWsKB": 97228,
+          "rootPrivKB": 99852
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114956,
+          "privKB": 155464,
+          "cpuSec": 6.02,
+          "rootWsKB": 97992,
+          "rootPrivKB": 101484
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113768,
+          "privKB": 154836,
+          "cpuSec": 5.31,
+          "rootWsKB": 96724,
+          "rootPrivKB": 99988
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 115260,
+          "privKB": 155668,
+          "cpuSec": 6.2,
+          "rootWsKB": 98084,
+          "rootPrivKB": 101692
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:34:46.161Z",
+      "elapsedMs": 900332,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 81116,
+        "heapUsedKB": 9425,
+        "wsKB": 81112,
+        "privKB": 83816
+      },
+      "stub": {
+        "wsKB": 76096,
+        "privKB": 39292
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 115292,
+          "privKB": 156088,
+          "cpuSec": 6.5,
+          "rootWsKB": 98140,
+          "rootPrivKB": 102120
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114440,
+          "privKB": 154524,
+          "cpuSec": 5.69,
+          "rootWsKB": 97416,
+          "rootPrivKB": 100272
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114340,
+          "privKB": 155228,
+          "cpuSec": 6.45,
+          "rootWsKB": 97116,
+          "rootPrivKB": 100704
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 56072,
+          "restartCount": 1,
+          "procCount": 1,
+          "wsKB": 81172,
+          "privKB": 78396,
+          "cpuSec": 2.97,
+          "rootWsKB": 81172,
+          "rootPrivKB": 78396
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 115228,
+          "privKB": 155784,
+          "cpuSec": 6.2,
+          "rootWsKB": 98352,
+          "rootPrivKB": 101620
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114588,
+          "privKB": 154820,
+          "cpuSec": 5.72,
+          "rootWsKB": 97560,
+          "rootPrivKB": 100848
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114284,
+          "privKB": 154296,
+          "cpuSec": 6.47,
+          "rootWsKB": 97416,
+          "rootPrivKB": 99776
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114752,
+          "privKB": 155012,
+          "cpuSec": 6.25,
+          "rootWsKB": 97784,
+          "rootPrivKB": 101032
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113848,
+          "privKB": 154756,
+          "cpuSec": 5.59,
+          "rootWsKB": 96804,
+          "rootPrivKB": 99908
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114724,
+          "privKB": 155180,
+          "cpuSec": 6.41,
+          "rootWsKB": 97548,
+          "rootPrivKB": 101204
+        }
+      },
+      "activeTenantCount": 10
+    },
+    {
+      "atIso": "2026-10-05T18:35:18.515Z",
+      "elapsedMs": 932686,
+      "controlPlane": {
+        "pid": 53064,
+        "rssKB": 81332,
+        "heapUsedKB": 9616,
+        "wsKB": 81332,
+        "privKB": 83928
+      },
+      "stub": {
+        "wsKB": 76636,
+        "privKB": 40084
+      },
+      "tenants": {
+        "cap-tenant-0": {
+          "status": "running",
+          "pid": 34420,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 115460,
+          "privKB": 156112,
+          "cpuSec": 6.69,
+          "rootWsKB": 98292,
+          "rootPrivKB": 102120
+        },
+        "cap-tenant-1": {
+          "status": "running",
+          "pid": 78052,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114544,
+          "privKB": 154660,
+          "cpuSec": 5.88,
+          "rootWsKB": 97520,
+          "rootPrivKB": 100408
+        },
+        "cap-tenant-2": {
+          "status": "running",
+          "pid": 32164,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114468,
+          "privKB": 155376,
+          "cpuSec": 6.72,
+          "rootWsKB": 97236,
+          "rootPrivKB": 100844
+        },
+        "cap-tenant-3": {
+          "status": "running",
+          "pid": 56072,
+          "restartCount": 1,
+          "procCount": 1,
+          "wsKB": 81184,
+          "privKB": 78396,
+          "cpuSec": 3.09,
+          "rootWsKB": 81184,
+          "rootPrivKB": 78396
+        },
+        "cap-tenant-4": {
+          "status": "running",
+          "pid": 68480,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114428,
+          "privKB": 154800,
+          "cpuSec": 6.45,
+          "rootWsKB": 97552,
+          "rootPrivKB": 100636
+        },
+        "cap-tenant-5": {
+          "status": "running",
+          "pid": 59172,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 115276,
+          "privKB": 155584,
+          "cpuSec": 5.92,
+          "rootWsKB": 98248,
+          "rootPrivKB": 101612
+        },
+        "cap-tenant-6": {
+          "status": "running",
+          "pid": 38900,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114308,
+          "privKB": 154352,
+          "cpuSec": 6.69,
+          "rootWsKB": 97440,
+          "rootPrivKB": 99832
+        },
+        "cap-tenant-7": {
+          "status": "running",
+          "pid": 31828,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 114920,
+          "privKB": 155024,
+          "cpuSec": 6.52,
+          "rootWsKB": 97952,
+          "rootPrivKB": 101044
+        },
+        "cap-tenant-8": {
+          "status": "running",
+          "pid": 2344,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 113884,
+          "privKB": 154756,
+          "cpuSec": 5.8,
+          "rootWsKB": 96836,
+          "rootPrivKB": 99908
+        },
+        "cap-tenant-9": {
+          "status": "running",
+          "pid": 35328,
+          "restartCount": 0,
+          "procCount": 2,
+          "wsKB": 115140,
+          "privKB": 155676,
+          "cpuSec": 6.59,
+          "rootWsKB": 97964,
+          "rootPrivKB": 101700
+        }
+      },
+      "activeTenantCount": 10
+    }
+  ],
+  "events": [
+    {
+      "atIso": "2026-10-05T18:27:15.689Z",
+      "elapsedMs": 449860,
+      "action": "SIGKILL",
+      "clientId": "cap-tenant-3",
+      "pid": 77252
+    }
+  ],
+  "recovery": {
+    "clientId": "cap-tenant-3",
+    "oldPid": 77252,
+    "oldPidGone": true,
+    "finalStatus": "running",
+    "newPid": 56072,
+    "restartCount": 1,
+    "recovered": true
+  },
+  "statusAtEnd": {
+    "cap-tenant-0": {
+      "clientId": "cap-tenant-0",
+      "status": "stopped",
+      "restartCount": 0,
+      "consecutiveCrashes": 0,
+      "startedAt": "2026-10-05T18:19:43.868Z",
+      "lastExitCode": null
+    },
+    "cap-tenant-1": {
+      "clientId": "cap-tenant-1",
+      "status": "stopped",
+      "restartCount": 0,
+      "consecutiveCrashes": 0,
+      "startedAt": "2026-10-05T18:19:43.910Z",
+      "lastExitCode": null
+    },
+    "cap-tenant-2": {
+      "clientId": "cap-tenant-2",
+      "status": "stopped",
+      "restartCount": 0,
+      "consecutiveCrashes": 0,
+      "startedAt": "2026-10-05T18:19:43.928Z",
+      "lastExitCode": null
+    },
+    "cap-tenant-3": {
+      "clientId": "cap-tenant-3",
+      "status": "stopped",
+      "restartCount": 1,
+      "consecutiveCrashes": 1,
+      "startedAt": "2026-10-05T18:27:16.706Z",
+      "lastExitCode": null
+    },
+    "cap-tenant-4": {
+      "clientId": "cap-tenant-4",
+      "status": "stopped",
+      "restartCount": 0,
+      "consecutiveCrashes": 0,
+      "startedAt": "2026-10-05T18:19:43.954Z",
+      "lastExitCode": null
+    },
+    "cap-tenant-5": {
+      "clientId": "cap-tenant-5",
+      "status": "stopped",
+      "restartCount": 0,
+      "consecutiveCrashes": 0,
+      "startedAt": "2026-10-05T18:19:43.964Z",
+      "lastExitCode": null
+    },
+    "cap-tenant-6": {
+      "clientId": "cap-tenant-6",
+      "status": "stopped",
+      "restartCount": 0,
+      "consecutiveCrashes": 0,
+      "startedAt": "2026-10-05T18:19:43.975Z",
+      "lastExitCode": null
+    },
+    "cap-tenant-7": {
+      "clientId": "cap-tenant-7",
+      "status": "stopped",
+      "restartCount": 0,
+      "consecutiveCrashes": 0,
+      "startedAt": "2026-10-05T18:19:43.986Z",
+      "lastExitCode": null
+    },
+    "cap-tenant-8": {
+      "clientId": "cap-tenant-8",
+      "status": "stopped",
+      "restartCount": 0,
+      "consecutiveCrashes": 0,
+      "startedAt": "2026-10-05T18:19:43.997Z",
+      "lastExitCode": null
+    },
+    "cap-tenant-9": {
+      "clientId": "cap-tenant-9",
+      "status": "stopped",
+      "restartCount": 0,
+      "consecutiveCrashes": 0,
+      "startedAt": "2026-10-05T18:19:44.006Z",
+      "lastExitCode": null
+    }
+  },
+  "stubStats": {
+    "total": 10974,
+    "byMethod": {
+      "getSignaturesForAddress": 10974
+    }
+  },
+  "shutdown": {
+    "everSeenPidsIncludingChildren": 21,
+    "orphanedPids": [],
+    "activeAfter": 0
+  },
+  "finishedAtIso": "2026-10-05T18:35:21.716Z"
+}
