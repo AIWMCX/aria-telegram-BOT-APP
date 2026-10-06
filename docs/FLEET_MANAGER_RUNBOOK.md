@@ -726,9 +726,9 @@ Windows with the fake engine. **Docker image build and Linux behaviour
 | Variable | Default | Meaning |
 |---|---|---|
 | `FLEET_ENABLED` | **false** (opt-in) | Kill switch. `true`/`1` enables; `false`/`0`/unset/empty disables; anything else fails boot. When false: `/paper_*` answer "Hosted PAPER is not available right now", rehydration and the approval re-check never start, nothing spawns, desired-state files are left untouched, `/healthz` shows `fleet.enabled:false` and `fleet.available:false`. |
-| `FLEET_ALLOWED_TELEGRAM_IDS` | unset | Comma list of numeric Telegram ids. Unset/empty = every approved user (when enabled). Set = only those ids, enforced in `/paper_*`, in rehydration (others get desired=stopped) and in the 5-minute approval check (their running tenants are stopped). Use it for a founder-only first deploy. |
+| `FLEET_ALLOWED_TELEGRAM_IDS` | unset | Comma list of numeric Telegram ids. Truly **unset** = every approved user (when enabled). **Present but blank (empty or whitespace) while `FLEET_ENABLED=true` refuses to boot** (fail closed: an emptied variable must not silently widen access; delete the variable on purpose to allow everyone). Set = only those ids, enforced in `/paper_*`, in rehydration (others get desired=stopped) and in the 5-minute approval check (their running tenants are stopped). Use it for a founder-only first deploy. |
 | `FLEET_MAX_CONCURRENT_TENANTS` | **3** | Concurrent engine cap. Empty string is treated as unset. |
-| `FLEET_MIN_FREE_MEMORY_MB` | 400 | A NEW spawn is refused (user sees the generic "at capacity" message; rehydration keeps the tenant queued with desired=running) when free container memory is below this. Reads cgroup v2/v1 `memory.max`-`memory.current` when present, else `os.freemem()`; the smaller wins. `0` disables. Crash-restarts of already-admitted tenants are not gated. |
+| `FLEET_MIN_FREE_MEMORY_MB` | 400 | A NEW spawn is refused (user sees the generic "at capacity" message; rehydration keeps the tenant queued with desired=running) when free container memory is below this. Reads cgroup v2/v1 `memory.max` minus `memory.current` when a numeric limit is present, else `os.freemem()` (cgroup v2 `max` = unlimited also falls back to `os.freemem()`, which inside a container may report HOST memory); the smaller wins; a NaN/unknown reading counts as 0 and refuses the spawn. `memory.current` INCLUDES page cache, so the guard can refuse earlier than real pressure warrants: tune `FLEET_MIN_FREE_MEMORY_MB` (`0` disables) and validate it on Railway with real tenants BEFORE raising the cap. Crash-restarts of already-admitted tenants are not gated. |
 | `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` | set **15** | Gives the control plane time between SIGTERM and SIGKILL. `src/index.ts` stops all tenants within an 8 s budget (watchdog 9.5 s); Railway's own default grace is short and was not measured. |
 
 ### Sizing the cap
@@ -769,7 +769,10 @@ Raising the cap is an env-var change plus a redeploy
 - **Fast stop (no redeploy needed):** send `/fleet_stop_all` as the admin
   (`ADMIN_TELEGRAM_CHAT_ID`). It stops every tenant, writes desired=stopped
   for all of them (including ones only waiting for rehydration) and replies
-  with the count. Nothing comes back on restart.
+  with how many were stopped and how many FAILED (a tenant only counts as
+  stopped if its process is gone AND desired=stopped was persisted; re-run it
+  for failures). Users can still `/paper_start` afterwards unless
+  `FLEET_ENABLED=false`; nothing comes back on restart.
 - **Full rollback:** set `FLEET_ENABLED=false` and redeploy. Rehydration and
   spawns stop; desired-state files stay, so re-enabling later brings
   `desired=running` tenants back (run `/fleet_stop_all` first if you do not
@@ -778,6 +781,4 @@ Raising the cap is an env-var change plus a redeploy
 
 ### Tenant logs
 
-Per-tenant logs append across restarts under `FLEET_LOGS_ROOT`; at spawn a log
-over 20 MB is renamed to `<id>.log.1` (one generation kept), so a tenant uses
-at most about 40 MB of volume.
+Per-tenant logs append across restarts under `FLEET_LOGS_ROOT`. Rotation happens only at spawn: a log over 20 MB is renamed to `<id>.log.1` (one generation kept), so growth is bounded per restart, not per day; a tenant that runs for a long time without restarting can exceed 20 MB.

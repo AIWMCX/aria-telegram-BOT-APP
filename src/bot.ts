@@ -707,9 +707,15 @@ bot.command("revoke", async (ctx) => {
 bot.command("fleet_stop_all", async (ctx) => {
   if (!(await requireAdmin(ctx, "fleet_stop_all"))) return;
   try {
-    const { count } = await fleetManager.stopAllTenants();
-    logger.warn({ count, admin: ctx.from?.id }, "fleet_stop_all executed");
-    await ctx.reply(`Stopped ${count} hosted PAPER tenant${count === 1 ? "" : "s"} and set their desired state to stopped.`);
+    const { count, failed } = await fleetManager.stopAllTenants();
+    logger.warn({ count, failed, admin: ctx.from?.id }, "fleet_stop_all executed");
+    await ctx.reply(
+      [
+        `Stopped ${count} hosted PAPER tenant${count === 1 ? "" : "s"} and set their desired state to stopped.`,
+        failed > 0 ? `${failed} could NOT be fully stopped — check logs and run /fleet_stop_all again.` : "",
+        "Users can still /paper_start unless FLEET_ENABLED=false (set it and redeploy for a full stop).",
+      ].filter(Boolean).join("\n"),
+    );
   } catch (err) {
     logger.error({ err: describeBotError(err) }, "fleet_stop_all failed");
     await ctx.reply("fleet_stop_all failed — check logs.");

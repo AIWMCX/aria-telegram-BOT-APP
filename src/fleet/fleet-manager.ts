@@ -471,7 +471,9 @@ export class FleetManager {
     // BEFORE any desired-state write, so a refusal leaves rehydration's queued
     // tenant exactly as it was.
     if (this.opts.minFreeMemoryBytes > 0) {
-      const avail = this.opts.readAvailableMemoryBytes();
+      const raw = this.opts.readAvailableMemoryBytes();
+      // `NaN < floor` is false, which would silently ADMIT the spawn: treat any non-finite reading as 0.
+      const avail = Number.isFinite(raw) ? raw : 0;
       if (avail < this.opts.minFreeMemoryBytes) throw new FleetLowMemoryError(avail, this.opts.minFreeMemoryBytes);
     }
     // Compare-and-set for background callers (rehydration): they decided to
@@ -779,10 +781,25 @@ export class FleetManager {
    * desired=running file waiting for rehydration). Returns how many distinct
    * tenants were processed.
    */
-  async stopAllTenants(): Promise<{ count: number }> {
+  async stopAllTenants(): Promise<{ count: number; failed: number }> {
     const ids = new Set<string>([...this.tenants.keys(), ...this.scanDesiredRunning()]);
-    await Promise.all([...ids].map((id) => this.stopTenant(id, true).catch(() => undefined)));
-    return { count: ids.size };
+    let count = 0;
+    let failed = 0;
+    await Promise.all(
+      [...ids].map(async (id) => {
+        try {
+          await this.stopTenant(id, true);
+        } catch (err) {
+          this.opts.log.error({ clientId: id, errName: (err as Error)?.name }, "fleet stop-all: stopping a tenant failed");
+        }
+        // "Stopped" means BOTH: no live process AND desired=stopped is durable.
+        const st = this.tenants.get(id)?.handle.status;
+        const processGone = st === undefined || st === "stopped" || st === "failed";
+        if (processGone && this.getDesiredState(id) === "stopped") count++;
+        else failed++;
+      }),
+    );
+    return { count, failed };
   }
 
   /** Last-resort synchronous kill of every live child (used by the process 'exit' hook). */

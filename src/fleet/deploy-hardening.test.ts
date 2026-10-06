@@ -94,7 +94,9 @@ async function main() {
     check("CFG: invalid FLEET_ENABLED (yes/typo) fails clearly instead of defaulting", bad({ FLEET_ENABLED: "yes" }) && bad({ FLEET_ENABLED: "tru" }));
     const ids = parseFleetFlags({ FLEET_ENABLED: "true", FLEET_ALLOWED_TELEGRAM_IDS: " 123456 , 789 " });
     check("CFG: allow-list parses numeric ids", ids.allowedTelegramIds?.has("123456") === true && ids.allowedTelegramIds?.has("789") === true && ids.allowedTelegramIds?.size === 2);
-    check("CFG: empty allow-list string means no allow-list", parseFleetFlags({ FLEET_ALLOWED_TELEGRAM_IDS: "  " }).allowedTelegramIds === undefined);
+    check("CFG: truly unset allow-list means all approved users", parseFleetFlags({ FLEET_ENABLED: "true" }).allowedTelegramIds === undefined);
+    check("CFG: present-but-blank allow-list while ENABLED fails closed (empty and whitespace)", bad({ FLEET_ENABLED: "true", FLEET_ALLOWED_TELEGRAM_IDS: "" }) && bad({ FLEET_ENABLED: "true", FLEET_ALLOWED_TELEGRAM_IDS: "   " }));
+    check("CFG: blank allow-list while the fleet is disabled is harmless", parseFleetFlags({ FLEET_ALLOWED_TELEGRAM_IDS: "" }).allowedTelegramIds === undefined);
     check("CFG: non-numeric / empty-element allow-list entries are rejected", bad({ FLEET_ALLOWED_TELEGRAM_IDS: "123,abc" }) && bad({ FLEET_ALLOWED_TELEGRAM_IDS: "123," }) && bad({ FLEET_ALLOWED_TELEGRAM_IDS: "-5" }) && bad({ FLEET_ALLOWED_TELEGRAM_IDS: "0" }));
     check("CFG: empty FLEET_MAX_CONCURRENT_TENANTS is treated as unset", parseFleetFlags({ FLEET_MAX_CONCURRENT_TENANTS: "" }).maxConcurrentTenants === undefined);
     check("CFG: FLEET_MAX_CONCURRENT_TENANTS=3 parses; 0/abc/-1 fail", parseFleetFlags({ FLEET_MAX_CONCURRENT_TENANTS: "3" }).maxConcurrentTenants === 3 && bad({ FLEET_MAX_CONCURRENT_TENANTS: "0" }) && bad({ FLEET_MAX_CONCURRENT_TENANTS: "abc" }) && bad({ FLEET_MAX_CONCURRENT_TENANTS: "-1" }));
@@ -108,6 +110,8 @@ async function main() {
     check("CFG-BOOT: blank FLEET_MAX_CONCURRENT_TENANTS boots and is unset", okRun.status === 0 && /MAX=undefined/.test(okRun.stdout) && /ENABLED=false/.test(okRun.stdout));
     const badRun = run({ FLEET_ENABLED: "maybe" });
     check("CFG-BOOT: invalid FLEET_ENABLED refuses to boot with a clear message", badRun.status !== 0 && /FLEET_ENABLED/.test(badRun.stderr));
+    const blankIds = run({ FLEET_ENABLED: "true", FLEET_ALLOWED_TELEGRAM_IDS: "" });
+    check("CFG-BOOT: enabled + blank allow-list refuses to boot with a clear message", blankIds.status !== 0 && /FLEET_ALLOWED_TELEGRAM_IDS/.test(blankIds.stderr));
     const badIds = run({ FLEET_ALLOWED_TELEGRAM_IDS: "12x" });
     check("CFG-BOOT: invalid FLEET_ALLOWED_TELEGRAM_IDS refuses to boot", badIds.status !== 0 && /FLEET_ALLOWED_TELEGRAM_IDS/.test(badIds.stderr));
   }
@@ -192,6 +196,27 @@ async function main() {
     check("KILL-ALL: every live process is gone", pids.every((p) => !alive(p)) && ["ka-1", "ka-2"].every((i) => fm.getTenantStatus(i)?.status === "stopped"));
     check("KILL-ALL: desired=stopped for ALL (including the queued one)", ["ka-1", "ka-2", "ka-queued"].every((i) => readDesiredState(root, i)?.desired === "stopped"));
     check("KILL-ALL: nothing is left for rehydration", fm.scanDesiredRunning().length === 0);
+    check("KILL-ALL: no failures reported on a clean stop", res.failed === 0);
+
+    // a tenant whose desired-state cannot be persisted is a FAILURE, not a success
+    const root2 = tmp();
+    const { fm: fm2 } = makeFm({ tenantsRoot: root2 });
+    for (const id of ["kf-ok", "kf-bad"]) await fm2.spawnTenant(id);
+    await waitFor(() => ["kf-ok", "kf-bad"].every((i) => fm2.getTenantStatus(i)?.status === "running"));
+    const badFile = path.join(root2, "kf-bad", "desired-state.json");
+    fs.rmSync(badFile);
+    fs.mkdirSync(badFile); // rename-onto-a-directory makes the desired=stopped write fail
+    const res2 = await fm2.stopAllTenants();
+    check("KILL-ALL: only truly stopped tenants are counted; the unpersistable one is a failure", res2.count === 1 && res2.failed === 1);
+    // a stop that throws outright is also a failure
+    const root3 = tmp();
+    const { fm: fm3 } = makeFm({ tenantsRoot: root3 });
+    writeDesiredState(root3, "kt-1", "running");
+    fm3.stopTenant = async () => {
+      throw new Error("boom");
+    };
+    const res3 = await fm3.stopAllTenants();
+    check("KILL-ALL: a stop that throws is counted as failed, not stopped", res3.count === 0 && res3.failed === 1);
   }
 
   // ── F3: default cap + memory guard ──
@@ -231,6 +256,15 @@ async function main() {
     const r = await startHostedEngine(deps, 1);
     check("MEM: user sees the generic capacity message (no memory internals)", !r.ok && r.reason === "capacity" && !/memory|MB/i.test(r.message));
 
+    const nanFm = makeFm({ mem: () => NaN });
+    let nanRefused = false;
+    try {
+      await nanFm.fm.spawnTenant("nan-1");
+    } catch (e) {
+      nanRefused = e instanceof FleetLowMemoryError;
+    }
+    check("MEM: a NaN memory reading refuses the spawn instead of admitting it", nanRefused && nanFm.fm.getTenantStatus("nan-1") === undefined);
+
     // rehydration: stays queued with desired untouched, then starts once memory frees
     writeDesiredState(root, "mem-2", "running");
     const rh = new TenantRehydrator({
@@ -264,6 +298,7 @@ async function main() {
     check("MEMREAD: cgroup v2 'max' falls back to os.freemem", readAvailableMemoryBytes(files({ "/sys/fs/cgroup/memory.max": "max", "/sys/fs/cgroup/memory.current": "123" }), () => 3 * GB) === 3 * GB);
     check("MEMREAD: cgroup v1 limit minus usage", readAvailableMemoryBytes(files({ "/sys/fs/cgroup/memory/memory.limit_in_bytes": String(1 * GB), "/sys/fs/cgroup/memory/memory.usage_in_bytes": String(0.25 * GB) }), () => 16 * GB) === 0.75 * GB);
     check("MEMREAD: cgroup v1 'unlimited' sentinel is ignored", readAvailableMemoryBytes(files({ "/sys/fs/cgroup/memory/memory.limit_in_bytes": "9223372036854771712", "/sys/fs/cgroup/memory/memory.usage_in_bytes": "1000" }), () => 5 * GB) === 5 * GB);
+    check("MEMREAD: NaN / non-finite / negative readings become 0 (unknown => refuse)", readAvailableMemoryBytes(files({}), () => NaN) === 0 && readAvailableMemoryBytes(files({}), () => Infinity) === 0 && readAvailableMemoryBytes(files({ "/sys/fs/cgroup/memory.max": "100", "/sys/fs/cgroup/memory.current": "500" }), () => 5 * GB) === 0);
     check("MEMREAD: no cgroup files -> os.freemem; the smaller of cgroup/host wins", readAvailableMemoryBytes(files({}), () => 7 * GB) === 7 * GB && readAvailableMemoryBytes(files({ "/sys/fs/cgroup/memory.max": String(8 * GB), "/sys/fs/cgroup/memory.current": "0" }), () => 1 * GB) === 1 * GB);
   }
 

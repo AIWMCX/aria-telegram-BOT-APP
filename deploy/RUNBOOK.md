@@ -187,6 +187,6 @@ run founder `/paper_start` -> `/paper_status` -> `/paper_stop`, and do one
 redeploy to confirm rehydration before widening access.
 
 Rollback / kill switch: admin `/fleet_stop_all` (stops all tenants and marks
-them stopped), then `FLEET_ENABLED=false` and redeploy. `/healthz`
+them stopped; the reply says how many failed; users can still `/paper_start` until `FLEET_ENABLED=false`), then `FLEET_ENABLED=false` and redeploy. `/healthz`
 `fleet.enabled:false` confirms. The Docker image build and Linux runtime
 behaviour have not been verified.

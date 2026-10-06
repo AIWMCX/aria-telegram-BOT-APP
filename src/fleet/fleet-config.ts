@@ -6,8 +6,9 @@
  *   FLEET_ENABLED               opt-in kill switch. Unset/empty => false.
  *                               Accepts true/1/false/0 only; anything else is an error.
  *   FLEET_ALLOWED_TELEGRAM_IDS  optional comma list of numeric Telegram ids
- *                               (founder-only first deploy). Unset/empty => no
+ *                               (founder-only first deploy). Truly UNSET => no
  *                               allow-list (all approved users when enabled).
+ *                               Present but blank while enabled => boot refused.
  *   FLEET_MIN_FREE_MEMORY_MB    refuse NEW spawns below this much free
  *                               container memory. Unset/empty => 400.
  *   FLEET_MAX_CONCURRENT_TENANTS  positive int. Unset/empty => FleetManager default (3).
@@ -44,7 +45,12 @@ export function parseFleetFlags(env: NodeJS.ProcessEnv): FleetFlags {
 
   let allowed: Set<string> | undefined;
   const rawAllowed = env.FLEET_ALLOWED_TELEGRAM_IDS;
-  if (!blank(rawAllowed)) {
+  if (rawAllowed !== undefined && blank(rawAllowed) && enabled) {
+    // Present-but-blank is almost certainly a mistake (an emptied Railway
+    // variable), and silently treating it as "everyone" would widen access.
+    // Fail closed: either unset it on purpose or list ids.
+    problems.push("FLEET_ALLOWED_TELEGRAM_IDS is set but blank while FLEET_ENABLED=true; unset it to allow all approved users, or list numeric Telegram ids");
+  } else if (!blank(rawAllowed)) {
     allowed = new Set();
     for (const part of rawAllowed!.split(",")) {
       const id = part.trim();

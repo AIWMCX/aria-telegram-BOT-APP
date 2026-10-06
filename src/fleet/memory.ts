@@ -31,5 +31,7 @@ export function readAvailableMemoryBytes(
     if (v1max !== undefined && v1cur !== undefined && v1max < UNLIMITED) cg = v1max - v1cur;
   }
   const host = freemem();
-  return cg === undefined ? host : Math.min(cg, host);
+  const raw = cg === undefined ? host : Math.min(cg, host);
+  // NaN/negative/non-finite means "unknown": report 0 so the spawn guard refuses.
+  return Number.isFinite(raw) && raw > 0 ? raw : 0;
 }
