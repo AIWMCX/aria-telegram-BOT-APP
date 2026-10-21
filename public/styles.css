@@ -209,3 +209,12 @@ footer strong { color: var(--amber); letter-spacing: 0.08em; }
 .engine-controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
 .engine-controls .plan-btn { margin: 0; }
 .mono { overflow: hidden; text-overflow: ellipsis; }
+
+/* Founder-only external wallet observation panel. */
+#founder-review[hidden], #review-jupiter-link[hidden] { display: none; }
+#founder-review { padding: 16px; }
+.review-fields { display: grid; gap: 14px; max-width: 720px; }
+.review-fields label { display: grid; gap: 6px; }
+.review-fields input, .review-fields select { width: 100%; box-sizing: border-box; padding: 10px; background: #11191c; color: #eef5f6; border: 1px solid #526169; }
+.review-fields a { color: #83e3ff; overflow-wrap: anywhere; }
+#review-result { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }

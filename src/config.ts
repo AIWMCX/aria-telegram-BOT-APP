@@ -41,6 +41,11 @@ const Env = z.object({
   // the moment the user has just gotten real value, not before.
   RYPTO_CHANNEL_URL: z.string().url().optional(),
 
+  // External wallet review: disabled until explicitly configured for one founder.
+  ARIA_EXTERNAL_REVIEW_ENABLED: z.string().optional().transform(v => v === "true"),
+  ARIA_EXTERNAL_REVIEW_FOUNDER_ID: z.string().regex(/^[1-9]\d*$/).optional(),
+  ARIA_EXTERNAL_REVIEW_RPC_URL: z.string().url().refine(v => v.startsWith("https://"), "HTTPS RPC required").optional(),
+
   // ── Server ────────────────────────────────────────────────────────────
   PORT: z.coerce.number().int().positive().default(8080),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
