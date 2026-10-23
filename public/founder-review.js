@@ -45,6 +45,17 @@
       if (o.status === 'not_found_or_not_finalized') {
         result.textContent = 'Not found at finalized commitment. This is not proof of failure. Check the signature and retry later.'; return;
       }
+      if (o.status === 'failed_on_chain') {
+        result.textContent = [
+          'TRANSACTION FAILED ON-CHAIN — no swap happened',
+          'Signature: ' + o.signature,
+          'Slot: ' + o.slot,
+          'Network fee charged (lamports): ' + o.networkFeeLamports,
+          'Native SOL change (lamports): ' + o.nativeDeltaLamports,
+          o.note,
+        ].join('\n');
+        return;
+      }
       result.textContent = [
         'FINALIZED BALANCE OBSERVATION — not verified strategy performance',
         'Signature: ' + o.signature,

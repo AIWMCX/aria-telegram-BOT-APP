@@ -16,7 +16,7 @@ export function isBase58Bytes(value: string, bytes: number): boolean {
 export const Address = z.string().refine(v => isBase58Bytes(v, 32), 'Expected a public Solana address');
 export const Signature = z.string().refine(v => isBase58Bytes(v, 64), 'Expected a transaction signature');
 export const SOL_MINT = 'So11111111111111111111111111111111111111112';
-export const MAINNET_GENESIS = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
+export const MAINNET_GENESIS = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d';
 const uint = z.number().int().nonnegative().safe();
 const TokenBalance = z.object({
   accountIndex: uint, mint: Address, owner: Address,
@@ -28,7 +28,7 @@ const Transaction = z.object({
     accountKeys: z.array(z.object({ pubkey: Address, signer: z.boolean(), writable: z.boolean() })).min(1),
   }) }),
   meta: z.object({
-    err: z.unknown().refine(v => v === null, 'Transaction failed'), fee: uint,
+    err: z.unknown(), fee: uint,
     preBalances: z.array(uint), postBalances: z.array(uint),
     preTokenBalances: z.array(TokenBalance), postTokenBalances: z.array(TokenBalance),
   }),
@@ -54,6 +54,16 @@ export function inspectTransaction(raw: unknown, signature: string, wallet: stri
   if (index < 0) throw new Error('Expected wallet was not a signer');
   if (tx.meta.preBalances.length !== keys.length || tx.meta.postBalances.length !== keys.length)
     throw new Error('Incomplete native balance metadata');
+  if (tx.meta.err !== null && tx.meta.err !== undefined) {
+    // Failed on-chain: no trade happened, but the fee (and any priority fee) was still charged.
+    const nativeDelta = BigInt(tx.meta.postBalances[index]) - BigInt(tx.meta.preBalances[index]);
+    return {
+      status: 'failed_on_chain' as const, signature, wallet, mint, slot: tx.slot, blockTime: tx.blockTime,
+      nativeDeltaLamports: nativeDelta.toString(), networkFeeLamports: String(tx.meta.fee), walletPaidNetworkFee: index === 0,
+      realizedPnlLamports: null,
+      note: 'This transaction FAILED on-chain. No swap occurred, but the network fee was charged. Count it as a cost.',
+    };
+  }
   const sum = (balances: z.infer<typeof TokenBalance>[]) => {
     let total = 0n;
     let decimals: number | undefined;

@@ -26,7 +26,12 @@ assert.equal(observed.nativeDeltaLamports, '-2000000');
 assert.equal(observed.realizedPnlLamports, null);
 assert.equal(observed.swapProvenanceVerified, false);
 const failed = fixture(); failed.meta.err = {} as any;
-assert.throws(() => inspectTransaction(failed, signature, wallet, token));
+const failedObs: any = inspectTransaction(failed, signature, wallet, token);
+assert.equal(failedObs.status, 'failed_on_chain');
+assert.equal(failedObs.networkFeeLamports, '5000');
+assert.equal(failedObs.nativeDeltaLamports, '-2000000');
+// The real mainnet genesis hash, pinned literally: a truncated constant once made every real check fail.
+assert.equal(MAINNET_GENESIS, '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d');
 const missing = fixture(); missing.meta.preTokenBalances = undefined as any;
 assert.throws(() => inspectTransaction(missing, signature, wallet, token));
 const unsafe = fixture(); unsafe.meta.preBalances[0] = Number.MAX_SAFE_INTEGER + 1;
