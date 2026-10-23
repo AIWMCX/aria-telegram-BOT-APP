@@ -89,7 +89,8 @@ export function inspectTransaction(raw: unknown, signature: string, wallet: stri
     nativeDeltaLamports: nativeDelta.toString(), tokenDeltaRaw: tokenDelta.toString(),
     tokenDecimals: post.decimals ?? pre.decimals,
     networkFeeLamports: String(tx.meta.fee), walletPaidNetworkFee: index === 0,
-    direction: tokenDelta > 0n && nativeDelta < 0n ? 'acquisition_like' : tokenDelta < 0n && nativeDelta > 0n ? 'disposal_like' : 'other',
+    // Only label a direction when SOL moved by more than the fee; fee-only or token-to-token txs are 'other'.
+    direction: (nativeDelta < 0n ? -nativeDelta : nativeDelta) <= BigInt(tx.meta.fee) ? 'other' : tokenDelta > 0n && nativeDelta < 0n ? 'acquisition_like' : tokenDelta < 0n && nativeDelta > 0n ? 'disposal_like' : 'other',
     realizedPnlLamports: null, swapProvenanceVerified: false, walletOwnershipVerified: false,
     note: 'Balance changes include transfers, rent and other instructions. Network fees are already reflected when this wallet paid them. These deltas alone do not establish a swap or P&L.',
   };

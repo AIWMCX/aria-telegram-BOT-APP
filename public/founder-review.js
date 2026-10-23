@@ -50,7 +50,7 @@
           'TRANSACTION FAILED ON-CHAIN — no swap happened',
           'Signature: ' + o.signature,
           'Slot: ' + o.slot,
-          'Network fee charged (lamports): ' + o.networkFeeLamports,
+          'Network fee (lamports): ' + o.networkFeeLamports + (o.walletPaidNetworkFee ? ' — paid by this wallet' : ' — paid by another account'),
           'Native SOL change (lamports): ' + o.nativeDeltaLamports,
           o.note,
         ].join('\n');
