@@ -1,0 +1,25 @@
+import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync, utimesSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { resolveLogName, tailLogFile, formatTenantLogReply } from "../src/fleet/tenant-log-tail.js";
+
+const dir = mkdtempSync(path.join(os.tmpdir(), "tlog-"));
+const a = "11111111-1111-4111-8111-111111111111", b = "22222222-2222-4222-8222-222222222222";
+writeFileSync(path.join(dir, `${a}.log`), "old\n");
+writeFileSync(path.join(dir, `${b}.log`), Array.from({ length: 50 }, (_, i) => `line ${i}`).join("\n") + "\n");
+writeFileSync(path.join(dir, "discovery.log"), "disc\n");
+utimesSync(path.join(dir, `${a}.log`), new Date(1000), new Date(1000));
+assert.equal(resolveLogName(undefined, dir), `${b}.log`, "no arg picks the most recently written TENANT log");
+assert.equal(resolveLogName("discovery", dir), "discovery.log");
+assert.equal(resolveLogName("../../etc/passwd", dir), null, "path traversal is refused");
+assert.equal(resolveLogName("not-a-uuid", dir), null, "non-UUID ids are refused");
+const tail = tailLogFile(path.join(dir, `${b}.log`), 30)!;
+assert.equal(tail.split("\n").length, 30, "tail is bounded to N lines");
+assert.ok(tail.endsWith("line 49"), "tail ends at the last line");
+assert.equal(tailLogFile(path.join(dir, "missing.log")), null);
+const secret = "SUPERSECRETTOKEN123456";
+const reply = formatTenantLogReply("x.log", `boom ${secret} and postgres://u:pw12345678@h/db`, { TELEGRAM_BOT_TOKEN: secret, DATABASE_URL: "postgres://u:pw12345678@h/db" });
+assert.ok(!reply.includes(secret), "env secret values are redacted");
+assert.ok(!reply.includes("pw12345678"), "URL credentials are redacted");
+console.log("tenant log tail: ok");

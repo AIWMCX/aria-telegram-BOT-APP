@@ -14,7 +14,9 @@ import { trackEvent, getFunnelCounts } from "./funnel.js";
 import { listRecentFeedback } from "./feedback.js";
 import { formatPairReply } from "./pair-reply.js";
 import { registerClient, getLatestActiveClientForUser, setHostingMode, rotateClientDeviceIdentityAndSetHosted, type EngineClient } from "./engine-clients.js";
+import path from "node:path";
 import { fleetManager, tenantRuntimeDir } from "./fleet/instance.js";
+import { resolveLogName, tailLogFile, formatTenantLogReply } from "./fleet/tenant-log-tail.js";
 import { tenantRehydrator } from "./fleet/rehydration-instance.js";
 import { fleetAccess } from "./fleet/access-instance.js";
 import { handleSniperCommand } from "./paper-sniper/commands.js";
@@ -726,6 +728,19 @@ bot.command("revoke", async (ctx) => {
  * desired=stopped for all of them so nothing comes back on the next restart.
  * Pair with FLEET_ENABLED=false for a full rollback (see the runbook).
  */
+/**
+ * Admin diagnostics: last lines of a hosted tenant log (or "discovery"),
+ * redacted. With no argument, the most recently written tenant log.
+ */
+bot.command("tenant_log", async (ctx) => {
+  if (!(await requireAdmin(ctx, "tenant_log"))) return;
+  if (ctx.chat?.type !== "private") { await ctx.reply("Use a private chat with the bot for this command."); return; }
+  const arg = (ctx.match ?? "").toString().trim() || undefined;
+  const name = resolveLogName(arg, CONFIG.FLEET_LOGS_ROOT);
+  if (!name) { await ctx.reply("Usage: /tenant_log [clientId | discovery] (no matching tenant log found)"); return; }
+  await ctx.reply(formatTenantLogReply(name, tailLogFile(path.join(CONFIG.FLEET_LOGS_ROOT, name))));
+});
+
 bot.command("fleet_stop_all", async (ctx) => {
   if (!(await requireAdmin(ctx, "fleet_stop_all"))) return;
   try {
