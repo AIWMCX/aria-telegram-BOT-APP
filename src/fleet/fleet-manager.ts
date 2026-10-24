@@ -1,4 +1,5 @@
 import path from "node:path";
+import { unlinkSync } from "node:fs";
 import { TenantProcess, buildTenantEnv } from "./tenant-process.js";
 import { EngineIdentityError, type EngineIdentity } from "./engine-identity.js";
 import { CLIENT_ID_PATTERN, assertValidClientId } from "./client-id.js";
@@ -527,6 +528,14 @@ export class FleetManager {
     entry.handle.startedAt = new Date().toISOString();
     if (isRestart) entry.handle.restartCount += 1;
 
+    // The control plane is the only process that spawns this tenant's engine,
+    // and launch() only runs when no child is live for it. Any engine lock left
+    // in the runtime dir is therefore stale (a previous child or a previous
+    // container). The engine's own check (pid alive?) is fooled after a
+    // container restart because pids are reused — production crash-looped on
+    // "ARIA is already running (pid 93)" until pid 93 happened to exit.
+    if (!entry.process) clearStaleEngineLock(runtimeDir, clientId, this.opts.log);
+
     const tp = new TenantProcess({
       clientId,
       command,
@@ -845,5 +854,20 @@ export class FleetManager {
     return [...this.tenants.values()]
       .map((e) => e.handle)
       .filter((h) => h.status === "starting" || h.status === "running" || h.status === "stopping");
+  }
+}
+
+/** Engine single-instance lock, relative to the tenant runtime dir (aria-engine src/runtime/paths.ts LOCK_FILE_PATH). */
+export const ENGINE_LOCK_RELATIVE_PATH = path.join("run", "aria.lock");
+
+/** Removes a tenant's engine lock file. Only safe when no child for the tenant is live (see launch()). */
+export function clearStaleEngineLock(runtimeDir: string, clientId: string, log?: { info: (o: Record<string, unknown>, m: string) => void }): boolean {
+  const lockPath = path.join(runtimeDir, ENGINE_LOCK_RELATIVE_PATH);
+  try {
+    unlinkSync(lockPath);
+    log?.info({ clientId }, "cleared stale engine lock before spawn");
+    return true;
+  } catch {
+    return false; // absent (the normal case) or unremovable — the engine reports it if it matters
   }
 }
