@@ -73,6 +73,8 @@
   api('status').then(s => {
     if (!s.available) return;
     panel.hidden = false;
+    // Tell app.js the hosted paper sniper is active so it demotes the stale legacy engine panels.
+    if (window.ariaSniperMode) window.ariaSniperMode.set(true);
     $('sniper-kill').addEventListener('click', e => control('kill', e.currentTarget));
     $('sniper-resume').addEventListener('click', e => control('resume', e.currentTarget));
     $('sniper-refresh').addEventListener('click', refresh);

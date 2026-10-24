@@ -45,8 +45,27 @@
     <div class="stat"><div class="lbl">Last sync</div><div class="num" id="status-sync" style="font-size:16px">—</div></div>
     <div class="stat"><div class="lbl">Version</div><div class="num" id="status-version" style="font-size:16px">—</div></div>
   </div>
+  <div class="hint" id="status-sniper-note" hidden>Your hosted paper sniper is running. Results are in the Paper sniper section below; Device, Last sync and Version here describe the legacy local engine only.</div>
 </section>
 
+
+<section class="panel full" id="paper-sniper" hidden aria-labelledby="sniper-title">
+  <div class="ph"><h2 id="sniper-title">Paper sniper</h2><span class="meta">PAPER ONLY · modelled fills · no real orders</span></div>
+  <p id="sniper-state" role="status" aria-live="polite"></p>
+  <p id="sniper-sample" role="alert" hidden></p>
+  <div class="review-fields">
+    <button class="plan-btn" id="sniper-kill" type="button">KILL (stop new entries)</button>
+    <button class="plan-btn" id="sniper-resume" type="button">RESUME</button>
+    <button class="plan-btn" id="sniper-refresh" type="button">REFRESH</button>
+  </div>
+  <h3>MAIN vs BASELINE</h3>
+  <pre id="sniper-summary"></pre>
+  <h3>Open positions</h3>
+  <pre id="sniper-open"></pre>
+  <h3>Recent closed trades</h3>
+  <pre id="sniper-closed"></pre>
+  <p>Figures are a model: fills, fees and exits are simulated. "At mark" values open positions at their last sell quote; "at zero" is the worst case. Closed-trade statistics exclude open positions. If you trade a signal yourself, you choose the amount and sign in your own wallet; verify it in the external wallet test below.</p>
+</section>
 
 <section class="panel full" id="founder-review" hidden aria-labelledby="review-title">
   <div class="ph"><h2 id="review-title">Founder · external wallet test</h2><span class="meta">Read-only verification</span></div>
@@ -70,52 +89,6 @@
   </div>
   <pre id="review-pair-result" role="status" aria-live="polite"></pre>
   <pre id="review-result" role="status" aria-live="polite"></pre>
-</section>
-
-<section class="panel full" id="paper-sniper" hidden aria-labelledby="sniper-title">
-  <div class="ph"><h2 id="sniper-title">Paper sniper</h2><span class="meta">PAPER ONLY · modelled fills · no real orders</span></div>
-  <p id="sniper-state" role="status" aria-live="polite"></p>
-  <p id="sniper-sample" role="alert" hidden></p>
-  <div class="review-fields">
-    <button class="plan-btn" id="sniper-kill" type="button">KILL (stop new entries)</button>
-    <button class="plan-btn" id="sniper-resume" type="button">RESUME</button>
-    <button class="plan-btn" id="sniper-refresh" type="button">REFRESH</button>
-  </div>
-  <h3>MAIN vs BASELINE</h3>
-  <pre id="sniper-summary"></pre>
-  <h3>Open positions</h3>
-  <pre id="sniper-open"></pre>
-  <h3>Recent closed trades</h3>
-  <pre id="sniper-closed"></pre>
-  <p>Figures are a model: fills, fees and exits are simulated. "At mark" values open positions at their last sell quote; "at zero" is the worst case. Closed-trade statistics exclude open positions. If you trade a signal yourself, you choose the amount and sign in your own wallet; verify it in the external wallet test above.</p>
-</section>
-
-<section class="panel full" id="first-run-success" hidden role="status">
-  <div class="ph"><h2>ARIA is running</h2></div>
-  <p>Your device is connected and PAPER trading is active.</p>
-  <div class="stats-grid">
-    <div class="stat"><div class="lbl">Candidates reviewed (so far)</div><div class="num" id="frs-reviewed">—</div></div>
-    <div class="stat"><div class="lbl">Rejected</div><div class="num" id="frs-rejected">—</div></div>
-    <div class="stat"><div class="lbl">Open PAPER positions</div><div class="num" id="frs-open">—</div></div>
-    <div class="stat"><div class="lbl">Closed</div><div class="num" id="frs-closed">—</div></div>
-  </div>
-  <div class="engine-controls" style="margin-top:10px">
-    <button class="plan-btn primary" id="frs-view-btn" type="button" style="width:auto">VIEW ACTIVITY</button>
-    <button class="plan-btn" id="frs-dismiss-btn" type="button" style="width:auto">DISMISS</button>
-  </div>
-</section>
-
-<section class="panel full" id="session-summary" hidden>
-  <div class="ph"><h2>Session summary</h2><span class="meta" id="session-time">0m</span></div>
-  <div class="stats-grid">
-    <div class="stat"><div class="lbl">Candidates observed (so far)</div><div class="num" id="ss-observed">—</div></div>
-    <div class="stat"><div class="lbl">Positions opened</div><div class="num" id="ss-opened">—</div></div>
-    <div class="stat"><div class="lbl">Open now</div><div class="num" id="ss-open-now">—</div></div>
-    <div class="stat"><div class="lbl">Closed</div><div class="num" id="ss-closed">—</div></div>
-    <div class="stat"><div class="lbl">Realized PAPER PnL</div><div class="num" id="ss-realized">—</div></div>
-    <div class="stat"><div class="lbl">Unrealized PAPER PnL</div><div class="num" id="ss-unrealized">—</div></div>
-    <div class="stat"><div class="lbl">Most common recent rejection</div><div class="num" id="ss-top-reason" style="font-size:14px">—</div></div>
-  </div>
 </section>
 
 <div class="panel full" id="onboarding-strip" hidden>
@@ -153,7 +126,37 @@
   <span class="right">setup ↓</span>
 </button>
 
-<main>
+<details id="legacy-snapshot" class="legacy-snapshot" open>
+<summary id="legacy-summary" hidden></summary>
+<section class="panel full" id="first-run-success" hidden role="status">
+  <div class="ph"><h2>ARIA is running</h2></div>
+  <p>Your device is connected and PAPER trading is active.</p>
+  <div class="stats-grid">
+    <div class="stat"><div class="lbl">Candidates reviewed (so far)</div><div class="num" id="frs-reviewed">—</div></div>
+    <div class="stat"><div class="lbl">Rejected</div><div class="num" id="frs-rejected">—</div></div>
+    <div class="stat"><div class="lbl">Open PAPER positions</div><div class="num" id="frs-open">—</div></div>
+    <div class="stat"><div class="lbl">Closed</div><div class="num" id="frs-closed">—</div></div>
+  </div>
+  <div class="engine-controls" style="margin-top:10px">
+    <button class="plan-btn primary" id="frs-view-btn" type="button" style="width:auto">VIEW ACTIVITY</button>
+    <button class="plan-btn" id="frs-dismiss-btn" type="button" style="width:auto">DISMISS</button>
+  </div>
+</section>
+
+<section class="panel full" id="session-summary" hidden>
+  <div class="ph"><h2>Session summary</h2><span class="meta" id="session-time">0m</span></div>
+  <div class="stats-grid">
+    <div class="stat"><div class="lbl">Candidates observed (so far)</div><div class="num" id="ss-observed">—</div></div>
+    <div class="stat"><div class="lbl">Positions opened</div><div class="num" id="ss-opened">—</div></div>
+    <div class="stat"><div class="lbl">Open now</div><div class="num" id="ss-open-now">—</div></div>
+    <div class="stat"><div class="lbl">Closed</div><div class="num" id="ss-closed">—</div></div>
+    <div class="stat"><div class="lbl">Realized PAPER PnL</div><div class="num" id="ss-realized">—</div></div>
+    <div class="stat"><div class="lbl">Unrealized PAPER PnL</div><div class="num" id="ss-unrealized">—</div></div>
+    <div class="stat"><div class="lbl">Most common recent rejection</div><div class="num" id="ss-top-reason" style="font-size:14px">—</div></div>
+  </div>
+</section>
+
+<div class="legacy-grid">
   <section class="panel full">
     <div class="ph"><h2>Paper Operations</h2><span class="meta" id="uptime">WAITING FOR ENGINE</span></div>
     <div class="stats-grid">
@@ -193,7 +196,10 @@
     <div class="ph"><h2>Paper Event Stream</h2><span class="meta" id="feed-count">0 events</span></div>
     <div class="feed" id="feed" role="log" aria-label="paper engine event stream" aria-live="polite"></div>
   </section>
+</div>
+</details>
 
+<main>
   <section class="panel full" id="engine-panel">
     <div class="ph"><h2>ARIA Engine</h2><span class="meta">REAL MARKET DATA · PAPER ONLY</span></div>
     <div class="stats-grid">

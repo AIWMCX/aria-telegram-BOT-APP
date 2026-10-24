@@ -41,9 +41,30 @@
   let lastReality = SAFE_REALITY;
   const freshness = { snapshotAt: null, deviceAt: null };
   const dataLabelFor = (reality) => TL.dataLabel(DATA_LABEL[reality.dataMode], reality.dataMode, freshness.snapshotAt, freshness.deviceAt);
+  // Hosted paper sniper mode: paper-sniper.js flips this via window.ariaSniperMode.set(true). The legacy engine panels
+  // (fed by device sync) then collapse behind a disclosure and ARIA Status stops showing legacy STOPPED/OFFLINE as the engine.
+  const sniperMode = { active: false };
+  function legacyUpdateLabel() {
+    const at = freshness.snapshotAt || freshness.deviceAt;
+    const ms = at ? Date.parse(at) : NaN;
+    return Number.isNaN(ms) ? "no legacy sync" : new Date(ms).toISOString().replace("T", " ").slice(0, 19) + " UTC";
+  }
+  function applySniperMode() {
+    const on = sniperMode.active;
+    const details = $("legacy-snapshot"), summary = $("legacy-summary"), note = $("status-sniper-note");
+    if (details) details.open = !on;
+    if (summary) {
+      summary.hidden = !on;
+      summary.textContent = on ? `Legacy engine snapshot (not the paper sniper) — last update ${legacyUpdateLabel()}` : "";
+    }
+    if (note) note.hidden = !on;
+    if (on) text("status-engine", "PAPER SNIPER (hosted)");
+  }
+  window.ariaSniperMode = { set(active) { sniperMode.active = Boolean(active); applySniperMode(); }, get active() { return sniperMode.active; } };
   function setFreshness(snapshotAt, deviceAt) {
     freshness.snapshotAt = snapshotAt || null;
     freshness.deviceAt = deviceAt || null;
+    if (sniperMode.active) applySniperMode();
     renderReality(lastReality);
   }
 
@@ -202,7 +223,7 @@
     $("engine-stop-btn").disabled = true;
     clearPaperSnapshot();
     text("status-device", "DISCONNECTED");
-    text("status-engine", "STOPPED");
+    text("status-engine", sniperMode.active ? "PAPER SNIPER (hosted)" : "STOPPED");
     text("status-sync", "—");
     text("status-version", "—");
     renderRecovery(null);
@@ -435,7 +456,7 @@
       }
     }
     text("status-device", device.online ? "ONLINE" : "OFFLINE");
-    text("status-engine", device.online ? "RUNNING" : "STOPPED");
+    text("status-engine", sniperMode.active ? "PAPER SNIPER (hosted)" : device.online ? "RUNNING" : "STOPPED");
     text("status-sync", timeAgo(device.lastSeenAt));
     text("status-version", device.engineVersion || "unknown");
     const caps = data.capabilities || {};
