@@ -21,7 +21,7 @@ import { handleSniperCommand } from "./paper-sniper/commands.js";
 import { sniperTenantRuntimeDir } from "./paper-sniper/runtime-dir.js";
 import { generateHostedDeviceIdentity, writeHostedDeviceIdentityToDisk } from "./fleet/hosted-device-identity.js";
 import { seedHostedPairingState, renewHostedPairingStateIfNeeded } from "./fleet/hosted-pairing-seed.js";
-import { StartThrottle, handlePaperStart, handlePaperStop, handlePaperStatus, formatHostedStatusMessage, type HostedCommandsDeps } from "./fleet/hosted-commands.js";
+import { StartThrottle, handlePaperStart, handlePaperStop, handlePaperStatus, formatHostedStatusMessage, toPlainHostedText, type HostedCommandsDeps } from "./fleet/hosted-commands.js";
 import type { Lead } from "./leads.js";
 import type { IssuedLicense } from "./licenses.js";
 
@@ -442,7 +442,10 @@ const hostedDeps: HostedCommandsDeps = {
   },
   notify: async (telegramUserId, text) => {
     try {
-      await bot.api.sendMessage(telegramUserId, text, { parse_mode: "Markdown" });
+      // Plain text: hosted PAPER replies name commands like /paper_status, and an
+      // underscore there breaks Telegram's Markdown parser ("can't parse entities"),
+      // which silently dropped every reply. The bold markers are stripped instead.
+      await bot.api.sendMessage(telegramUserId, toPlainHostedText(text));
     } catch (err) {
       logger.warn({ err: describeBotError(err) }, "hosted PAPER command DM failed — they may not have started the bot chat");
     }
