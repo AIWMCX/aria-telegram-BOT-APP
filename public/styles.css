@@ -90,8 +90,8 @@ body {
 .cta-strip .right { color: var(--ink-mute); }
 
 /* ── Main grid ─────────────────────────────────────────────────────── */
-main { display: grid; grid-template-columns: 1fr; gap: 1px; background: var(--line); }
-@media (min-width: 780px) { main { grid-template-columns: 1fr 1fr; } }
+main, .legacy-grid { display: grid; grid-template-columns: 1fr; gap: 1px; background: var(--line); }
+@media (min-width: 780px) { main, .legacy-grid { grid-template-columns: 1fr 1fr; } }
 section.panel { background: var(--panel); padding: 14px 14px; min-height: 0; }
 section.full { grid-column: 1 / -1; }
 .ph { display: flex; justify-content: space-between; align-items: baseline; margin: -2px 0 12px 0; border-bottom: 1px dashed var(--line-hot); padding-bottom: 8px; }
@@ -218,3 +218,7 @@ footer strong { color: var(--amber); letter-spacing: 0.08em; }
 .review-fields input, .review-fields select { width: 100%; box-sizing: border-box; padding: 10px; background: #11191c; color: #eef5f6; border: 1px solid #526169; }
 .review-fields a { color: #83e3ff; overflow-wrap: anywhere; }
 #review-result { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+
+/* Legacy engine snapshot disclosure: only visible (summary) when the hosted paper sniper is active. */
+.legacy-snapshot > summary { margin: 10px 14px; padding: 10px 12px; border: 1px solid var(--line); cursor: pointer; font-size: 11px; letter-spacing: .08em; }
+.legacy-snapshot > summary[hidden] { display: none; }
