@@ -40,6 +40,7 @@ const fetch = async (url: string, options: any = {}) => {
   throw new Error(`unexpected fetch ${url}`);
 };
 const context = vm.createContext({ console, document, window: { Telegram: { WebApp: { ready() {}, expand() {}, setHeaderColor() {}, setBackgroundColor() {}, initData } }, innerHeight: 800 }, navigator: { clipboard: { writeText: async () => undefined } }, AbortController, setTimeout: (fn: Function) => { timeoutQueue.push(fn); return timeoutQueue.length; }, clearTimeout: () => undefined, setInterval: () => 1, fetch, Date });
+vm.runInContext(fs.readFileSync("public/time-label.js", "utf8"), context, { filename: "public/time-label.js" });
 vm.runInContext(appJs, context, { filename: "public/app.js" });
 for (let i = 0; i < 20; i++) await Promise.resolve();
 assert.equal(requests.some((r) => r.url === "/api/engine/me"), true);

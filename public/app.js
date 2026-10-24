@@ -7,6 +7,7 @@
     tg.expand();
     try { tg.setHeaderColor("#0a0c0d"); tg.setBackgroundColor("#0a0c0d"); } catch {}
   }
+  const TL = window.ARIATimeLabel;
   const initData = (tg && tg.initData) || "";
   const isInTelegram = Boolean(initData);
 
@@ -36,8 +37,20 @@
     return Object.freeze({ environment: r.environment, network: r.network, dataMode: r.dataMode, executionMode: r.executionMode, controlState: r.controlState, paymentsEnabled: r.paymentsEnabled });
   }
 
+  // Freshness of the engine data behind the "live" label: latest snapshot receivedAt and device lastSeenAt.
+  let lastReality = SAFE_REALITY;
+  const freshness = { snapshotAt: null, deviceAt: null };
+  const freshnessList = () => [freshness.snapshotAt, freshness.deviceAt];
+  const dataLabelFor = (reality) => TL.dataLabel(DATA_LABEL[reality.dataMode], reality.dataMode, freshnessList());
+  function setFreshness(snapshotAt, deviceAt) {
+    freshness.snapshotAt = snapshotAt || null;
+    freshness.deviceAt = deviceAt || null;
+    renderReality(lastReality);
+  }
+
   function renderReality(reality) {
-    $("data-mode").textContent = DATA_LABEL[reality.dataMode];
+    lastReality = reality;
+    $("data-mode").textContent = dataLabelFor(reality);
     $("network-mode").textContent = NETWORK_LABEL[reality.network];
     $("execution-mode").textContent = EXECUTION_LABEL[reality.executionMode];
     $("control-state").textContent = reality.controlState.toUpperCase();
@@ -49,7 +62,7 @@
     // dataMode (there's no real RPC-health signal to back that distinction).
     text("status-mode", EXECUTION_LABEL[reality.executionMode]);
     text("status-network", NETWORK_LABEL[reality.network]);
-    text("status-market", DATA_LABEL[reality.dataMode]);
+    text("status-market", dataLabelFor(reality));
   }
 
   async function loadReality() {
@@ -146,16 +159,7 @@
   function lamportsToSol(value) {
     try { return (Number(BigInt(String(value || "0"))) / 1_000_000_000).toFixed(6); } catch { return "—"; }
   }
-  function timeAgo(iso) {
-    if (!iso) return "never";
-    const ms = Date.now() - new Date(iso).getTime();
-    if (!Number.isFinite(ms)) return "unknown";
-    if (ms < 0) return "just now";
-    const seconds = Math.floor(ms / 1000);
-    if (seconds < 60) return `${seconds}s ago`;
-    const minutes = Math.floor(seconds / 60);
-    return `${minutes}m ago`;
-  }
+  const timeAgo = (iso) => TL.timeAgo(iso);
   function setTableUnavailable(message) {
     const tbody = $("pos-body");
     tbody.textContent = "";
@@ -186,6 +190,7 @@
   }
 
   function renderEngineDisconnected(message = "Connect your ARIA engine — the button below generates a pairing code, no chat command needed.") {
+    setFreshness(null, null);
     text("engine-connection", "DISCONNECTED");
     text("engine-status", message);
     text("engine-network", "—");
@@ -271,7 +276,7 @@
     text("s-detected-rate", `${snapshot.openPositionCount ?? 0} open now`);
     text("s-blocked", `${snapshot.rejectedCount ?? 0} rejected by paper risk gate`);
     text("s-pnl-pct", `unrealized ${lamportsToSol(snapshot.unrealizedPnlLamports)} SOL`);
-    text("uptime", `SNAPSHOT ${timeAgo(snapshotEnvelope.receivedAt)}`);
+    text("uptime", TL.snapshotText(snapshotEnvelope.receivedAt));
     text("f-detected", String(snapshot.openedCount ?? 0));
     text("f-tooOld", String(snapshot.closedCount ?? 0));
     text("f-safety", String(snapshot.rejectedCount ?? 0));
@@ -395,6 +400,7 @@
     const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
     text("ss-top-reason", top ? `${(REJECTION_REASONS[top[0]] || [top[0]])[0]} (${top[1]})` : "none in recent events");
   }
+  setInterval(() => renderReality(lastReality), 30_000);
   setInterval(renderSessionTime, 30_000);
   renderSessionTime();
 
@@ -404,6 +410,7 @@
       return;
     }
     const device = data.device;
+    setFreshness(data.snapshot && data.snapshot.receivedAt, device.lastSeenAt);
     text("engine-connection", device.online ? "CONNECTED" : "OFFLINE");
     text("engine-status", device.online
       ? (data.entitlement ? `entitlement ${String(data.entitlement.status).toUpperCase()} · PAPER ONLY` : "entitlement unavailable")

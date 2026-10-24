@@ -1,12 +1,13 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod';
-import { Address, Signature, SOL_MINT, jupiterLink, verifySignature } from './verification.js';
+import { Address, Signature, SOL_MINT, jupiterLink, verifyRoundTrip, verifySignature } from './verification.js';
 
 type Dependencies = {
   enabled: boolean; founderId: string; rpcUrl?: string;
   authenticate: (initData: string) => { user: { id: number }; auth_date: number } | null;
   verify?: typeof verifySignature;
+  pair?: typeof verifyRoundTrip;
 };
 export function externalReviewRoutes(deps: Dependencies) {
   const app = new Hono();
@@ -16,17 +17,18 @@ export function externalReviewRoutes(deps: Dependencies) {
   const Mint = Address.refine(v => v !== SOL_MINT, 'Choose a non-SOL mint');
   const Handoff = Auth.extend({ mint: Mint, side: z.enum(['buy', 'sell']) });
   const Verify = Auth.extend({ wallet: Address, mint: Mint, signature: Signature });
+  const Pair = Auth.extend({ wallet: Address, mint: Mint, buySignature: Signature, sellSignature: Signature }).strict();
   app.use('*', bodyLimit({ maxSize: 12_000, onError: c => c.json({ error: 'Request too large' }, 413) }));
   app.use('*', async (c, next) => {
     c.header('Cache-Control', 'no-store');
     if (!deps.enabled || !/^[1-9]\d*$/.test(deps.founderId)) return c.json({ error: 'Founder review disabled' }, 404);
     await next();
   });
-  for (const action of ['status', 'handoff', 'verify'] as const) {
+  for (const action of ['status', 'handoff', 'verify', 'pair'] as const) {
     app.post('/' + action, async c => {
       let body: unknown;
       try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON' }, 400); }
-      const parsed = (action === 'status' ? Auth : action === 'handoff' ? Handoff : Verify).safeParse(body);
+      const parsed = (action === 'status' ? Auth : action === 'handoff' ? Handoff : action === 'pair' ? Pair : Verify).safeParse(body);
       if (!parsed.success) return c.json({ error: 'Invalid fields; only public addresses and transaction signatures are accepted' }, 400);
       const auth = deps.authenticate(parsed.data.initData);
       const now = Date.now();
@@ -44,6 +46,11 @@ export function externalReviewRoutes(deps: Dependencies) {
       if (busy) return c.json({ error: 'Verification in progress; retry shortly' }, 429);
       busy = true;
       try {
+        if (action === 'pair') {
+          const pairInput = Pair.parse(body);
+          const reconciliation = await (deps.pair ?? verifyRoundTrip)(deps.rpcUrl, pairInput.buySignature, pairInput.sellSignature, pairInput.wallet, pairInput.mint);
+          return c.json({ ok: true, reconciliation });
+        }
         const input = Verify.parse(body);
         const observation = await (deps.verify ?? verifySignature)(deps.rpcUrl, input.signature, input.wallet, input.mint);
         return c.json({ ok: true, observation });
