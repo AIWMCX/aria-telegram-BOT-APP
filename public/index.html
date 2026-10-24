@@ -47,6 +47,23 @@
   </div>
 </section>
 
+
+<section class="panel full" id="founder-review" hidden aria-labelledby="review-title">
+  <div class="ph"><h2 id="review-title">Founder · external wallet test</h2><span class="meta">Read-only verification</span></div>
+  <p>Review a candidate mint, then open Jupiter. You choose and approve any transaction in your own wallet. ARIA never receives a seed phrase or private key and cannot enforce limits on an external trade.</p>
+  <p>This panel does not enable ARIA execution. Market discovery and PAPER results remain separate.</p>
+  <div class="review-fields">
+    <label>Candidate token mint (public address)<input id="review-mint" autocomplete="off" spellcheck="false" maxlength="44" /></label>
+    <label>Jupiter direction<select id="review-side"><option value="buy">SOL → token</option><option value="sell">Token → SOL</option></select></label>
+    <button class="plan-btn" id="review-handoff" type="button">PREPARE JUPITER LINK</button>
+    <a id="review-jupiter-link" hidden target="_blank" rel="noopener noreferrer">Open Jupiter — review in your wallet</a>
+    <label>Your public wallet address<input id="review-wallet" autocomplete="off" spellcheck="false" maxlength="44" /></label>
+    <label>Completed transaction signature<input id="review-signature" autocomplete="off" spellcheck="false" maxlength="88" /></label>
+    <button class="plan-btn" id="review-verify" type="button">VERIFY ON-CHAIN BALANCES</button>
+  </div>
+  <pre id="review-result" role="status" aria-live="polite"></pre>
+</section>
+
 <section class="panel full" id="first-run-success" hidden role="status">
   <div class="ph"><h2>ARIA is running</h2></div>
   <p>Your device is connected and PAPER trading is active.</p>
@@ -282,5 +299,6 @@
 </footer>
 
 <script src="app.js"></script>
+<script src="founder-review.js"></script>
 </body>
 </html>

@@ -1,3 +1,4 @@
+import { externalReviewRoutes } from "./external-review/routes.js";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
@@ -753,6 +754,13 @@ app.post("/api/feedback", async (c) => {
 app.get("/api/license-by-order/:orderId", (c) =>
   c.json({ ok: false, error: "endpoint retired; use authenticated /api/me" }, 410),
 );
+
+app.route("/api/founder-review", externalReviewRoutes({
+  enabled: CONFIG.ARIA_EXTERNAL_REVIEW_ENABLED,
+  founderId: CONFIG.ARIA_EXTERNAL_REVIEW_FOUNDER_ID ?? "",
+  rpcUrl: CONFIG.ARIA_EXTERNAL_REVIEW_RPC_URL,
+  authenticate: verifyInitData,
+}));
 
 app.use("/*", serveStatic({ root: "./public" }));
 app.get("*", serveStatic({ path: "./public/index.html" }));
