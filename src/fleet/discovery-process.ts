@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, readFileSync, type WriteStream } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, unlinkSync, type WriteStream } from "node:fs";
 import path from "node:path";
 import { NOOP_LOGGER, type FleetLogger } from "./desired-state.js";
 import type { DiscoveryPaths, DiscoveryStreamEndpoints } from "./discovery-config.js";
@@ -232,6 +232,12 @@ export class DiscoveryProcess {
     });
     this.logStream = logStream;
     const sink: LineSink = { write: (line) => { if (!this.logBroken) { try { logStream.write(line); } catch { this.logBroken = true; } } } };
+    // The control plane is the ONLY spawner of the discovery child and launch() only runs when no child is alive, so a feed writer
+    // lock (<feed>.lock) found here is stale (left by the previous container/child). Removing it avoids ~60 s of crash-restarts
+    // waiting for the engine's heartbeat takeover after a redeploy.
+    if (!this.child) {
+      try { unlinkSync(`${this.opts.paths.feedPath}.lock`); } catch { /* none, or not removable: the engine's own takeover still applies */ }
+    }
     const inv = (this.opts.invocation ?? realDiscoveryInvocation(this.opts.enginePath))(this.opts.paths.feedPath);
     this.state = "starting";
     if (isRestart) this.restarts += 1;
