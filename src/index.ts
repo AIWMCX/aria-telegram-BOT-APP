@@ -17,6 +17,7 @@ import { startExpiryWarningScheduler } from "./expiry-warnings.js";
 import { startOfflineAlertScheduler } from "./engine-offline-alerts.js";
 import { randomUUID } from "node:crypto";
 import { fleetManager } from "./fleet/instance.js";
+import { discoveryProcess, startDiscovery } from "./fleet/discovery-instance.js";
 import { tenantRehydrator } from "./fleet/rehydration-instance.js";
 
 /**
@@ -109,6 +110,15 @@ async function main(): Promise<void> {
     startOfflineAlertScheduler();
   } catch (err) {
     logger.error({ err }, "engine-offline alert scheduler failed to start — pairing/sync unaffected");
+  }
+
+  // Shared launch discovery (PR B2): ONE supervised `aria discovery run` child,
+  // only when DISCOVERY_ENABLED=true and both stream URLs are valid. Independent
+  // of FLEET_ENABLED so it can be verified on /healthz before tenants use it.
+  try {
+    startDiscovery();
+  } catch (err) {
+    logger.error({ errName: (err as Error)?.name }, "shared discovery failed to start - tenants and the control plane are unaffected");
   }
 
   // Rehydrate hosted tenants that were desired=running before this
@@ -207,8 +217,13 @@ async function main(): Promise<void> {
       // 2. Stop every tenant (desired state is deliberately NOT changed, so
       //    they come back after the restart).
       const botStop = CONFIG.TELEGRAM_TRANSPORT === "polling" ? bot.stop().catch(() => undefined) : Promise.resolve();
-      const result = await fleetManager.shutdownAll({ timeoutMs: FLEET_SHUTDOWN_BUDGET_MS });
+      // Discovery stops in parallel with the tenants (SIGTERM -> engine flushes in-flight launches); desired state is untouched.
+      const [result, discoveryResult] = await Promise.all([
+        fleetManager.shutdownAll({ timeoutMs: FLEET_SHUTDOWN_BUDGET_MS }),
+        discoveryProcess ? discoveryProcess.stop(FLEET_SHUTDOWN_BUDGET_MS) : Promise.resolve(undefined),
+      ]);
       logger.info(result, "fleet shutdown complete");
+      if (discoveryResult) logger.info(discoveryResult, "shared discovery shutdown complete");
       await botStop;
     } catch (err) {
       logger.error({ err }, "error during graceful shutdown");

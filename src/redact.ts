@@ -76,6 +76,8 @@ export const SECRET_ENV_NAMES = [
   "DATABASE_URL",
   "ARIA_LICENSE_PRIVATE_D",
   "ARIA_ENTITLEMENT_PRIVATE_D",
+  "ARIA_STREAM_RPC_URL",
+  "ARIA_STREAM_RPC_HTTP_URL",
 ] as const;
 
 function variants(v: string): string[] {

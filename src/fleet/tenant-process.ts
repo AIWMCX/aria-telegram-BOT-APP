@@ -61,7 +61,7 @@ export const TENANT_ENV_ALLOWLIST: readonly string[] = [
   "LANG", "LC_ALL", "TZ", "NODE_ENV",
 ];
 
-const SECRET_LOOKING_KEY = /(TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE|DATABASE_URL|API_?KEY|_KEY$|_D$)/i;
+const SECRET_LOOKING_KEY = /(TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE|DATABASE_URL|API_?KEY|_KEY$|_D$|ARIA_STREAM)/i;
 
 /** Pure: builds the environment a tenant process receives. Never throws on parent contents. */
 export function buildTenantEnv(

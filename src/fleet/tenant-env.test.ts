@@ -20,6 +20,9 @@ const DUMMY_SECRETS: Record<string, string> = {
   STRIPE_WEBHOOK_SECRET: "whsec_dummy_not_real",
   RESEND_API_KEY: "re_dummy_not_real",
   ARIA_ENGINE_GIT_TOKEN: "dummy-git-token-not-real",
+  // PR B2: the shared-discovery endpoints embed a provider key; tenants must never see them.
+  ARIA_STREAM_RPC_URL: "wss://stream.example.invalid/?api-key=dummy-stream-key-not-real",
+  ARIA_STREAM_RPC_HTTP_URL: "https://rpc.example.invalid/?api-key=dummy-stream-key-not-real",
 };
 
 // ── 1. Pure function ──────────────────────────────────────────────────────
@@ -47,6 +50,14 @@ check("a secret-looking extraEnv key is refused", threw);
 threw = false;
 try { buildTenantEnv(parent, { DATABASE_URL: "x" }, "/r"); } catch { threw = true; }
 check("DATABASE_URL via extraEnv is refused", threw);
+for (const k of ["ARIA_STREAM_RPC_URL", "ARIA_STREAM_RPC_HTTP_URL", "ARIA_STREAM_ANYTHING"]) {
+  threw = false;
+  try { buildTenantEnv(parent, { [k]: "wss://x.example/?k=1" }, "/r"); } catch { threw = true; }
+  check(`${k} via extraEnv is refused (ARIA_STREAM pattern)`, threw);
+}
+threw = false;
+try { buildTenantEnv({ ...parent, FAKE_ARIA_STREAM_X: "v" }, undefined, "/r", ["FAKE_"]); } catch { threw = true; }
+check("an ARIA_STREAM name is never forwarded via a test passthrough prefix", !threw && !("FAKE_ARIA_STREAM_X" in buildTenantEnv({ ...parent, FAKE_ARIA_STREAM_X: "v" }, undefined, "/r", ["FAKE_"])));
 const withExtra = buildTenantEnv(parent, { ARIA_TENANT_LABEL: "t1" }, "/r");
 check("a harmless extraEnv key is passed through", withExtra.ARIA_TENANT_LABEL === "t1");
 check("the allow-list itself contains no secret-looking names", TENANT_ENV_ALLOWLIST.every((k) => !/(TOKEN|SECRET|PASSWORD|PRIVATE|DATABASE|KEY)/i.test(k)));

@@ -30,6 +30,7 @@ import { releaseInfo } from "./release.js";
 import { db } from "./db.js";
 import { getPostgresHealth } from "./pg-health.js";
 import { engineIdentity } from "./fleet/instance.js";
+import { discoveryHealth } from "./fleet/discovery-instance.js";
 import { tenantRehydrator } from "./fleet/rehydration-instance.js";
 import { FLEET_FLAGS } from "./config.js";
 
@@ -148,6 +149,8 @@ app.get("/healthz", async (c) => {
     // and up.
     // `enabled` is the FLEET_ENABLED kill switch; a disabled fleet is never "available".
     fleet: { enabled: FLEET_FLAGS.enabled, available: FLEET_FLAGS.enabled && engine.available, rehydration: tenantRehydrator.counts() },
+    // Shared launch discovery: enabled/running/restarts/lastEventAgeMs + counters. Never a URL or key.
+    discovery: discoveryHealth(),
   });
 });
 

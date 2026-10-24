@@ -231,6 +231,13 @@ export interface FleetManagerOptions {
    */
   verifyEngineIdentity?: () => EngineIdentity;
   /**
+   * Optional pre-spawn hook (PR B2: seeds/un-seeds the tenant's shared-discovery
+   * config). Awaited at the TOP of spawnTenant, before any state is read or
+   * written, so it cannot interleave with the compare-and-set below. A throw is
+   * logged and ignored: a tenant must still start on its previous config.
+   */
+  prepareTenantRuntime?: (clientId: string, runtimeDir: string) => Promise<void>;
+  /**
    * Refuse a NEW spawn when available memory is below this many bytes
    * (default 400 MB; 0 disables). Crash-restarts of an already-admitted
    * tenant are not gated.
@@ -295,8 +302,8 @@ export class FleetManager {
   // real gate that always passes, and `spawnTenant()`'s production refusal
   // below depends on being able to tell "not wired" from "wired and passing".
   private shuttingDown = false;
-  private readonly opts: Required<Omit<FleetManagerOptions, "verifyEngineIdentity">> &
-    Pick<FleetManagerOptions, "verifyEngineIdentity">;
+  private readonly opts: Required<Omit<FleetManagerOptions, "verifyEngineIdentity" | "prepareTenantRuntime">> &
+    Pick<FleetManagerOptions, "verifyEngineIdentity" | "prepareTenantRuntime">;
 
   constructor(opts: FleetManagerOptions) {
     this.opts = {
@@ -417,6 +424,15 @@ export class FleetManager {
     // means there is exactly one place in this method where engine
     // verification can be reasoned about, rather than two paths that skip it.
     this.assertEngineUsable(clientId);
+
+    if (this.opts.prepareTenantRuntime) {
+      try {
+        await this.opts.prepareTenantRuntime(clientId, this.runtimeDirFor(clientId));
+      } catch (err) {
+        this.opts.log.warn({ clientId, errName: (err as Error)?.name }, "pre-spawn tenant runtime preparation failed; starting with the existing config");
+      }
+      if (this.shuttingDown) throw new FleetShuttingDownError();
+    }
 
     const existing = this.tenants.get(clientId);
     if (existing) {
