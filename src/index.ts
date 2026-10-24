@@ -17,6 +17,7 @@ import { startExpiryWarningScheduler } from "./expiry-warnings.js";
 import { startOfflineAlertScheduler } from "./engine-offline-alerts.js";
 import { randomUUID } from "node:crypto";
 import { fleetManager } from "./fleet/instance.js";
+import { startRpcRelay, stopRpcRelay } from "./rpc-relay/instance.js";
 import { discoveryProcess, startDiscovery } from "./fleet/discovery-instance.js";
 import { tenantRehydrator } from "./fleet/rehydration-instance.js";
 import { startPaperSniperServices, stopPaperSniperServices } from "./paper-sniper/services.js";
@@ -122,6 +123,9 @@ async function main(): Promise<void> {
     logger.error({ errName: (err as Error)?.name }, "shared discovery failed to start - tenants and the control plane are unaffected");
   }
 
+  // Private read-only RPC relay (PR F1): loopback only, off unless RPC_RELAY_ENABLED=true. Must listen BEFORE tenants rehydrate.
+  await startRpcRelay();
+
   // Paper sniper (PR E): assisted-snipe alert poller + daily report. Off unless PAPER_SNIPER_ENABLED and usable.
   startPaperSniperServices(bot);
 
@@ -219,6 +223,7 @@ async function main(): Promise<void> {
       //    fleetManager.shutdownAll() latches so spawnTenant() now refuses.
       tenantRehydrator.stop();
       stopPaperSniperServices();
+      await stopRpcRelay();
       // 2. Stop every tenant (desired state is deliberately NOT changed, so
       //    they come back after the restart).
       const botStop = CONFIG.TELEGRAM_TRANSPORT === "polling" ? bot.stop().catch(() => undefined) : Promise.resolve();

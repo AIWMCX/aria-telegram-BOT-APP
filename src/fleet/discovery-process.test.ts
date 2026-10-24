@@ -134,6 +134,28 @@ function scriptInvocation(script: string) {
   check("no restart after stop()", dp.health().restarts === after && dp.pid === undefined);
 }
 
+// ── PR F1: a stale feed writer lock is cleared right before the child is spawned
+{
+  const lockPaths = discoveryPaths(path.join(root, "tenants-lock"), path.join(root, "logs-lock"));
+  fs.mkdirSync(path.dirname(lockPaths.feedPath), { recursive: true });
+  const lockFile = `${lockPaths.feedPath}.lock`;
+  fs.writeFileSync(lockFile, "999999999");
+  const seen = path.join(root, "lock-seen.txt");
+  const script = `
+    const fs = require('fs');
+    fs.appendFileSync(${JSON.stringify(seen)}, (fs.existsSync(${JSON.stringify(lockFile)}) ? 'LOCK' : 'CLEAR') + ';');
+    console.log('discovery service started');
+    setInterval(() => {}, 1000);`;
+  const dp = new DiscoveryProcess({ enginePath: root, endpoints, paths: lockPaths, invocation: scriptInvocation(script), restartBackoffMs: 30 });
+  dp.start();
+  await waitFor(() => fs.existsSync(seen) && fs.readFileSync(seen, "utf8").length > 0);
+  check("the stale <feed>.lock is gone by the time the discovery child starts", fs.readFileSync(seen, "utf8").startsWith("CLEAR;"));
+  await dp.stop(2000);
+  const noLock = new DiscoveryProcess({ enginePath: root, endpoints, paths: discoveryPaths(path.join(root, "tenants-nolock"), path.join(root, "logs-nolock")), invocation: scriptInvocation("console.log('discovery service started'); setInterval(() => {}, 1000);") });
+  check("start() with no lock file present is unaffected", noLock.start() === true && (await waitFor(() => noLock.health().running)));
+  await noLock.stop(2000);
+}
+
 // ── graceful stop: SIGTERM first (POSIX), the child's own shutdown output is kept
 {
   const script = `

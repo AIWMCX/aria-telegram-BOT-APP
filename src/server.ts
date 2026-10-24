@@ -31,6 +31,7 @@ import { db } from "./db.js";
 import { getPostgresHealth } from "./pg-health.js";
 import { engineIdentity } from "./fleet/instance.js";
 import { discoveryHealth, paperSniperHealth } from "./fleet/discovery-instance.js";
+import { rpcRelayHealth } from "./rpc-relay/instance.js";
 import { paperSniperRoutes } from "./paper-sniper/routes.js";
 import { sniperTenantRuntimeDir } from "./paper-sniper/runtime-dir.js";
 import { tenantRehydrator } from "./fleet/rehydration-instance.js";
@@ -154,6 +155,8 @@ app.get("/healthz", async (c) => {
     // Shared launch discovery: enabled/running/restarts/lastEventAgeMs + counters. Never a URL or key.
     discovery: discoveryHealth(),
     // Paper sniper (PR E): enabled/tenants only on this public endpoint; the reason it is off goes to the boot log.
+    // Private RPC relay (PR F1): enabled + counts only. Never a URL, token or key.
+    rpcRelay: rpcRelayHealth(),
     paperSniper: (({ enabled, tenants }) => ({ enabled, tenants }))(paperSniperHealth()),
   });
 });

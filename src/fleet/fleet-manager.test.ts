@@ -81,6 +81,19 @@ async function main() {
     check("lock file is cleared on graceful stop", !fs.existsSync(path.join(runtimeDir, "lock")));
   }
 
+  // ── PR F1: onTenantStopped fires after stopTenant (relay token revocation hook); a throwing hook never blocks the stop ──
+  {
+    const tenantsRoot = freshTempRoot();
+    const logsRoot = freshTempRoot();
+    const stopped: string[] = [];
+    const fm = new FleetManager({ engineInvocation: fakeInvocation(), tenantsRoot, logsRoot, onTenantStopped: (id) => { stopped.push(id); throw new Error("hook failure"); } });
+    await fm.spawnTenant("tenant-hook");
+    await waitFor(() => fm.getTenantStatus("tenant-hook")?.status === "running");
+    check("onTenantStopped is not called while the tenant runs", stopped.length === 0);
+    await fm.stopTenant("tenant-hook", true);
+    check("onTenantStopped(clientId) is called after stopTenant, and a throwing hook does not break the stop", stopped.join() === "tenant-hook" && fm.getTenantStatus("tenant-hook")?.status === "stopped");
+  }
+
   // ── graceful stop uses the desired-state mechanism, not a raw kill ──
   {
     const tenantsRoot = freshTempRoot();

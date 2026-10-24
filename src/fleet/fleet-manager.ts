@@ -243,6 +243,8 @@ export interface FleetManagerOptions {
    * logged and ignored: a tenant must still start on its previous config.
    */
   prepareTenantRuntime?: (clientId: string, runtimeDir: string) => Promise<void>;
+  /** Called after stopTenant() finished (stop, revoke, remove). Must not throw; failures are swallowed. */
+  onTenantStopped?: (clientId: string) => void;
   /**
    * Refuse a NEW spawn when available memory is below this many bytes
    * (default 400 MB; 0 disables). Crash-restarts of an already-admitted
@@ -308,8 +310,8 @@ export class FleetManager {
   // real gate that always passes, and `spawnTenant()`'s production refusal
   // below depends on being able to tell "not wired" from "wired and passing".
   private shuttingDown = false;
-  private readonly opts: Required<Omit<FleetManagerOptions, "verifyEngineIdentity" | "prepareTenantRuntime">> &
-    Pick<FleetManagerOptions, "verifyEngineIdentity" | "prepareTenantRuntime">;
+  private readonly opts: Required<Omit<FleetManagerOptions, "verifyEngineIdentity" | "prepareTenantRuntime" | "onTenantStopped">> &
+    Pick<FleetManagerOptions, "verifyEngineIdentity" | "prepareTenantRuntime" | "onTenantStopped">;
 
   constructor(opts: FleetManagerOptions) {
     this.opts = {
@@ -663,7 +665,11 @@ export class FleetManager {
     } catch (err) {
       this.opts.log.error({ clientId, code: (err as NodeJS.ErrnoException)?.code }, "could not persist desired=stopped; stopping the process anyway");
     }
-    return this.stopProcess(clientId, graceful);
+    try {
+      await this.stopProcess(clientId, graceful);
+    } finally {
+      try { this.opts.onTenantStopped?.(clientId); } catch { /* never block a stop on bookkeeping */ }
+    }
   }
 
   private async stopProcess(clientId: string, graceful: boolean): Promise<void> {

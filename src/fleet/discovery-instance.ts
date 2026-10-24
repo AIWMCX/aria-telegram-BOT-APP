@@ -5,6 +5,8 @@ import { createSniperTenantPreparer, engineSupportsPaperSniper, sniperUnavailabl
 import { logger } from "../logger.js";
 import { parseDiscoveryFlags, parseEventStaleMs, discoveryPaths, type DiscoveryFlags } from "./discovery-config.js";
 import { DiscoveryProcess, engineSupportsDiscovery, type DiscoveryHealthBlock } from "./discovery-process.js";
+import { prepareTenantRpc, rpcRelayUsable, unregisterTenantRpc } from "../rpc-relay/instance.js";
+import { rpcRelayDecision } from "../rpc-relay/gating.js";
 import { reconcileTenantDiscoverySync } from "./tenant-discovery-seed.js";
 
 /**
@@ -64,15 +66,25 @@ export function paperSniperHealth(): { enabled: boolean; tenants: number; reason
   return reason ? { enabled: false, tenants: 0, reason } : { enabled: true, tenants: sniperPreparer.seededCount() };
 }
 
+/** FleetManager.onTenantStopped hook (PR F1): a stopped/removed tenant's relay token stops working at once; the next spawn re-registers it. */
+export function onTenantStopped(clientId: string): void {
+  unregisterTenantRpc(clientId);
+}
+
 /** FleetManager.prepareTenantRuntime hook: seed (or un-seed) the tenant's discovery source, then its paper sniper config, before it spawns. Synchronous atomic file edits: no child process, no waiting (the sniper step does one DB read only when the sniper is enabled). */
 export async function prepareTenantRuntime(clientId: string, runtimeDir: string): Promise<void> {
   if (!(flags.enabled && !engineSupportsDiscovery(ENGINE_PATH))) {
     const result = reconcileTenantDiscoverySync({ runtimeDir, feedPath: DISCOVERY_PATHS.feedPath, enabled: flags.enabled });
     if (result === "enabled" || result === "disabled") logger.info({ result }, "tenant discovery source reconciled");
   }
+  let sniperResult: string = "skipped";
   try {
-    await sniperPreparer.prepare(clientId, runtimeDir);
+    sniperResult = await sniperPreparer.prepare(clientId, runtimeDir);
   } catch (err) {
     logger.warn({ errName: (err as Error)?.name }, "tenant paper sniper config reconcile failed; starting with the existing config");
   }
+  // PR F1: paper-sniper tenants use the private read-only RPC relay (the paid provider key never reaches them).
+  // A transient/failed sniper lookup ("skipped") leaves rpc.url alone.
+  const rpcWant = rpcRelayDecision(sniperResult, rpcRelayUsable(), sniperPreparer.isSeeded(clientId));
+  if (rpcWant !== "leave") prepareTenantRpc(clientId, runtimeDir, rpcWant);
 }
