@@ -57,6 +57,15 @@ export function parseDiscoveryFlags(env: NodeJS.ProcessEnv): DiscoveryFlags {
   return { enabled: true, endpoints: { wssUrl: wssRaw!.trim(), httpUrl: httpRaw!.trim() } };
 }
 
+/** DISCOVERY_MAX_EVENT_AGE_MS: how long without any launch before /healthz reports `stale` (default 15 min; floor 1 min; malformed -> default). */
+export const DEFAULT_EVENT_STALE_MS = 15 * 60 * 1000;
+export function parseEventStaleMs(env: NodeJS.ProcessEnv): number {
+  const raw = env.DISCOVERY_MAX_EVENT_AGE_MS?.trim();
+  if (!raw || !/^\d{1,9}$/.test(raw)) return DEFAULT_EVENT_STALE_MS;
+  const n = Number(raw);
+  return n >= 60_000 ? n : DEFAULT_EVENT_STALE_MS;
+}
+
 /** Where the shared discovery process keeps its files, derived from the existing volume layout (tenants live in `<volume>/tenants`). */
 export interface DiscoveryPaths {
   /** NDJSON feed tenants tail: `<volume>/discovery/launches.ndjson`. */

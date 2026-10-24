@@ -227,12 +227,23 @@ unchanged and additionally refuses any `ARIA_STREAM*` name in `extraEnv`.
   read `/data/tenant-logs/discovery.log` (URLs and key fragments are redacted).
 - Public RPC endpoints drop events; use a paid streaming provider.
 
-**Tenants:** at each tenant spawn the control plane runs the engine's own
-`aria config set discovery.fileTail /data/discovery/launches.ndjson` in that
-tenant's runtime dir (only if it is not already set). Note: a tenant only
-*consumes* the feed when its engine runs with `market.kind = "real-discovery"`;
-hosted tenants use the engine's default config today, so enabling discovery
-does not by itself change what they trade on (paper only either way).
+**Tenants:** before each tenant spawn the control plane makes a direct, atomic
+edit of that tenant's `config.json` (only the `discovery` key: `file-tail` +
+`/data/discovery/launches.ndjson`; temp file + rename, mode 0600, nothing else
+touched). A tenant with no `config.json` yet (never started) is skipped and
+picked up at its next spawn. Note: a tenant only *consumes* the feed when its
+engine runs with `market.kind = "real-discovery"`; hosted tenants use the
+engine's default config today, so enabling discovery does not by itself change
+what they trade on (paper only either way).
+
+`stale` in the `/healthz` discovery block is true when the producer heartbeat
+is older than 60 s OR no launch has arrived for `DISCOVERY_MAX_EVENT_AGE_MS`
+(optional, default 900000 = 15 min, minimum 60000). `counters` also carries
+`writeErrors`, `rotations`, `linesWritten`; alarm on `writeErrors > 0`.
+
+The engine pin must contain `aria discovery run` AND the
+`discovery.fileTail` config key (engine PR #12 head or later); an engine
+pinned at the first PR #12 commit (58154f1) is reported as unsupported.
 
 **Disable:** set `DISCOVERY_ENABLED=false` (or delete it) and redeploy. The
 child is not started, `/healthz` shows `discovery.enabled:false`, and each

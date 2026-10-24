@@ -1,8 +1,8 @@
 import { CONFIG } from "../config.js";
 import { logger } from "../logger.js";
-import { parseDiscoveryFlags, discoveryPaths, type DiscoveryFlags } from "./discovery-config.js";
+import { parseDiscoveryFlags, parseEventStaleMs, discoveryPaths, type DiscoveryFlags } from "./discovery-config.js";
 import { DiscoveryProcess, engineSupportsDiscovery, type DiscoveryHealthBlock } from "./discovery-process.js";
-import { engineConfigSetRunner, reconcileTenantDiscovery } from "./tenant-discovery-seed.js";
+import { reconcileTenantDiscoverySync } from "./tenant-discovery-seed.js";
 
 /**
  * The ONE shared-discovery supervisor for this process (PR B2). Disabled
@@ -15,7 +15,7 @@ const flags: DiscoveryFlags = parseDiscoveryFlags(process.env);
 export const DISCOVERY_PATHS = discoveryPaths(CONFIG.FLEET_TENANTS_ROOT, CONFIG.FLEET_LOGS_ROOT);
 
 export const discoveryProcess: DiscoveryProcess | undefined = flags.enabled
-  ? new DiscoveryProcess({ enginePath: ENGINE_PATH, endpoints: flags.endpoints, paths: DISCOVERY_PATHS, log: logger })
+  ? new DiscoveryProcess({ enginePath: ENGINE_PATH, endpoints: flags.endpoints, paths: DISCOVERY_PATHS, eventStaleMs: parseEventStaleMs(process.env), log: logger })
   : undefined;
 
 export function startDiscovery(): void {
@@ -35,14 +35,9 @@ export function discoveryHealth(): DiscoveryHealthBlock {
   return discoveryProcess!.health();
 }
 
-/** FleetManager.prepareTenantRuntime hook: seed (or un-seed) the tenant's discovery source before it spawns. */
+/** FleetManager.prepareTenantRuntime hook: seed (or un-seed) the tenant's discovery source before it spawns. Synchronous atomic file edit: no child process, no waiting. */
 export async function prepareTenantRuntime(_clientId: string, runtimeDir: string): Promise<void> {
   if (flags.enabled && !engineSupportsDiscovery(ENGINE_PATH)) return;
-  const result = await reconcileTenantDiscovery({
-    runtimeDir,
-    feedPath: DISCOVERY_PATHS.feedPath,
-    enabled: flags.enabled,
-    run: engineConfigSetRunner(ENGINE_PATH),
-  });
-  if (result !== "unchanged") logger.info({ result }, "tenant discovery source reconciled");
+  const result = reconcileTenantDiscoverySync({ runtimeDir, feedPath: DISCOVERY_PATHS.feedPath, enabled: flags.enabled });
+  if (result === "enabled" || result === "disabled") logger.info({ result }, "tenant discovery source reconciled");
 }

@@ -23,8 +23,16 @@ export const DISCOVERY_ENGINE_MARKERS: readonly string[] = [
   path.join("src", "discovery", "stream", "discovery-source-config.ts"),
 ];
 
+/** Source file + literal that must be present: the engine's `aria config set discovery.fileTail` key. An engine pinned at the first B2 commit has `aria discovery run` but NOT this key. */
+export const DISCOVERY_FILETAIL_MARKER = { file: path.join("src", "runtime", "runtime-config.ts"), text: "discovery.fileTail" } as const;
+
 export function engineSupportsDiscovery(enginePath: string): boolean {
-  return DISCOVERY_ENGINE_MARKERS.every((m) => existsSync(path.join(enginePath, m)));
+  if (!DISCOVERY_ENGINE_MARKERS.every((m) => existsSync(path.join(enginePath, m)))) return false;
+  try {
+    return readFileSync(path.join(enginePath, DISCOVERY_FILETAIL_MARKER.file), "utf8").includes(DISCOVERY_FILETAIL_MARKER.text);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -77,9 +85,11 @@ export function redactLine(line: string, fragments: readonly string[]): string {
 }
 
 /** Splits a byte stream into lines, redacts each COMPLETE line, so a secret split across two chunks is still caught. */
+interface LineSink { write(line: string): void }
+
 class RedactingLineWriter {
   private pending = "";
-  constructor(private readonly sink: WriteStream, private readonly fragments: readonly string[]) {}
+  constructor(private readonly sink: LineSink, private readonly fragments: readonly string[]) {}
   write(chunk: Buffer | string): void {
     this.pending += chunk.toString();
     let nl: number;
@@ -96,7 +106,7 @@ class RedactingLineWriter {
   }
 }
 
-export type DiscoveryState = "starting" | "running" | "backoff" | "stopping" | "stopped";
+export type DiscoveryState = "starting" | "running" | "backoff" | "failed" | "stopping" | "stopped";
 
 export interface DiscoveryInvocation { command: string; args: string[]; cwd: string }
 
@@ -114,6 +124,8 @@ export interface DiscoveryProcessOptions {
   sustainedHealthyMs?: number;
   /** Producer heartbeat older than this is reported as stale. */
   heartbeatStaleMs?: number;
+  /** No launch for this long => `stale` (default 15 min: pump.fun alone normally produces several per minute). */
+  eventStaleMs?: number;
   now?: () => number;
   log?: FleetLogger;
 }
@@ -154,10 +166,11 @@ export class DiscoveryProcess {
   private restartTimer: NodeJS.Timeout | undefined;
   private stopping = false;
   private logStream: WriteStream | undefined;
+  private logBroken = false;
   private writers: RedactingLineWriter[] = [];
   private exitWaiters: Array<() => void> = [];
 
-  private readonly opts: Required<Pick<DiscoveryProcessOptions, "restartBackoffMs" | "maxRestartBackoffMs" | "sustainedHealthyMs" | "heartbeatStaleMs" | "readyMarker" | "now" | "log">> & DiscoveryProcessOptions;
+  private readonly opts: Required<Pick<DiscoveryProcessOptions, "restartBackoffMs" | "maxRestartBackoffMs" | "sustainedHealthyMs" | "heartbeatStaleMs" | "eventStaleMs" | "readyMarker" | "now" | "log">> & DiscoveryProcessOptions;
   private readonly fragments: readonly string[];
 
   constructor(opts: DiscoveryProcessOptions) {
@@ -166,6 +179,7 @@ export class DiscoveryProcess {
       maxRestartBackoffMs: 5 * 60 * 1000,
       sustainedHealthyMs: 60 * 1000,
       heartbeatStaleMs: 60 * 1000,
+      eventStaleMs: 15 * 60 * 1000,
       readyMarker: "discovery service started",
       now: () => Date.now(),
       log: NOOP_LOGGER,
@@ -191,11 +205,33 @@ export class DiscoveryProcess {
   }
 
   private launch(isRestart: boolean): void {
+    try {
+      this.launchUnsafe(isRestart);
+    } catch (err) {
+      // mkdir / createWriteStream / spawn threw (read-only volume, full disk, EMFILE...): never an uncaught exception.
+      this.logStream?.destroy();
+      this.logStream = undefined;
+      this.child = undefined;
+      this.state = "failed";
+      this.opts.log.error({ errName: (err as Error)?.name, code: (err as NodeJS.ErrnoException)?.code }, "shared discovery could not be launched");
+      this.scheduleBackoff(null, null);
+    }
+  }
+
+  private launchUnsafe(isRestart: boolean): void {
     mkdirSync(this.opts.paths.runtimeDir, { recursive: true, mode: 0o700 });
     mkdirSync(path.dirname(this.opts.paths.feedPath), { recursive: true, mode: 0o700 });
     mkdirSync(path.dirname(this.opts.paths.logPath), { recursive: true, mode: 0o700 });
     rotateLogIfLarge(this.opts.paths.logPath, MAX_TENANT_LOG_BYTES);
-    this.logStream = createWriteStream(this.opts.paths.logPath, { flags: "a" });
+    const logStream = createWriteStream(this.opts.paths.logPath, { flags: "a" });
+    this.logBroken = false;
+    // A log-file error (disk full, EIO) must not crash the control plane or kill discovery: drop log lines instead.
+    logStream.on("error", () => {
+      if (!this.logBroken) this.opts.log.warn({}, "shared discovery log file errored; further child output is dropped until the next restart");
+      this.logBroken = true;
+    });
+    this.logStream = logStream;
+    const sink: LineSink = { write: (line) => { if (!this.logBroken) { try { logStream.write(line); } catch { this.logBroken = true; } } } };
     const inv = (this.opts.invocation ?? realDiscoveryInvocation(this.opts.enginePath))(this.opts.paths.feedPath);
     this.state = "starting";
     if (isRestart) this.restarts += 1;
@@ -206,8 +242,8 @@ export class DiscoveryProcess {
       stdio: ["ignore", "pipe", "pipe"],
     });
     this.child = child;
-    const out = new RedactingLineWriter(this.logStream, this.fragments);
-    const err = new RedactingLineWriter(this.logStream, this.fragments);
+    const out = new RedactingLineWriter(sink, this.fragments);
+    const err = new RedactingLineWriter(sink, this.fragments);
     this.writers = [out, err];
     let ready = false;
     child.stdout?.on("data", (chunk: Buffer) => {
@@ -229,7 +265,7 @@ export class DiscoveryProcess {
     this.child = undefined;
     for (const w of this.writers) w.flush();
     this.writers = [];
-    this.logStream?.end();
+    try { this.logStream?.end(); } catch { /* broken log stream */ }
     this.logStream = undefined;
     const waiters = this.exitWaiters; this.exitWaiters = [];
     for (const w of waiters) w();
@@ -243,14 +279,19 @@ export class DiscoveryProcess {
     const ranHealthyMs = this.runningSince !== undefined ? this.opts.now() - this.runningSince : 0;
     this.runningSince = undefined;
     if (ranHealthyMs >= this.opts.sustainedHealthyMs) this.consecutiveCrashes = 0;
+    this.scheduleBackoff(code, signal);
+  }
+
+  private scheduleBackoff(code: number | null, signal: NodeJS.Signals | null): void {
+    if (this.stopping) { this.state = "stopped"; return; }
     this.consecutiveCrashes += 1;
-    this.state = "backoff";
+    if (this.state !== "failed") this.state = "backoff";
     const backoffMs = Math.min(this.opts.restartBackoffMs * 2 ** (this.consecutiveCrashes - 1), this.opts.maxRestartBackoffMs);
-    this.opts.log.warn({ code, signal, retryInMs: backoffMs, consecutiveCrashes: this.consecutiveCrashes }, "shared discovery process exited unexpectedly; restarting with backoff");
+    this.opts.log.warn({ code, signal, retryInMs: backoffMs, consecutiveCrashes: this.consecutiveCrashes }, "shared discovery process is down; restarting with backoff");
     // Unlike a tenant there is no give-up: every tenant depends on this one feed, so it keeps retrying at the capped delay.
     this.restartTimer = setTimeout(() => {
       this.restartTimer = undefined;
-      if (this.stopping || this.state !== "backoff") return;
+      if (this.stopping || (this.state !== "backoff" && this.state !== "failed")) return;
       this.launch(true);
     }, backoffMs);
     this.restartTimer.unref?.();
@@ -304,12 +345,15 @@ export class DiscoveryProcess {
         const t = this.opts.now();
         if (typeof raw.lastEventAt === "number") block.lastEventAgeMs = Math.max(0, t - raw.lastEventAt);
         if (typeof raw.updatedAt === "number") block.heartbeatAgeMs = Math.max(0, t - raw.updatedAt);
-        block.stale = block.heartbeatAgeMs == null || block.heartbeatAgeMs > this.opts.heartbeatStaleMs;
+        // Stale if the producer is silent OR it is alive but no launch arrived for eventStaleMs (a connected-but-dead subscription looks exactly like this). With no launch yet, the clock starts at the producer's start.
+        const eventAge = block.lastEventAgeMs ?? (typeof raw.startedAt === "number" ? Math.max(0, t - raw.startedAt) : null);
+        block.stale = block.heartbeatAgeMs == null || block.heartbeatAgeMs > this.opts.heartbeatStaleMs || eventAge === null || eventAge > this.opts.eventStaleMs;
         const counters: Record<string, number | boolean> = {};
         for (const k of COUNTER_KEYS) {
           const v = raw.counters?.[k];
           if (typeof v === "number" || typeof v === "boolean") counters[k] = v;
         }
+        for (const k of ["writeErrors", "rotations", "linesWritten"] as const) if (typeof raw[k] === "number") counters[k] = raw[k];
         block.counters = counters;
         if (Array.isArray(raw.programs)) block.programsWatched = { watched: raw.programs.filter((p: any) => p?.watched === true).length, total: raw.programs.length };
       }
