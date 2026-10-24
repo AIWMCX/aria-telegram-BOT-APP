@@ -38,7 +38,8 @@ export function buildDiscoveryEnv(
   runtimeDir: string,
   endpoints: DiscoveryStreamEndpoints,
 ): Record<string, string> {
-  const allowed = new Set(TENANT_ENV_ALLOWLIST);
+  // TLS trust settings are not secrets and the streaming connection (unlike a tenant) must verify a provider over TLS, possibly behind a corporate CA.
+  const allowed = new Set([...TENANT_ENV_ALLOWLIST, "NODE_EXTRA_CA_CERTS", "NODE_USE_SYSTEM_CA"]);
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(parentEnv)) {
     if (value !== undefined && allowed.has(key.toUpperCase())) out[key] = value;

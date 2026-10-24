@@ -67,6 +67,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
   check("discovery env carries the two stream vars from the validated endpoints", env.ARIA_STREAM_RPC_URL === WSS && env.ARIA_STREAM_RPC_HTTP_URL === HTTPS);
   check("discovery env carries its own runtime dir and the basics", env.ARIA_RUNTIME_DIR === "/data/discovery/runtime" && env.PATH === "/usr/bin" && env.HOME === "/h");
   const keys = Object.keys(env).sort().join(",");
+  check("TLS trust vars (non-secret) pass through to the discovery child only", buildDiscoveryEnv({ NODE_EXTRA_CA_CERTS: "/ca.pem" }, "/r", endpoints).NODE_EXTRA_CA_CERTS === "/ca.pem");
   check("discovery env has NOTHING else (no control-plane secret, no stray variable)", keys === "ARIA_RUNTIME_DIR,ARIA_STREAM_RPC_HTTP_URL,ARIA_STREAM_RPC_URL,HOME,PATH");
 }
 

@@ -207,7 +207,7 @@ file on the volume. Tenants tail that file (path only in their own
 | `ARIA_STREAM_RPC_HTTP_URL` | `https://...` (provider HTTP RPC, key inside) |
 | `ARIA_ENGINE_COMMIT_SHA` | the aria-engine commit that contains PR B2 (`aria discovery run`, `discovery.fileTail`). This is a build ARG: **bump it to the merged engine SHA and redeploy**. An older pinned engine is detected and discovery stays off (`reason` says so). |
 
-Only the two `ARIA_STREAM_*` variables go to the discovery child, together
+Only the two `ARIA_STREAM_*` variables (plus non-secret TLS trust vars `NODE_EXTRA_CA_CERTS`/`NODE_USE_SYSTEM_CA` if set) go to the discovery child, together
 with the same operating-system basics tenants get. `buildTenantEnv` is
 unchanged and additionally refuses any `ARIA_STREAM*` name in `extraEnv`.
 
