@@ -419,3 +419,13 @@ export async function handlePaperStatus(deps: HostedCommandsDeps, ctx: HandlerCt
   }
   await deps.notify(ctx.telegramUserId, formatHostedStatusMessage(handle, { desiredRunning, gaveUp }));
 }
+
+/**
+ * Hosted PAPER replies are delivered as plain text. Telegram's legacy Markdown
+ * parser rejects any message with an unpaired `_` or `*` (e.g. "/paper_status"),
+ * which made every reply fail with "can't parse entities". Bold markers are
+ * stripped so the text reads cleanly without parse_mode.
+ */
+export function toPlainHostedText(text: string): string {
+  return text.replace(/\*/g, "");
+}
