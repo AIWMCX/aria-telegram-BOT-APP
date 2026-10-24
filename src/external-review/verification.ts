@@ -26,11 +26,13 @@ const Transaction = z.object({
   slot: uint, blockTime: z.number().int().nullable(),
   transaction: z.object({ signatures: z.array(Signature).min(1), message: z.object({
     accountKeys: z.array(z.object({ pubkey: Address, signer: z.boolean(), writable: z.boolean() })).min(1),
+    instructions: z.array(z.unknown()).optional(),
   }) }),
   meta: z.object({
     err: z.unknown(), fee: uint,
     preBalances: z.array(uint), postBalances: z.array(uint),
     preTokenBalances: z.array(TokenBalance), postTokenBalances: z.array(TokenBalance),
+    innerInstructions: z.array(z.object({ instructions: z.array(z.unknown()) })).nullable().optional(),
   }),
 });
 
@@ -96,12 +98,28 @@ export function inspectTransaction(raw: unknown, signature: string, wallet: stri
   };
 }
 
-export async function verifySignature(rpcUrl: string, signature: string, wallet: string, mint: string, fetcher: typeof fetch = fetch) {
-  Signature.parse(signature); Address.parse(wallet); Address.parse(mint);
-  const call = async (method: string, params: unknown[]) => {
+// Worst case server time is RPC_CALL_TIMEOUT_MS * ROUND_TRIP_MAX_CALLS (genesis + two transactions); the client timeout must exceed it.
+export const RPC_CALL_TIMEOUT_MS = 8_000;
+export const ROUND_TRIP_MAX_CALLS = 3;
+const TOKEN_PROGRAMS = new Set(['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb']);
+
+// Finds the parsed spl-token closeAccount instruction for `account` in outer and inner instructions; returns its destination.
+function findCloseDestination(tx: z.infer<typeof Transaction>, account: string): string | null {
+  const all: unknown[] = [...(tx.transaction.message.instructions ?? []), ...(tx.meta.innerInstructions ?? []).flatMap(i => i.instructions)];
+  for (const ix of all) {
+    const i = ix as { programId?: unknown; parsed?: { type?: unknown; info?: { account?: unknown; destination?: unknown } } } | null;
+    if (!i || typeof i.programId !== 'string' || !TOKEN_PROGRAMS.has(i.programId)) continue;
+    if (i.parsed?.type !== 'closeAccount' || i.parsed.info?.account !== account) continue;
+    return typeof i.parsed.info.destination === 'string' ? i.parsed.info.destination : null;
+  }
+  return null;
+}
+
+function makeRpc(rpcUrl: string, fetcher: typeof fetch) {
+  return async (method: string, params: unknown[]) => {
     const response = await fetcher(rpcUrl, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(RPC_CALL_TIMEOUT_MS),
       redirect: 'error',
     });
     if (!response.ok) throw new Error('RPC unavailable');
@@ -111,8 +129,109 @@ export async function verifySignature(rpcUrl: string, signature: string, wallet:
     if (envelope.error !== undefined) throw new Error('RPC rejected request');
     return envelope.result;
   };
+}
+type Rpc = ReturnType<typeof makeRpc>;
+const getTx = (call: Rpc, signature: string) =>
+  call('getTransaction', [signature, { encoding: 'jsonParsed', commitment: 'finalized', maxSupportedTransactionVersion: 0 }]);
+
+export async function verifySignature(rpcUrl: string, signature: string, wallet: string, mint: string, fetcher: typeof fetch = fetch) {
+  Signature.parse(signature); Address.parse(wallet); Address.parse(mint);
+  const call = makeRpc(rpcUrl, fetcher);
   if (await call('getGenesisHash', []) !== MAINNET_GENESIS) throw new Error('RPC is not Solana mainnet');
-  const raw = await call('getTransaction', [signature, { encoding: 'jsonParsed', commitment: 'finalized', maxSupportedTransactionVersion: 0 }]);
+  const raw = await getTx(call, signature);
   if (raw === null) return { status: 'not_found_or_not_finalized' as const };
   return inspectTransaction(raw, signature, wallet, mint);
+}
+
+export const RESIDUAL_CAVEAT = 'Any unsold token remainder is valued at 0 in the residual, so a partial sell understates the residual.';
+export const ROUND_TRIP_NOTE = 'One observed round trip, not strategy performance. The rent deposit is refundable if the token account is later closed. ' +
+  'Balance deltas come from finalized metadata only; the only instruction decoded is the token-account close used to verify a rent refund. Swap provenance and the split between price movement, fees and other instructions are not established. ' + RESIDUAL_CAVEAT;
+export const RESIDUAL_LABEL = 'price movement, platform/route fees and other instructions (not separable without instruction decoding)';
+
+function rejected(reason: string) {
+  return { status: 'rejected' as const, reason, roundTripNetLamports: null, note: ROUND_TRIP_NOTE };
+}
+
+// Pure: reconciles one buy and one sell (already-fetched jsonParsed results) for the same wallet and mint.
+export function reconcileRoundTrip(buyRaw: unknown, sellRaw: unknown, buySig: string, sellSig: string, wallet: string, mint: string) {
+  Signature.parse(buySig); Signature.parse(sellSig); Address.parse(wallet); Address.parse(mint);
+  if (buySig === sellSig) return rejected('same_signature');
+  const buy = inspectTransaction(buyRaw, buySig, wallet, mint);
+  const sell = inspectTransaction(sellRaw, sellSig, wallet, mint);
+  if (buy.status === 'failed_on_chain' || sell.status === 'failed_on_chain') {
+    return {
+      status: 'failed_side' as const,
+      failedSides: [buy.status === 'failed_on_chain' ? 'buy' : null, sell.status === 'failed_on_chain' ? 'sell' : null].filter(Boolean) as string[],
+      buyFeeLamports: buy.networkFeeLamports, sellFeeLamports: sell.networkFeeLamports,
+      roundTripNetLamports: null,
+      note: 'At least one side FAILED on-chain, so there is no completed round trip and no P&L. Failed transactions still cost the network fee.',
+    };
+  }
+  if (buy.slot > sell.slot) return rejected('sell_not_after_buy');
+  if (buy.slot === sell.slot) return rejected('same_slot_ambiguous_order');
+  const tokenIn = BigInt(buy.tokenDeltaRaw), sellDelta = BigInt(sell.tokenDeltaRaw);
+  if (tokenIn <= 0n) return rejected('buy_did_not_increase_token');
+  if (sellDelta >= 0n) return rejected('sell_did_not_decrease_token');
+  const tokenOut = -sellDelta;
+  if (tokenOut > tokenIn) return rejected('sold_more_than_bought');
+  if (buy.tokenDecimals !== sell.tokenDecimals) throw new Error('Token decimal mismatch');
+
+  // Rent: token accounts of this wallet+mint that the buy CREATED (in post, absent from pre).
+  const b = Transaction.parse(buyRaw), s = Transaction.parse(sellRaw);
+  const preIdx = new Set(b.meta.preTokenBalances.map(t => t.accountIndex));
+  const created = b.meta.postTokenBalances.filter(t => t.owner === wallet && t.mint === mint && !preIdx.has(t.accountIndex));
+  let rentDeposit = 0n, refunded = 0n, lostToOther = 0n, unverified = 0n;
+  const rentAccounts: string[] = [];
+  for (const t of created) {
+    const lamports = BigInt(b.meta.postBalances[t.accountIndex]) - BigInt(b.meta.preBalances[t.accountIndex]);
+    rentDeposit += lamports;
+    const pubkey = b.transaction.message.accountKeys[t.accountIndex].pubkey;
+    rentAccounts.push(pubkey);
+    // Closed in the sell: token account present before, absent after, lamports drained to zero.
+    const si = s.transaction.message.accountKeys.findIndex(k => k.pubkey === pubkey);
+    if (si < 0) continue;
+    const inPre = s.meta.preTokenBalances.some(x => x.accountIndex === si && x.owner === wallet && x.mint === mint);
+    const inPost = s.meta.postTokenBalances.some(x => x.accountIndex === si);
+    if (inPre && !inPost && s.meta.postBalances[si] === 0) {
+      // Closed in the sell: the refund is only counted when a parsed closeAccount names this wallet as destination.
+      const destination = findCloseDestination(s, pubkey);
+      const lamports = BigInt(s.meta.preBalances[si]);
+      if (destination === wallet) refunded += lamports;
+      else if (destination !== null) lostToOther += lamports;
+      else unverified += lamports;
+    }
+  }
+  const rentLocked = rentDeposit - refunded - lostToOther - unverified;
+  const buyNative = BigInt(buy.nativeDeltaLamports), sellNative = BigInt(sell.nativeDeltaLamports);
+  const net = buyNative + sellNative;
+  const walletFees = (buy.walletPaidNetworkFee ? BigInt(buy.networkFeeLamports) : 0n) + (sell.walletPaidNetworkFee ? BigInt(sell.networkFeeLamports) : 0n);
+  return {
+    status: 'round_trip_observation' as const,
+    wallet, mint, buySignature: buySig, sellSignature: sellSig, buySlot: buy.slot, sellSlot: sell.slot,
+    buyNativeDeltaLamports: buy.nativeDeltaLamports, sellNativeDeltaLamports: sell.nativeDeltaLamports,
+    roundTripNetLamports: net.toString(),
+    buyFeeLamports: buy.networkFeeLamports, sellFeeLamports: sell.networkFeeLamports,
+    buyWalletPaidFee: buy.walletPaidNetworkFee, sellWalletPaidFee: sell.walletPaidNetworkFee,
+    feesPaidByWalletLamports: walletFees.toString(),
+    tokenInRaw: tokenIn.toString(), tokenOutRaw: tokenOut.toString(), tokenRemainingRaw: (tokenIn - tokenOut).toString(),
+    decimals: buy.tokenDecimals ?? null,
+    rentDepositLamports: rentDeposit.toString(), rentAccounts,
+    rentRefundedInSell: refunded > 0n, rentRefundedLamports: refunded.toString(), rentLockedLamports: rentLocked.toString(),
+    rentLostToOtherAccountLamports: lostToOther.toString(), rentRefundUnverified: unverified > 0n, rentUnverifiedLamports: unverified.toString(),
+    priceAndOtherLamports: (net + walletFees + rentDeposit - refunded).toString(), priceAndOtherLabel: RESIDUAL_LABEL, residualCaveat: RESIDUAL_CAVEAT,
+    note: ROUND_TRIP_NOTE,
+  };
+}
+
+export async function verifyRoundTrip(rpcUrl: string, buySig: string, sellSig: string, wallet: string, mint: string, fetcher: typeof fetch = fetch) {
+  Signature.parse(buySig); Signature.parse(sellSig); Address.parse(wallet); Address.parse(mint);
+  if (buySig === sellSig) return rejected('same_signature');
+  const call = makeRpc(rpcUrl, fetcher);
+  if (await call('getGenesisHash', []) !== MAINNET_GENESIS) throw new Error('RPC is not Solana mainnet');
+  const buyRaw = await getTx(call, buySig);
+  const sellRaw = await getTx(call, sellSig);
+  if (buyRaw === null || sellRaw === null) {
+    return { status: 'not_found_or_not_finalized' as const, missing: [buyRaw === null ? 'buy' : null, sellRaw === null ? 'sell' : null].filter(Boolean) as string[] };
+  }
+  return reconcileRoundTrip(buyRaw, sellRaw, buySig, sellSig, wallet, mint);
 }

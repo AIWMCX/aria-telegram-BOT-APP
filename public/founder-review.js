@@ -8,7 +8,7 @@
   async function api(action, values = {}) {
     const response = await fetch('/api/founder-review/' + action, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ initData: tg.initData, ...values }), signal: AbortSignal.timeout(25000),
+      body: JSON.stringify({ initData: tg.initData, ...values }), signal: AbortSignal.timeout(35000),
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || 'Review unavailable');
@@ -71,6 +71,65 @@
         'Wallet ownership and Jupiter execution provenance are not established by submitting a public signature.',
       ].join('\n');
     } catch (error) { result.textContent = error.message; }
+    finally { button.disabled = false; }
+  });
+  // ---- Round trip (buy + sell): textContent-only rendering, SOL with 9 decimals plus raw lamports. ----
+  const pairResult = field('review-pair-result');
+  const pairIds = ['review-mint', 'review-wallet', 'review-buy-signature', 'review-sell-signature'];
+  function clearPair() { pairResult.textContent = ''; }
+  pairIds.forEach(id => field(id).addEventListener('input', clearPair));
+  function sol(lamports) {
+    const n = BigInt(lamports), neg = n < 0n, a = neg ? -n : n;
+    return (neg ? '-' : '') + (a / 1000000000n).toString() + '.' + (a % 1000000000n).toString().padStart(9, '0') + ' SOL';
+  }
+  const money = (label, lamports) => label + ': ' + sol(lamports) + ' (' + lamports + ' lamports)';
+  function tokens(raw, decimals) {
+    const n = BigInt(raw), d = BigInt(decimals), base = 10n ** d;
+    return (n / base).toString() + (d > 0n ? '.' + (n % base).toString().padStart(Number(d), '0') : '') + ' (' + raw + ' raw)';
+  }
+  const REASONS = {
+    same_signature: 'Buy and sell signatures are identical.',
+    sell_not_after_buy: 'The sell is not after the buy (order swapped?).',
+    same_slot_ambiguous_order: 'Both transactions are in the same slot, so the order is ambiguous.',
+    buy_did_not_increase_token: 'The buy did not increase this wallet’s balance of the mint.',
+    sell_did_not_decrease_token: 'The sell did not decrease this wallet’s balance of the mint.',
+    sold_more_than_bought: 'The sell moved more tokens than the buy acquired; pairing is not sound.',
+  };
+  function renderPair(r) {
+    if (r.status === 'not_found_or_not_finalized') return 'Not found at finalized commitment (' + r.missing.join(', ') + '). This is not proof of failure. Retry later.';
+    if (r.status === 'rejected') return 'NOT A ROUND TRIP — no P&L shown\n' + (REASONS[r.reason] || 'Rejected.') + '\n' + r.note;
+    if (r.status === 'failed_side') return 'TRANSACTION FAILED ON-CHAIN (' + r.failedSides.join(', ') + ') — no round trip, no P&L\n' + r.note;
+    if (r.status !== 'round_trip_observation') return 'Unexpected response.';
+    return [
+      'ONE OBSERVED ROUND TRIP — not strategy performance',
+      'Wallet: ' + r.wallet, 'Mint: ' + r.mint,
+      'Buy: ' + r.buySignature + ' (slot ' + r.buySlot + ')',
+      'Sell: ' + r.sellSignature + ' (slot ' + r.sellSlot + ')',
+      money('Buy native change', r.buyNativeDeltaLamports),
+      money('Sell native change', r.sellNativeDeltaLamports),
+      money('ROUND-TRIP NET', r.roundTripNetLamports),
+      money('Network fees paid by wallet', r.feesPaidByWalletLamports) + ' [buy ' + r.buyFeeLamports + (r.buyWalletPaidFee ? '' : ', not wallet') + '; sell ' + r.sellFeeLamports + (r.sellWalletPaidFee ? '' : ', not wallet') + ']',
+      money('Token account rent deposit', r.rentDepositLamports) + (r.rentDepositLamports === '0' ? '' : r.rentRefundUnverified ? ' — token account was closed in the sell but the refund to this wallet could NOT be verified; not counted as refunded (' + r.rentUnverifiedLamports + ' lamports)' : r.rentLostToOtherAccountLamports !== '0' ? ' — closed in the sell but the lamports went to ANOTHER account: ' + sol(r.rentLostToOtherAccountLamports) : r.rentRefundedInSell ? ' — refunded in sell: ' + sol(r.rentRefundedLamports) : ' — NOT refunded, locked in the open token account: ' + sol(r.rentLockedLamports)),
+      money('Residual: ' + r.priceAndOtherLabel, r.priceAndOtherLamports),
+      r.residualCaveat,
+      'Tokens in: ' + tokens(r.tokenInRaw, r.decimals),
+      'Tokens out: ' + tokens(r.tokenOutRaw, r.decimals),
+      'Tokens remaining: ' + tokens(r.tokenRemainingRaw, r.decimals),
+      r.note,
+      'Wallet ownership and Jupiter execution provenance are not established by submitting public signatures.',
+    ].join('\n');
+  }
+  field('review-pair').addEventListener('click', async () => {
+    const button = field('review-pair'); button.disabled = true;
+    pairResult.textContent = 'Checking finalized mainnet data…';
+    const read = () => ({ mint: field('review-mint').value.trim(), wallet: field('review-wallet').value.trim(), buySignature: field('review-buy-signature').value.trim(), sellSignature: field('review-sell-signature').value.trim() });
+    const input = read();
+    try {
+      const { reconciliation } = await api('pair', input);
+      const now = read();
+      if (Object.keys(input).some(k => input[k] !== now[k])) { pairResult.textContent = 'Inputs changed. Reconcile again.'; return; }
+      pairResult.textContent = renderPair(reconciliation);
+    } catch (error) { pairResult.textContent = error.message; }
     finally { button.disabled = false; }
   });
 })();

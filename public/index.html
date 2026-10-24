@@ -61,6 +61,14 @@
     <label>Completed transaction signature<input id="review-signature" autocomplete="off" spellcheck="false" maxlength="88" /></label>
     <button class="plan-btn" id="review-verify" type="button">VERIFY ON-CHAIN BALANCES</button>
   </div>
+  <h3>Round trip (buy + sell)</h3>
+  <p>Reconcile one completed buy and the later sell of the same token from the same wallet (uses the wallet and mint above). Read-only; finalized data only.</p>
+  <div class="review-fields">
+    <label>Buy transaction signature<input id="review-buy-signature" autocomplete="off" spellcheck="false" maxlength="88" /></label>
+    <label>Sell transaction signature<input id="review-sell-signature" autocomplete="off" spellcheck="false" maxlength="88" /></label>
+    <button class="plan-btn" id="review-pair" type="button">RECONCILE ROUND TRIP</button>
+  </div>
+  <pre id="review-pair-result" role="status" aria-live="polite"></pre>
   <pre id="review-result" role="status" aria-live="polite"></pre>
 </section>
 
@@ -298,6 +306,7 @@
   <strong>RISK NOTICE</strong> &nbsp; ARIA REAL-1 is software, not financial advice. It consumes real read-only Solana market data but executes only deterministic paper trades in a separate local client. The Mini App never signs or broadcasts transactions and never takes custody of funds. When a paired engine is online, operational counters and PnL shown here come from that engine's real paper snapshot; when it is offline, values remain unavailable rather than being fabricated. Crypto markets are high risk. ARIA never asks for your private key or seed phrase.
 </footer>
 
+<script src="time-label.js"></script>
 <script src="app.js"></script>
 <script src="founder-review.js"></script>
 </body>
