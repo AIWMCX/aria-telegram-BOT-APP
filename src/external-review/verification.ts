@@ -26,11 +26,13 @@ const Transaction = z.object({
   slot: uint, blockTime: z.number().int().nullable(),
   transaction: z.object({ signatures: z.array(Signature).min(1), message: z.object({
     accountKeys: z.array(z.object({ pubkey: Address, signer: z.boolean(), writable: z.boolean() })).min(1),
+    instructions: z.array(z.unknown()).optional(),
   }) }),
   meta: z.object({
     err: z.unknown(), fee: uint,
     preBalances: z.array(uint), postBalances: z.array(uint),
     preTokenBalances: z.array(TokenBalance), postTokenBalances: z.array(TokenBalance),
+    innerInstructions: z.array(z.object({ instructions: z.array(z.unknown()) })).nullable().optional(),
   }),
 });
 
@@ -96,11 +98,28 @@ export function inspectTransaction(raw: unknown, signature: string, wallet: stri
   };
 }
 
+// Worst case server time is RPC_CALL_TIMEOUT_MS * ROUND_TRIP_MAX_CALLS (genesis + two transactions); the client timeout must exceed it.
+export const RPC_CALL_TIMEOUT_MS = 8_000;
+export const ROUND_TRIP_MAX_CALLS = 3;
+const TOKEN_PROGRAMS = new Set(['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb']);
+
+// Finds the parsed spl-token closeAccount instruction for `account` in outer and inner instructions; returns its destination.
+function findCloseDestination(tx: z.infer<typeof Transaction>, account: string): string | null {
+  const all: unknown[] = [...(tx.transaction.message.instructions ?? []), ...(tx.meta.innerInstructions ?? []).flatMap(i => i.instructions)];
+  for (const ix of all) {
+    const i = ix as { programId?: unknown; parsed?: { type?: unknown; info?: { account?: unknown; destination?: unknown } } } | null;
+    if (!i || typeof i.programId !== 'string' || !TOKEN_PROGRAMS.has(i.programId)) continue;
+    if (i.parsed?.type !== 'closeAccount' || i.parsed.info?.account !== account) continue;
+    return typeof i.parsed.info.destination === 'string' ? i.parsed.info.destination : null;
+  }
+  return null;
+}
+
 function makeRpc(rpcUrl: string, fetcher: typeof fetch) {
   return async (method: string, params: unknown[]) => {
     const response = await fetcher(rpcUrl, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(RPC_CALL_TIMEOUT_MS),
       redirect: 'error',
     });
     if (!response.ok) throw new Error('RPC unavailable');
@@ -124,9 +143,10 @@ export async function verifySignature(rpcUrl: string, signature: string, wallet:
   return inspectTransaction(raw, signature, wallet, mint);
 }
 
+export const RESIDUAL_CAVEAT = 'Any unsold token remainder is valued at 0 in the residual, so a partial sell understates the residual.';
 export const ROUND_TRIP_NOTE = 'One observed round trip, not strategy performance. The rent deposit is refundable if the token account is later closed. ' +
-  'Balance deltas come from finalized metadata only: no instruction decoding, so swap provenance and the split between price movement and other instructions are not established.';
-export const RESIDUAL_LABEL = 'price movement and other instructions (not separable without instruction decoding)';
+  'Balance deltas come from finalized metadata only; the only instruction decoded is the token-account close used to verify a rent refund. Swap provenance and the split between price movement, fees and other instructions are not established. ' + RESIDUAL_CAVEAT;
+export const RESIDUAL_LABEL = 'price movement, platform/route fees and other instructions (not separable without instruction decoding)';
 
 function rejected(reason: string) {
   return { status: 'rejected' as const, reason, roundTripNetLamports: null, note: ROUND_TRIP_NOTE };
@@ -160,7 +180,7 @@ export function reconcileRoundTrip(buyRaw: unknown, sellRaw: unknown, buySig: st
   const b = Transaction.parse(buyRaw), s = Transaction.parse(sellRaw);
   const preIdx = new Set(b.meta.preTokenBalances.map(t => t.accountIndex));
   const created = b.meta.postTokenBalances.filter(t => t.owner === wallet && t.mint === mint && !preIdx.has(t.accountIndex));
-  let rentDeposit = 0n, refunded = 0n;
+  let rentDeposit = 0n, refunded = 0n, lostToOther = 0n, unverified = 0n;
   const rentAccounts: string[] = [];
   for (const t of created) {
     const lamports = BigInt(b.meta.postBalances[t.accountIndex]) - BigInt(b.meta.preBalances[t.accountIndex]);
@@ -172,9 +192,16 @@ export function reconcileRoundTrip(buyRaw: unknown, sellRaw: unknown, buySig: st
     if (si < 0) continue;
     const inPre = s.meta.preTokenBalances.some(x => x.accountIndex === si && x.owner === wallet && x.mint === mint);
     const inPost = s.meta.postTokenBalances.some(x => x.accountIndex === si);
-    if (inPre && !inPost && s.meta.postBalances[si] === 0) refunded += BigInt(s.meta.preBalances[si]);
+    if (inPre && !inPost && s.meta.postBalances[si] === 0) {
+      // Closed in the sell: the refund is only counted when a parsed closeAccount names this wallet as destination.
+      const destination = findCloseDestination(s, pubkey);
+      const lamports = BigInt(s.meta.preBalances[si]);
+      if (destination === wallet) refunded += lamports;
+      else if (destination !== null) lostToOther += lamports;
+      else unverified += lamports;
+    }
   }
-  const rentLocked = rentDeposit - refunded;
+  const rentLocked = rentDeposit - refunded - lostToOther - unverified;
   const buyNative = BigInt(buy.nativeDeltaLamports), sellNative = BigInt(sell.nativeDeltaLamports);
   const net = buyNative + sellNative;
   const walletFees = (buy.walletPaidNetworkFee ? BigInt(buy.networkFeeLamports) : 0n) + (sell.walletPaidNetworkFee ? BigInt(sell.networkFeeLamports) : 0n);
@@ -190,7 +217,8 @@ export function reconcileRoundTrip(buyRaw: unknown, sellRaw: unknown, buySig: st
     decimals: buy.tokenDecimals ?? null,
     rentDepositLamports: rentDeposit.toString(), rentAccounts,
     rentRefundedInSell: refunded > 0n, rentRefundedLamports: refunded.toString(), rentLockedLamports: rentLocked.toString(),
-    priceAndOtherLamports: (net + walletFees + rentLocked).toString(), priceAndOtherLabel: RESIDUAL_LABEL,
+    rentLostToOtherAccountLamports: lostToOther.toString(), rentRefundUnverified: unverified > 0n, rentUnverifiedLamports: unverified.toString(),
+    priceAndOtherLamports: (net + walletFees + rentDeposit - refunded).toString(), priceAndOtherLabel: RESIDUAL_LABEL, residualCaveat: RESIDUAL_CAVEAT,
     note: ROUND_TRIP_NOTE,
   };
 }

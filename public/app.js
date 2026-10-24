@@ -40,8 +40,7 @@
   // Freshness of the engine data behind the "live" label: latest snapshot receivedAt and device lastSeenAt.
   let lastReality = SAFE_REALITY;
   const freshness = { snapshotAt: null, deviceAt: null };
-  const freshnessList = () => [freshness.snapshotAt, freshness.deviceAt];
-  const dataLabelFor = (reality) => TL.dataLabel(DATA_LABEL[reality.dataMode], reality.dataMode, freshnessList());
+  const dataLabelFor = (reality) => TL.dataLabel(DATA_LABEL[reality.dataMode], reality.dataMode, freshness.snapshotAt, freshness.deviceAt);
   function setFreshness(snapshotAt, deviceAt) {
     freshness.snapshotAt = snapshotAt || null;
     freshness.deviceAt = deviceAt || null;

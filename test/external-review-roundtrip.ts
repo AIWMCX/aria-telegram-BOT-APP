@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { MAINNET_GENESIS, reconcileRoundTrip, verifyRoundTrip } from '../src/external-review/verification.js';
+import { MAINNET_GENESIS, ROUND_TRIP_MAX_CALLS, RPC_CALL_TIMEOUT_MS, reconcileRoundTrip, verifyRoundTrip } from '../src/external-review/verification.js';
 import { externalReviewRoutes } from '../src/external-review/routes.js';
 
 // Real finalized mainnet transactions (public on-chain data), fetched read-only via getTransaction jsonParsed.
@@ -60,17 +60,81 @@ const noBuy = clone(buy); noBuy.meta.postTokenBalances = noBuy.meta.preTokenBala
 assert.throws(() => run(noBuy, sell), /Expected token absent/);
 const flatBuy = clone(buy); flatBuy.meta.preTokenBalances.push(clone(flatBuy.meta.postTokenBalances.find((t: any) => t.owner === wallet)));
 assert.equal((run(flatBuy, sell) as any).reason, 'buy_did_not_increase_token');
-// Rent refunded: sell closes the buy-created token account (synthetic variant of the real sell).
-const closed = clone(sell);
-const idx = closed.transaction.message.accountKeys.findIndex((k: any) => k.pubkey === r.rentAccounts[0]);
-assert.ok(idx >= 0, 'token account present in sell');
-closed.meta.postTokenBalances = closed.meta.postTokenBalances.filter((t: any) => t.accountIndex !== idx);
-closed.meta.preTokenBalances.find((t: any) => t.accountIndex === idx).uiTokenAmount.amount = '10261697';
-closed.meta.postBalances[0] += closed.meta.preBalances[idx] - closed.meta.postBalances[idx];
-closed.meta.postBalances[idx] = 0;
-const rc: any = run(buy, closed);
-assert.equal(rc.rentRefundedInSell, true); assert.equal(rc.rentRefundedLamports, '1488440'); assert.equal(rc.rentLockedLamports, '0');
-assert.equal(rc.tokenRemainingRaw, '0');
+// Rent facts: mainnet getMinimumBalanceForRentExemption(165) = 1,488,440 lamports (the older 2,039,280 figure is
+// stale), so the rent deposit above and the +25,829 residual (net + wallet fees + unrefunded rent) are correct.
+// A refund is only counted when the sell's parsed spl-token closeAccount names this wallet as destination.
+const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+const third = sell.transaction.message.accountKeys[1].pubkey;
+const closeIx = (account: string, destination: string, programId = TOKEN_PROGRAM) =>
+  ({ program: 'spl-token', programId, parsed: { type: 'closeAccount', info: { account, destination, owner: wallet } }, stackHeight: null });
+const rentAcct: string = r.rentAccounts[0];
+type Close = { ix?: any; where?: 'outer' | 'inner'; toWallet?: boolean; postLamports?: number; inPre?: boolean };
+function makeClosed(o: Close) {
+  const c = clone(sell);
+  const idx = c.transaction.message.accountKeys.findIndex((k: any) => k.pubkey === rentAcct);
+  assert.ok(idx >= 0, 'token account present in sell');
+  c.meta.postTokenBalances = c.meta.postTokenBalances.filter((t: any) => t.accountIndex !== idx);
+  const entry = c.meta.preTokenBalances.find((t: any) => t.accountIndex === idx);
+  entry.uiTokenAmount.amount = '10261697';
+  if (o.inPre === false) { entry.accountIndex = 2; } // the wallet's tokens sit in some other account; the rent account is absent from pre
+  const lamports = c.meta.preBalances[idx];
+  c.meta.postBalances[idx] = o.postLamports ?? 0;
+  if (o.toWallet) c.meta.postBalances[0] += lamports - c.meta.postBalances[idx];
+  if (o.ix) {
+    if (o.where === 'inner') c.meta.innerInstructions = [...(c.meta.innerInstructions ?? []), { index: 0, instructions: [o.ix] }];
+    else c.transaction.message.instructions.push(o.ix);
+  }
+  return c;
+}
+const expectRefund = (x: any, label: string) => {
+  assert.equal(x.rentRefundedInSell, true, label + ' refunded'); assert.equal(x.rentRefundedLamports, '1488440', label + ' refunded lamports');
+  assert.equal(x.rentLockedLamports, '0', label + ' locked'); assert.equal(x.rentRefundUnverified, false, label + ' unverified');
+  assert.equal(x.rentLostToOtherAccountLamports, '0', label + ' lost'); assert.equal(x.tokenRemainingRaw, '0', label + ' remaining');
+  assert.equal(x.priceAndOtherLamports, '25829', label + ' residual');
+};
+expectRefund(run(buy, makeClosed({ ix: closeIx(rentAcct, wallet), toWallet: true })), 'outer closeAccount to wallet');
+expectRefund(run(buy, makeClosed({ ix: closeIx(rentAcct, wallet), where: 'inner', toWallet: true })), 'inner closeAccount to wallet');
+// Closed to a third party: not refunded to the wallet, reported as lost, never locked.
+const lost: any = run(buy, makeClosed({ ix: closeIx(rentAcct, third) }));
+assert.equal(lost.rentRefundedInSell, false, 'third-party close refunded'); assert.equal(lost.rentRefundedLamports, '0');
+assert.equal(lost.rentLockedLamports, '0', 'third-party close locked'); assert.equal(lost.rentLostToOtherAccountLamports, '1488440', 'third-party close lost');
+assert.equal(lost.rentRefundUnverified, false); assert.equal(lost.priceAndOtherLamports, '25829');
+// Close cannot be found or decoded: flagged unverified, never counted as refunded.
+const unverifiedCases: Array<[string, Close]> = [
+  ['no closeAccount instruction', { toWallet: true }],
+  ['non-token program', { ix: closeIx(rentAcct, wallet, '11111111111111111111111111111111'), toWallet: true }],
+  ['closeAccount for another account', { ix: closeIx(third, wallet), toWallet: true }],
+];
+for (const [label, o] of unverifiedCases) {
+  const u: any = run(buy, makeClosed(o));
+  assert.equal(u.rentRefundUnverified, true, label + ' unverified flag'); assert.equal(u.rentRefundedInSell, false, label + ' refunded');
+  assert.equal(u.rentRefundedLamports, '0', label + ' refunded lamports'); assert.equal(u.rentUnverifiedLamports, '1488440', label + ' unverified lamports');
+}
+// The account must be drained to zero and be present in the sell's pre token balances to count as closed.
+for (const [label, o] of [['post balance not zero', { ix: closeIx(rentAcct, wallet), toWallet: true, postLamports: 1 }], ['absent from pre token balances', { ix: closeIx(rentAcct, wallet), toWallet: true, inPre: false }]] as Array<[string, Close]>) {
+  const n: any = run(buy, makeClosed(o));
+  assert.equal(n.rentRefundedInSell, false, label + ' refunded'); assert.equal(n.rentRefundedLamports, '0', label + ' refunded lamports');
+  assert.equal(n.rentLockedLamports, '1488440', label + ' locked'); assert.equal(n.rentRefundUnverified, false, label + ' unverified');
+}
+// Selling more than was bought is not a sound pairing.
+const oversold = clone(sell);
+oversold.meta.preTokenBalances.find((t: any) => t.owner === wallet).uiTokenAmount.amount = '20000000';
+assert.equal((run(buy, oversold) as any).reason, 'sold_more_than_bought', 'sold_more_than_bought rejection');
+// Fee totals count only fees the wallet actually paid: wallet is a signer but not the fee payer on the buy.
+const swapFee = clone(buy);
+const keys = swapFee.transaction.message.accountKeys; [keys[0], keys[1]] = [keys[1], keys[0]];
+for (const k of ['preBalances', 'postBalances']) { const a = swapFee.meta[k]; [a[0], a[1]] = [a[1], a[0]]; }
+const nf: any = run(swapFee, sell);
+assert.equal(nf.buyWalletPaidFee, false, 'buy fee payer is another account'); assert.equal(nf.sellWalletPaidFee, true);
+assert.equal(nf.feesPaidByWalletLamports, '150000', 'fee totals respect walletPaid');
+assert.equal(nf.roundTripNetLamports, '-1762628'); assert.equal(nf.priceAndOtherLamports, '-124188', 'residual with other-account fee payer');
+// Honesty text: residual label, remainder caveat.
+assert.match(r.priceAndOtherLabel, /platform\/route fees/); assert.match(r.residualCaveat, /unsold token remainder is valued at 0/);
+assert.match(r.residualCaveat, /partial sell understates the residual/); assert.match(r.note, /partial sell understates/);
+assert.ok(readFileSync(new URL('../public/founder-review.js', import.meta.url), 'utf8').includes('r.residualCaveat'), 'panel renders residualCaveat');
+// Timing: the client timeout must exceed the server worst case (genesis + two transactions).
+const clientTimeout = Number(/AbortSignal\.timeout\((\d+)\)/.exec(readFileSync(new URL('../public/founder-review.js', import.meta.url), 'utf8'))![1]);
+assert.ok(clientTimeout > RPC_CALL_TIMEOUT_MS * ROUND_TRIP_MAX_CALLS, 'client timeout exceeds server worst case');
 // A token account that already existed before the buy is not rent created by the buy.
 const pre = clone(buy); pre.meta.preTokenBalances.push({ ...pre.meta.postTokenBalances.find((t: any) => t.owner === wallet), uiTokenAmount: { amount: '0', decimals: 6 } });
 assert.equal((run(pre, sell) as any).rentDepositLamports, '0');

@@ -3,15 +3,9 @@
   // Pure helpers, no DOM access. Loaded before app.js; also importable by tests (see test/time-label.ts).
   var STALE_AFTER_MS = 5 * 60 * 1000;
 
-  function ageMs(iso, now) {
-    if (!iso) return NaN;
-    var t = new Date(iso).getTime();
-    return (now === undefined ? Date.now() : now) - t;
-  }
-
   function timeAgo(iso, now) {
     if (!iso) return "never";
-    var ms = ageMs(iso, now);
+    var ms = (now === undefined ? Date.now() : now) - new Date(iso).getTime();
     if (!isFinite(ms)) return "unknown";
     if (ms < 0) return "just now";
     var s = Math.floor(ms / 1000);
@@ -24,38 +18,36 @@
     return d + "d " + (h % 24) + "h ago";
   }
 
-  // Most recent valid timestamp among the inputs, as ms; null when none is usable.
-  function latestMs(list) {
-    var best = null;
-    for (var i = 0; i < list.length; i++) {
-      if (!list[i]) continue;
-      var t = new Date(list[i]).getTime();
-      if (isFinite(t) && (best === null || t > best)) best = t;
-    }
-    return best;
+  function validMs(iso) {
+    if (!iso) return null;
+    var t = new Date(iso).getTime();
+    return isFinite(t) ? t : null;
   }
 
-  // Stale = the freshest known update is older than 5 minutes. No known update means "not applicable", not stale.
-  function isStale(list, now) {
-    var latest = latestMs(list);
-    if (latest === null) return false;
-    return (now === undefined ? Date.now() : now) - latest > STALE_AFTER_MS;
+  // Stale = strictly older than 5 minutes. A missing timestamp is not stale (callers handle "no snapshot").
+  function isStale(iso, now) {
+    var t = validMs(iso);
+    if (t === null) return false;
+    return (now === undefined ? Date.now() : now) - t > STALE_AFTER_MS;
   }
 
-  function staleLabel(list) {
-    var latest = latestMs(list);
-    return "STALE · last update " + new Date(latest).toLocaleString();
+  function staleLabel(iso) {
+    return "STALE · last update " + new Date(iso).toLocaleString();
   }
 
-  // Only a "live" data mode can be stale; every other mode already says it is not real market data.
-  function dataLabel(baseLabel, dataMode, list, now) {
-    if (dataMode === "live" && isStale(list, now)) return staleLabel(list);
-    return baseLabel;
+  // Market-data freshness is based on the snapshot receivedAt ONLY. The device lastSeenAt is a heartbeat and
+  // never makes market data look fresh. Only a "live" data mode can be relabelled; other modes already say
+  // they are not real market data.
+  function dataLabel(baseLabel, dataMode, snapshotAt, deviceAt, now) {
+    if (dataMode !== "live") return baseLabel;
+    if (validMs(snapshotAt) !== null) return isStale(snapshotAt, now) ? staleLabel(snapshotAt) : baseLabel;
+    if (validMs(deviceAt) !== null && !isStale(deviceAt, now)) return "ENGINE ONLINE · NO MARKET SNAPSHOT";
+    return "NO DATA YET";
   }
 
   function snapshotText(receivedAt, now) {
     var base = "SNAPSHOT " + timeAgo(receivedAt, now);
-    return isStale([receivedAt], now) ? base + " · STALE" : base;
+    return isStale(receivedAt, now) ? base + " · STALE" : base;
   }
 
   var api = { STALE_AFTER_MS: STALE_AFTER_MS, timeAgo: timeAgo, isStale: isStale, staleLabel: staleLabel, dataLabel: dataLabel, snapshotText: snapshotText };

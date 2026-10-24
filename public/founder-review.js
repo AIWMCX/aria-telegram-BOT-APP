@@ -8,7 +8,7 @@
   async function api(action, values = {}) {
     const response = await fetch('/api/founder-review/' + action, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ initData: tg.initData, ...values }), signal: AbortSignal.timeout(25000),
+      body: JSON.stringify({ initData: tg.initData, ...values }), signal: AbortSignal.timeout(35000),
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || 'Review unavailable');
@@ -109,8 +109,9 @@
       money('Sell native change', r.sellNativeDeltaLamports),
       money('ROUND-TRIP NET', r.roundTripNetLamports),
       money('Network fees paid by wallet', r.feesPaidByWalletLamports) + ' [buy ' + r.buyFeeLamports + (r.buyWalletPaidFee ? '' : ', not wallet') + '; sell ' + r.sellFeeLamports + (r.sellWalletPaidFee ? '' : ', not wallet') + ']',
-      money('Token account rent deposit', r.rentDepositLamports) + (r.rentDepositLamports === '0' ? '' : r.rentRefundedInSell ? ' — refunded in sell: ' + sol(r.rentRefundedLamports) : ' — NOT refunded, locked in the open token account: ' + sol(r.rentLockedLamports)),
+      money('Token account rent deposit', r.rentDepositLamports) + (r.rentDepositLamports === '0' ? '' : r.rentRefundUnverified ? ' — token account was closed in the sell but the refund to this wallet could NOT be verified; not counted as refunded (' + r.rentUnverifiedLamports + ' lamports)' : r.rentLostToOtherAccountLamports !== '0' ? ' — closed in the sell but the lamports went to ANOTHER account: ' + sol(r.rentLostToOtherAccountLamports) : r.rentRefundedInSell ? ' — refunded in sell: ' + sol(r.rentRefundedLamports) : ' — NOT refunded, locked in the open token account: ' + sol(r.rentLockedLamports)),
       money('Residual: ' + r.priceAndOtherLabel, r.priceAndOtherLamports),
+      r.residualCaveat,
       'Tokens in: ' + tokens(r.tokenInRaw, r.decimals),
       'Tokens out: ' + tokens(r.tokenOutRaw, r.decimals),
       'Tokens remaining: ' + tokens(r.tokenRemainingRaw, r.decimals),

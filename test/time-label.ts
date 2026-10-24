@@ -25,28 +25,31 @@ assert.equal(TL.timeAgo(new Date(now + 5000).toISOString(), now), 'just now');
 
 // Stale threshold: strictly older than 5 minutes.
 assert.equal(TL.STALE_AFTER_MS, 300000);
-assert.equal(TL.isStale([ago(5 * M)], now), false, 'exactly 5 minutes is not stale');
-assert.equal(TL.isStale([ago(5 * M + 1)], now), true, 'just over 5 minutes is stale');
-assert.equal(TL.isStale([ago(10 * S)], now), false);
-// Freshest of the inputs wins; missing inputs are not stale.
-assert.equal(TL.isStale([ago(19 * D), ago(1 * M)], now), false, 'recent device sync keeps data fresh');
-assert.equal(TL.isStale([ago(19 * D), ago(18 * D)], now), true);
-assert.equal(TL.isStale([null, null], now), false);
-assert.equal(TL.isStale([null, ago(19 * D)], now), true);
+assert.equal(TL.isStale(ago(5 * M), now), false, 'exactly 5 minutes is not stale');
+assert.equal(TL.isStale(ago(5 * M + 1), now), true, 'just over 5 minutes is stale');
+assert.equal(TL.isStale(ago(10 * S), now), false);
+assert.equal(TL.isStale(null, now), false, 'a missing timestamp is not "stale" (handled as no snapshot)');
 
 // Labels: only a live data mode can become STALE.
 const old = ago(19 * D);
-const stale = TL.dataLabel('REAL MARKET DATA', 'live', [old], now);
+const stale = TL.dataLabel('REAL MARKET DATA', 'live', old, null, now);
 assert.match(stale, /^STALE · last update /);
 assert.ok(stale.includes(new Date(old).toLocaleString()), 'shows the local date time of the last update');
-assert.equal(TL.dataLabel('REAL MARKET DATA', 'live', [ago(30 * S)], now), 'REAL MARKET DATA');
-assert.equal(TL.dataLabel('SIMULATED', 'simulated', [old], now), 'SIMULATED');
-assert.equal(TL.dataLabel('WAITING FOR ENGINE', 'unavailable', [old], now), 'WAITING FOR ENGINE');
+assert.equal(TL.dataLabel('REAL MARKET DATA', 'live', ago(30 * S), null, now), 'REAL MARKET DATA');
+assert.equal(TL.dataLabel('SIMULATED', 'simulated', old, null, now), 'SIMULATED');
+assert.equal(TL.dataLabel('WAITING FOR ENGINE', 'unavailable', old, null, now), 'WAITING FOR ENGINE');
+// Device heartbeat never makes an old snapshot look fresh.
+assert.match(TL.dataLabel('REAL MARKET DATA', 'live', old, ago(5 * S), now), /^STALE/, 'heartbeat must not mask a stale snapshot');
+// No snapshot at all: online device vs nothing.
+assert.equal(TL.dataLabel('REAL MARKET DATA', 'live', null, ago(5 * S), now), 'ENGINE ONLINE \u00b7 NO MARKET SNAPSHOT');
+assert.equal(TL.dataLabel('REAL MARKET DATA', 'live', null, old, now), 'NO DATA YET', 'old heartbeat and no snapshot');
+assert.equal(TL.dataLabel('REAL MARKET DATA', 'live', null, null, now), 'NO DATA YET', 'no timestamps must not claim real market data');
+assert.equal(TL.dataLabel('REAL MARKET DATA', 'live', 'garbage', null, now), 'NO DATA YET');
 assert.equal(TL.snapshotText(ago(27021 * M), now), 'SNAPSHOT 18d 18h ago · STALE');
 assert.equal(TL.snapshotText(ago(20 * S), now), 'SNAPSHOT 20s ago');
 
 // Integration: shipped app.js with an old snapshot must not keep saying REAL MARKET DATA.
-async function run(snapshotAge: number, lastSeenAge: number) {
+async function run(snapshotAge: number, lastSeenAge: number, noSnapshot = false, notPaired = false) {
   const html = fs.readFileSync('public/index.html', 'utf8');
   assert.ok(html.indexOf('time-label.js') > 0 && html.indexOf('time-label.js') < html.indexOf('"app.js"'), 'time-label.js loads before app.js');
   const nodes = new Map<string, any>();
@@ -58,7 +61,8 @@ async function run(snapshotAge: number, lastSeenAge: number) {
   const iso = (age: number) => new Date(t - age).toISOString();
   const fetch = async (url: string) => {
     if (url === '/api/product-reality') return { ok: true, json: async () => ({ ok: true, reality: { environment: 'production', network: 'solana-mainnet', dataMode: 'live', executionMode: 'paper', controlState: 'running', paymentsEnabled: false } }) };
-    if (url === '/api/engine/me') return { ok: true, json: async () => ({ ok: true, paired: true, device: { id: 'd', online: false, engineVersion: '0.7.0', platform: 'win32', lastSeenAt: iso(lastSeenAge) }, entitlement: { status: 'active' }, snapshot: { receivedAt: iso(snapshotAge), data: { mode: 'paper', openPositionCount: 0, openExposureLamports: '0', realizedPnlLamports: '0', unrealizedPnlLamports: '0', openedCount: 1, closedCount: 1, rejectedCount: 1 } }, events: [], capabilities: {} }) };
+    if (url === '/api/engine/me' && notPaired) return { ok: true, json: async () => ({ ok: true, paired: false }) };
+    if (url === '/api/engine/me') return { ok: true, json: async () => ({ ok: true, paired: true, device: { id: 'd', online: false, engineVersion: '0.7.0', platform: 'win32', lastSeenAt: iso(lastSeenAge) }, entitlement: { status: 'active' }, snapshot: noSnapshot ? null : { receivedAt: iso(snapshotAge), data: { mode: 'paper', openPositionCount: 0, openExposureLamports: '0', realizedPnlLamports: '0', unrealizedPnlLamports: '0', openedCount: 1, closedCount: 1, rejectedCount: 1 } }, events: [], capabilities: {} }) };
     if (url === '/api/me') return { ok: true, json: async () => ({ ok: true, hasAccount: false, license: null }) };
     throw new Error('unexpected fetch ' + url);
   };
@@ -75,5 +79,10 @@ const staleRun = await run(27021 * M, 27021 * M);
 assert.match(staleRun.mode, /^STALE · last update /); assert.match(staleRun.market, /^STALE · last update /);
 assert.equal(staleRun.uptime, 'SNAPSHOT 18d 18h ago · STALE');
 const mixed = await run(27021 * M, 10 * S);
-assert.equal(mixed.mode, 'REAL MARKET DATA', 'a recent device sync keeps the label live');
+assert.match(mixed.mode, /^STALE \u00b7 last update /, 'a recent device heartbeat must not keep an old snapshot live');
+assert.match(mixed.market, /^STALE \u00b7 last update /);
+const noSnap = await run(0, 10 * S, true);
+assert.equal(noSnap.mode, 'ENGINE ONLINE \u00b7 NO MARKET SNAPSHOT'); assert.equal(noSnap.market, 'ENGINE ONLINE \u00b7 NO MARKET SNAPSHOT');
+const nothing = await run(0, 0, true, true);
+assert.equal(nothing.mode, 'NO DATA YET'); assert.equal(nothing.market, 'NO DATA YET');
 console.log('Time labels: s/m/h/d formatting, 5-minute stale threshold and shipped app.js stale label checks passed.');
