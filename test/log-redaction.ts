@@ -47,6 +47,11 @@ async function main() {
   for (const [n, v] of [["webhook secret", WH], ["bot token", BOT], ["stripe key", STRIPE], ["stripe webhook", STRIPE_WH], ["resend", RESEND], ["license D", LIC_D], ["entitlement D", ENT_D]] as const) {
     check(`string: ${n} masked`, !String(redactSecrets(`boom ${v} boom`, secrets)).includes(v));
   }
+  const RELAY_TOK = "k3Jx9QpL0aVt7uNf2WzR8cYd5HbE1sGm4TqXoUiAvZw";
+  const relayLine = `config rpc.url=http://127.0.0.1:8899/rpc/${RELAY_TOK} error ECONNRESET`;
+  check("relay tenant URL token (/rpc/<token>) is redacted in strings", !redactString(relayLine, []).includes(RELAY_TOK) && redactString(relayLine, []).includes("/rpc/[REDACTED]"));
+  check("relay tenant URL token is redacted inside objects/errors", !JSON.stringify(redactSecrets(new Error(relayLine), [])).includes(RELAY_TOK));
+  check("ordinary /rpc/ words are not mangled", redactString("GET /rpc/status ok", []) === "GET /rpc/status ok");
   check("empty secret values skipped (no mangling)", redactString("hello world", ["", "x".repeat(0)]) === "hello world");
 
   // ── pattern-based (value NOT in env) ──

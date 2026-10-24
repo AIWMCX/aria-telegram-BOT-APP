@@ -5,7 +5,8 @@ import { createSniperTenantPreparer, engineSupportsPaperSniper, sniperUnavailabl
 import { logger } from "../logger.js";
 import { parseDiscoveryFlags, parseEventStaleMs, discoveryPaths, type DiscoveryFlags } from "./discovery-config.js";
 import { DiscoveryProcess, engineSupportsDiscovery, type DiscoveryHealthBlock } from "./discovery-process.js";
-import { prepareTenantRpc, rpcRelayUsable } from "../rpc-relay/instance.js";
+import { prepareTenantRpc, rpcRelayUsable, unregisterTenantRpc } from "../rpc-relay/instance.js";
+import { rpcRelayDecision } from "../rpc-relay/gating.js";
 import { reconcileTenantDiscoverySync } from "./tenant-discovery-seed.js";
 
 /**
@@ -65,6 +66,11 @@ export function paperSniperHealth(): { enabled: boolean; tenants: number; reason
   return reason ? { enabled: false, tenants: 0, reason } : { enabled: true, tenants: sniperPreparer.seededCount() };
 }
 
+/** FleetManager.onTenantStopped hook (PR F1): a stopped/removed tenant's relay token stops working at once; the next spawn re-registers it. */
+export function onTenantStopped(clientId: string): void {
+  unregisterTenantRpc(clientId);
+}
+
 /** FleetManager.prepareTenantRuntime hook: seed (or un-seed) the tenant's discovery source, then its paper sniper config, before it spawns. Synchronous atomic file edits: no child process, no waiting (the sniper step does one DB read only when the sniper is enabled). */
 export async function prepareTenantRuntime(clientId: string, runtimeDir: string): Promise<void> {
   if (!(flags.enabled && !engineSupportsDiscovery(ENGINE_PATH))) {
@@ -79,5 +85,6 @@ export async function prepareTenantRuntime(clientId: string, runtimeDir: string)
   }
   // PR F1: paper-sniper tenants use the private read-only RPC relay (the paid provider key never reaches them).
   // A transient/failed sniper lookup ("skipped") leaves rpc.url alone.
-  if (sniperResult !== "skipped") prepareTenantRpc(clientId, runtimeDir, rpcRelayUsable() && sniperPreparer.isSeeded(clientId));
+  const rpcWant = rpcRelayDecision(sniperResult, rpcRelayUsable(), sniperPreparer.isSeeded(clientId));
+  if (rpcWant !== "leave") prepareTenantRpc(clientId, runtimeDir, rpcWant);
 }

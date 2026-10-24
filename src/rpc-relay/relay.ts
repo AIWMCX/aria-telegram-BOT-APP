@@ -51,18 +51,30 @@ export interface RelayLimits {
   maxResponseBytes: number;
   maxBatch: number;
   upstreamTimeoutMs: number;
+  /** getSignaturesForAddress `limit` ceiling (the engine pages with 1000, the RPC maximum). */
+  maxSignaturesLimit: number;
+  /** getMultipleAccounts key ceiling. */
+  maxMultipleAccounts: number;
 }
 
 export const DEFAULT_LIMITS: Readonly<RelayLimits> = Object.freeze({
-  tenantRps: 5,
-  tenantBurst: 10,
-  globalRps: 25,
-  globalBurst: 50,
+  tenantRps: 3,
+  tenantBurst: 6,
+  globalRps: 8,
+  globalBurst: 16,
   maxBodyBytes: 16 * 1024,
-  maxResponseBytes: 2 * 1024 * 1024,
-  maxBatch: 10,
+  maxResponseBytes: 512 * 1024,
+  maxBatch: 5,
   upstreamTimeoutMs: 8000,
+  maxSignaturesLimit: 1000,
+  maxMultipleAccounts: 20,
 });
+
+/** A batch must always be satisfiable by a full bucket; otherwise it could never succeed. Returns an error text or undefined. */
+export function validateLimits(l: RelayLimits): string | undefined {
+  if (l.maxBatch > Math.min(l.tenantBurst, l.globalBurst)) return "RPC_RELAY_MAX_BATCH must be <= min(RPC_RELAY_TENANT_BURST, RPC_RELAY_GLOBAL_BURST)";
+  return undefined;
+}
 
 export type RelayConfig =
   | { enabled: false; reason: string }
@@ -107,7 +119,11 @@ export function parseRelayConfig(env: NodeJS.ProcessEnv, publicPort: number): Re
     maxResponseBytes: posInt(env.RPC_RELAY_MAX_RESPONSE_BYTES, l.maxResponseBytes, 1024, 32 * 1024 * 1024),
     maxBatch: posInt(env.RPC_RELAY_MAX_BATCH, l.maxBatch, 1, 100),
     upstreamTimeoutMs: posInt(env.RPC_RELAY_UPSTREAM_TIMEOUT_MS, l.upstreamTimeoutMs, 500, 60000),
+    maxSignaturesLimit: posInt(env.RPC_RELAY_MAX_SIGNATURES_LIMIT, l.maxSignaturesLimit, 1, 1000),
+    maxMultipleAccounts: posInt(env.RPC_RELAY_MAX_MULTIPLE_ACCOUNTS, l.maxMultipleAccounts, 1, 100),
   };
+  const bad = validateLimits(limits);
+  if (bad) return { enabled: false, reason: bad };
   return { enabled: true, port, upstreamUrl: up!.trim(), limits };
 }
 
@@ -164,6 +180,58 @@ export function scrub(text: string, secrets: readonly string[]): string {
 }
 
 type Json = Record<string, unknown>;
+
+/**
+ * True if any JSON object in `text` repeats a key. JSON.parse keeps the LAST duplicate while other parsers keep the FIRST,
+ * so a duplicate-key body could be validated as getSlot here and executed as sendTransaction upstream. `text` must already
+ * be syntactically valid JSON (call after JSON.parse succeeded).
+ */
+export function hasDuplicateKeys(text: string): boolean {
+  const stack: { obj: boolean; keys: Set<string>; expectKey: boolean }[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i]!;
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') j += text[j] === "\\" ? 2 : 1;
+      const top = stack[stack.length - 1];
+      if (top && top.obj && top.expectKey) {
+        const key = JSON.parse(text.slice(i, j + 1)) as string;
+        if (top.keys.has(key)) return true;
+        top.keys.add(key);
+        top.expectKey = false;
+      }
+      i = j + 1;
+      continue;
+    }
+    if (ch === "{") stack.push({ obj: true, keys: new Set(), expectKey: true });
+    else if (ch === "[") stack.push({ obj: false, keys: new Set(), expectKey: false });
+    else if (ch === "}" || ch === "]") stack.pop();
+    else if (ch === "," ) { const top = stack[stack.length - 1]; if (top && top.obj) top.expectKey = true; }
+    i++;
+  }
+  return false;
+}
+
+const isU32 = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 1;
+
+/** Per-method parameter caps for the allowed methods. Returns an error message or undefined. */
+export function checkParams(method: string, params: unknown[], l: RelayLimits): string | undefined {
+  if (method === "getSignaturesForAddress") {
+    const cfg = params[1];
+    const limit = typeof cfg === "object" && cfg !== null && !Array.isArray(cfg) ? (cfg as Json).limit : undefined;
+    // An absent limit means the RPC default (1000); only acceptable when the ceiling allows that.
+    if (limit === undefined) return l.maxSignaturesLimit >= 1000 ? undefined : "limit is required";
+    if (!isU32(limit) || limit > l.maxSignaturesLimit) return "limit too large";
+  } else if (method === "getMultipleAccounts") {
+    const keys = params[0];
+    if (!Array.isArray(keys) || keys.length === 0 || keys.length > l.maxMultipleAccounts) return "too many keys";
+  } else if (method === "getTokenAccountsByOwner") {
+    const f = params[1];
+    if (typeof f !== "object" || f === null || Array.isArray(f) || typeof (f as Json).mint !== "string") return "a mint filter is required";
+  }
+  return undefined;
+}
 const rpcError = (id: unknown, code: number, message: string): Json => ({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
 
 export interface RelayResult { status: number; body: unknown; headers?: Record<string, string> }
@@ -187,12 +255,17 @@ export class RpcRelay {
   private readonly tenantBuckets = new Map<string, TokenBucket>();
   private readonly globalBucket: TokenBucket;
   private server?: Server;
+  /** Upstream-429 circuit breaker: no forwarding before this time; `backoffMs` doubles on consecutive 429s. */
+  private pausedUntil = 0;
+  private backoffMs = 0;
   private readonly c: RelayCounts = { requests: 0, rejectedMethod: 0, rateLimited: 0, upstreamErrors: 0 };
 
   constructor(o: RpcRelayOptions) {
     this.limits = { ...DEFAULT_LIMITS, ...(o.limits ?? {}) };
     this.upstreamUrl = o.upstreamUrl;
     this.secrets = upstreamSecrets(o.upstreamUrl);
+    const bad = validateLimits(this.limits);
+    if (bad) throw new Error(bad);
     this.fetchImpl = o.fetchImpl ?? fetch;
     this.now = o.now ?? Date.now;
     this.globalBucket = new TokenBucket(this.limits.globalRps, this.limits.globalBurst, this.now());
@@ -201,6 +274,11 @@ export class RpcRelay {
   /** Makes `token` valid for `clientId`. Idempotent. */
   registerToken(clientId: string, token: string): void {
     this.tokens.set(hashToken(token), clientId);
+  }
+  /** Revokes every token of a tenant that was stopped/removed, and forgets its bucket. */
+  unregisterClient(clientId: string): void {
+    for (const [h, c] of this.tokens) if (c === clientId) this.tokens.delete(h);
+    this.tenantBuckets.delete(clientId);
   }
   tenantCount(): number { return new Set(this.tokens.values()).size; }
   counts(): RelayCounts { return { ...this.c }; }
@@ -217,25 +295,41 @@ export class RpcRelay {
 
     let parsed: unknown;
     try { parsed = JSON.parse(req.body ?? ""); } catch { return { status: 400, body: rpcError(null, -32700, "parse error") }; }
+    if (hasDuplicateKeys(req.body ?? "")) return { status: 400, body: rpcError(null, -32600, "invalid request") };
 
     const isBatch = Array.isArray(parsed);
     const items: unknown[] = isBatch ? (parsed as unknown[]) : [parsed];
     if (items.length === 0 || items.length > this.limits.maxBatch) {
       return { status: 400, body: rpcError(null, -32600, items.length === 0 ? "invalid request" : "batch too large") };
     }
+    // What we forward is REBUILT from the validated values, never the client's raw text.
+    const rebuilt: Json[] = [];
     for (const it of items) {
       if (typeof it !== "object" || it === null || Array.isArray(it)) return { status: 400, body: rpcError(null, -32600, "invalid request") };
       const o = it as Json;
-      if (typeof o.method !== "string" || (o.params !== undefined && !Array.isArray(o.params))) {
-        return { status: 400, body: rpcError(o.id, -32600, "invalid request") };
+      const idOk = o.id === undefined || o.id === null || typeof o.id === "string" || typeof o.id === "number";
+      if (!idOk || typeof o.method !== "string" || (o.params !== undefined && !Array.isArray(o.params))) {
+        return { status: 400, body: rpcError(idOk ? o.id : null, -32600, "invalid request") };
       }
       if (!ALLOWED_METHODS.has(o.method)) {
         this.c.rejectedMethod++;
         // Whole batch is refused when any element is not allowed.
         return { status: 200, body: rpcError(isBatch ? null : o.id, -32601, "method not allowed by the read-only relay") };
       }
+      const params = (o.params as unknown[] | undefined) ?? [];
+      const bad = checkParams(o.method, params, this.limits);
+      if (bad) {
+        this.c.rejectedMethod++;
+        return { status: 200, body: rpcError(isBatch ? null : o.id, -32602, `invalid params for the read-only relay: ${bad}`) };
+      }
+      rebuilt.push({ jsonrpc: "2.0", id: o.id ?? null, method: o.method, params });
     }
 
+    // Circuit breaker: the provider told us to back off; do not forward (or spend tenant tokens) until it passes.
+    if (this.now() < this.pausedUntil) {
+      this.c.rateLimited++;
+      return { status: 429, body: rpcError(null, -32005, "upstream rate limited; retry later"), headers: { "Retry-After": String(Math.max(1, Math.ceil((this.pausedUntil - this.now()) / 1000))) } };
+    }
     // Rate limit (per element cost). Check both buckets before consuming either.
     const cost = items.length;
     const t = this.now();
@@ -251,7 +345,7 @@ export class RpcRelay {
     tb.take(cost);
     this.globalBucket.take(cost);
 
-    return this.forward(req.body!);
+    return this.forward(JSON.stringify(isBatch ? rebuilt : rebuilt[0]));
   }
 
   private async forward(body: string): Promise<RelayResult> {
@@ -280,10 +374,16 @@ export class RpcRelay {
     }
     if (res.status === 429) {
       this.c.upstreamErrors++;
-      return { status: 429, body: rpcError(null, -32005, "upstream rate limited"), headers: { "Retry-After": "1" } };
+      const ra = Number(res.headers.get("retry-after"));
+      this.backoffMs = Math.min(30_000, this.backoffMs ? this.backoffMs * 2 : 1000);
+      const waitMs = Number.isFinite(ra) && ra > 0 ? Math.min(60_000, ra * 1000) : this.backoffMs;
+      this.pausedUntil = this.now() + waitMs;
+      return { status: 429, body: rpcError(null, -32005, "upstream rate limited"), headers: { "Retry-After": String(Math.max(1, Math.ceil(waitMs / 1000))) } };
     }
+    if (res.status >= 200 && res.status < 300) this.backoffMs = 0;
     if (res.status < 200 || res.status >= 300) return fail(502, "upstream error");
-    const clean = scrub(text, this.secrets);
+    // Cheap guard first: only run the (split/join) scrub when a fragment is actually present.
+    const clean = this.secrets.some((x) => x && text.includes(x)) ? scrub(text, this.secrets) : text;
     let json: unknown;
     try { json = JSON.parse(clean); } catch { return fail(502, "upstream returned non-JSON"); }
     return { status: 200, body: json };

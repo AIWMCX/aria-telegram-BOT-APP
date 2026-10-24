@@ -56,6 +56,9 @@ const LICENSE_TOKEN = /(ARIAE?1)\.[A-Za-z0-9_-]{1,16384}(?:\.[A-Za-z0-9_-]{0,102
 // Anchored on the literal prefix; the repeated unit always consumes a class
 // char (backslashes are disjoint from it), so it is deterministic/linear.
 const PAIR_CODE = /(\baria\s{1,4}pair\s{1,4}|\/pair\s{1,4})(?:\\{0,4}[A-Za-z0-9_-]){1,128}[A-Za-z0-9_-]*/gi;
+// Private RPC relay tenant URL (src/rpc-relay): http://127.0.0.1:<port>/rpc/<256-bit token>. Anchored on the literal
+// '/rpc/' and one bounded class run (16..128): linear. The token is a bearer credential for the tenant's relay quota.
+const RELAY_PATH = /(\/rpc\/)[A-Za-z0-9_-]{16,128}/g;
 // "secret_token":"..." (JSON text)
 const KEYED_JSON = /("(?:secret_token|authorization|x-telegram-bot-api-secret-token)"\s*:\s*)"(?:[^"\\]|\\.)*"/gi;
 const KEYED_PAIR = /\b(secret_token|x-telegram-bot-api-secret-token)(\s*[=:]\s*)[^\s,;&"'}]+/gi;
@@ -123,6 +126,7 @@ export function redactString(input: string, secrets: readonly string[] = []): st
     .replace(PRIVATE_PAIR, `$1${REDACTED}`)
     .replace(LICENSE_TOKEN, `$1.${REDACTED}`)
     .replace(PAIR_CODE, `$1${REDACTED}`)
+    .replace(RELAY_PATH, `$1${REDACTED}`)
     .replace(BOT_TOKEN, REDACTED);
 }
 

@@ -13,13 +13,20 @@ const relay: RpcRelay | undefined = cfg.enabled ? new RpcRelay({ upstreamUrl: cf
 let boundPort: number | undefined;
 
 export async function startRpcRelay(): Promise<void> {
-  if (!relay || !cfg.enabled) { logger.info({ reason: cfg.enabled ? "" : cfg.reason }, "rpc relay is DISABLED"); return; }
+  if (!relay || !cfg.enabled) {
+    // Explicitly asked for but not configurable (missing/invalid upstream URL, bad limits) => WARN: tenants silently stay on the public RPC.
+    const asked = /^(true|1)$/i.test(process.env.RPC_RELAY_ENABLED?.trim() ?? "");
+    const reason = cfg.enabled ? "" : cfg.reason;
+    if (asked) logger.warn({ reason }, "rpc relay was requested but is NOT usable; tenants keep the public RPC");
+    else logger.info({ reason }, "rpc relay is DISABLED");
+    return;
+  }
   try {
     boundPort = await relay.listen(cfg.port);
     logger.info({ port: boundPort, host: "127.0.0.1" }, "rpc relay listening (loopback only)");
   } catch (err) {
     boundPort = undefined;
-    logger.error({ errName: (err as Error)?.name }, "rpc relay failed to start - tenants keep their existing rpc.url");
+    logger.warn({ errName: (err as Error)?.name }, "rpc relay failed to start - tenants keep their existing rpc.url (public RPC)");
   }
 }
 export async function stopRpcRelay(): Promise<void> { await relay?.close(); }
@@ -28,10 +35,13 @@ export async function stopRpcRelay(): Promise<void> { await relay?.close(); }
 export function rpcRelayUsable(): boolean { return relay !== undefined && boundPort !== undefined; }
 
 /** /healthz block: counts only, never a URL, token or id. */
-export function rpcRelayHealth(): { enabled: boolean; requests: number; rejectedMethod: number; rateLimited: number; upstreamErrors: number } {
+export function rpcRelayHealth(): { enabled: boolean; usable: boolean; requests: number; rejectedMethod: number; rateLimited: number; upstreamErrors: number } {
   const c = relay?.counts() ?? { requests: 0, rejectedMethod: 0, rateLimited: 0, upstreamErrors: 0 };
-  return { enabled: rpcRelayUsable(), ...c };
+  return { enabled: cfg.enabled, usable: rpcRelayUsable(), ...c };
 }
+
+/** Revokes the tenant's relay token (tenant stopped/removed). Idempotent. */
+export function unregisterTenantRpc(clientId: string): void { relay?.unregisterClient(clientId); }
 
 /** Pre-spawn step for a tenant: point rpc.url at the relay (wanted) or revert what we seeded. Never throws. */
 export function prepareTenantRpc(clientId: string, runtimeDir: string, wanted: boolean): void {

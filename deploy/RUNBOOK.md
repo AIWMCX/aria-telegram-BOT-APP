@@ -351,20 +351,21 @@ attaches the key server-side. Each tenant gets a random 256-bit token; its confi
 | --- | --- |
 | `RPC_RELAY_ENABLED` | `true` (default off). Also needs `ARIA_STREAM_RPC_HTTP_URL` (already set for discovery; https only). |
 | `RPC_RELAY_PORT` | optional, default `8899`; must differ from `PORT`. |
-| `RPC_RELAY_TENANT_RPS` / `RPC_RELAY_TENANT_BURST` | optional, default `5` / `10` per tenant. |
-| `RPC_RELAY_GLOBAL_RPS` / `RPC_RELAY_GLOBAL_BURST` | optional, default `25` / `50` across all tenants: size this under the provider plan. |
-| `RPC_RELAY_MAX_BODY_BYTES`, `RPC_RELAY_MAX_RESPONSE_BYTES`, `RPC_RELAY_MAX_BATCH`, `RPC_RELAY_UPSTREAM_TIMEOUT_MS` | optional; defaults 16 KiB, 2 MiB, 10, 8000 ms. |
+| `RPC_RELAY_TENANT_RPS` / `RPC_RELAY_TENANT_BURST` | optional, default `3` / `6` per tenant. |
+| `RPC_RELAY_GLOBAL_RPS` / `RPC_RELAY_GLOBAL_BURST` | optional, default `8` / `16` across all tenants: size this under the provider plan. |
+| `RPC_RELAY_MAX_BODY_BYTES`, `RPC_RELAY_MAX_RESPONSE_BYTES`, `RPC_RELAY_MAX_BATCH`, `RPC_RELAY_UPSTREAM_TIMEOUT_MS` | optional; defaults 16 KiB, 512 KiB, 5, 8000 ms. `RPC_RELAY_MAX_BATCH` must be <= min(tenant burst, global burst) or the relay stays disabled (reason in the boot log). |
+| `RPC_RELAY_MAX_SIGNATURES_LIMIT`, `RPC_RELAY_MAX_MULTIPLE_ACCOUNTS` | optional; defaults 1000 (the engine pages `getSignaturesForAddress` with `limit: 1000`; lowering it makes the engine's rug collector fail closed) and 20. |
 
 **Allowed methods:** getAccountInfo, getMultipleAccounts, getTransaction, getSignaturesForAddress, getTokenLargestAccounts,
 getTokenAccountBalance, getTokenAccountsByOwner, getBalance, getSlot, getMinimumBalanceForRentExemption, getGenesisHash.
-Everything else (sendTransaction, simulateTransaction, requestAirdrop, getProgramAccounts, getLatestBlockhash, ...) is rejected
+`getTokenAccountsByOwner` is accepted only with a `mint` filter. The body forwarded upstream is rebuilt from the validated request (duplicate JSON keys are rejected, extra fields dropped). An upstream 429 pauses forwarding for its Retry-After (or 1 s, 2 s, ... up to 30 s) and tenants get 429. Everything else (sendTransaction, simulateTransaction, requestAirdrop, getProgramAccounts, getLatestBlockhash, ...) is rejected
 with a JSON-RPC error; a batch is accepted only if every element is allowed. Over-limit requests get HTTP 429 (the engine treats
 that as an error and fails closed); unknown tokens get 403.
 
 **Rollout:** set `RPC_RELAY_ENABLED=true` and redeploy. The tenant config is rewritten at each tenant's **next spawn**, so
 existing tenants need `/paper_stop` + `/paper_start` (or the redeploy itself, which respawns them) to pick up the new `rpc.url`.
-Only paper-sniper tenants (section 14) are seeded. Check `/healthz`: `rpcRelay` = `{enabled, requests, rejectedMethod, rateLimited, upstreamErrors}`
-(counts only). Rising `rateLimited` means raise the limits or the provider plan.
+Only paper-sniper tenants (section 14) are seeded. Check `/healthz`: `rpcRelay` = `{enabled, usable, requests, rejectedMethod, rateLimited, upstreamErrors}`
+(counts only; `enabled` = configured, `usable` = listening; a WARN `rpc relay was requested but is NOT usable` in the boot log means tenants silently keep the public RPC). A tenant's relay token stops working as soon as the tenant is stopped; its next spawn re-registers it. Rising `rateLimited` means raise the limits or the provider plan.
 
 **Rollback:** set `RPC_RELAY_ENABLED=false` and redeploy. At each tenant's next spawn `rpc.url` is restored to its previous value
 only if it still equals what we wrote; `rpc-relay-seed.json` is removed. The per-tenant `rpc-relay-token` file is left in place.

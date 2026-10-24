@@ -2,7 +2,7 @@ import http from "node:http";
 import os from "node:os";
 import net from "node:net";
 import type { AddressInfo } from "node:net";
-import { ALLOWED_METHODS, parseRelayConfig, RpcRelay, TokenBucket, RELAY_HOST, scrub, upstreamSecrets } from "./relay.js";
+import { ALLOWED_METHODS, checkParams, DEFAULT_LIMITS, hasDuplicateKeys, parseRelayConfig, RpcRelay, TokenBucket, RELAY_HOST, scrub, upstreamSecrets } from "./relay.js";
 
 let failures = 0;
 function check(name: string, ok: boolean): void {
@@ -23,7 +23,7 @@ const upstream = http.createServer((req, res) => {
   req.on("end", () => {
     upstreamHits.push({ url: req.url ?? "", body });
     if (upstreamMode === "500") { res.writeHead(500); res.end(`boom http://127.0.0.1/?api-key=${KEY}`); return; }
-    if (upstreamMode === "429") { res.writeHead(429); res.end("slow down"); return; }
+    if (upstreamMode === "429") { res.writeHead(429, { "retry-after": "2" }); res.end("slow down"); return; }
     if (upstreamMode === "big") { res.writeHead(200); res.end("x".repeat(5000)); return; }
     if (upstreamMode === "big-chunked") { res.writeHead(200, { "transfer-encoding": "chunked" }); res.write("{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":\"" + "x".repeat(600)); res.end("y".repeat(600) + "\"}"); return; }
     if (upstreamMode === "slow") { setTimeout(() => { try { res.writeHead(200); res.end("{}"); } catch { /* closed */ } }, 1500); return; }
@@ -67,7 +67,8 @@ const refill = () => { clock += 60_000; };
 for (const m of ALLOWED_METHODS) {
   refill();
   const hitsBefore = upstreamHits.length;
-  const r = await post(TOKEN_A, call(m));
+  const okParams: Record<string, unknown[]> = { getMultipleAccounts: [["k"]], getTokenAccountsByOwner: ["o", { mint: "m" }] };
+  const r = await post(TOKEN_A, call(m, okParams[m] ?? []));
   if (!(r.status === 200 && r.json?.result === "ok" && upstreamHits.length === hitsBefore + 1)) check(`allowed method ${m} is forwarded`, false);
 }
 check("every allow-listed method forwards and returns the upstream result", true);
@@ -125,7 +126,7 @@ check("a batch costs one token per element", r.status === 200 && (await (async (
 // global cap: separate relay with a tiny global bucket
 {
   let c2 = 5_000_000;
-  const g = new RpcRelay({ upstreamUrl: UPSTREAM_URL, now: () => c2, limits: { tenantRps: 100, tenantBurst: 100, globalRps: 1, globalBurst: 3 } });
+  const g = new RpcRelay({ upstreamUrl: UPSTREAM_URL, now: () => c2, limits: { tenantRps: 100, tenantBurst: 100, globalRps: 1, globalBurst: 3, maxBatch: 1 } });
   g.registerToken("a", TOKEN_A); g.registerToken("b", TOKEN_B);
   const s: number[] = [];
   for (const t of [TOKEN_A, TOKEN_B, TOKEN_A, TOKEN_B]) s.push((await g.handle({ method: "POST", url: `/rpc/${t}`, body: JSON.stringify(call("getSlot")) })).status);
@@ -183,6 +184,137 @@ const everythingText = everything.join("\n") + JSON.stringify(relay.counts());
 check("grep of EVERY byte returned to tenants for the fake key: none", !everythingText.includes(KEY) && !everythingText.includes(String(upPort)));
 check("tenant tokens are not in any response body", !everythingText.includes(TOKEN_B));
 
+// ── 6b. review follow-ups ────────────────────────────────────────────
+// (1) duplicate-key method smuggling + forwarding a REBUILT body, never the raw text
+upstreamMode = "ok"; refill();
+before = upstreamHits.length;
+r = await post(TOKEN_A, undefined, { raw: '{"jsonrpc":"2.0","id":1,"method":"sendTransaction","method":"getSlot","params":[]}' });
+check("duplicate-key body (method twice) is rejected with 400 and never reaches the upstream", r.status === 400 && upstreamHits.length === before);
+r = await post(TOKEN_A, undefined, { raw: '{"jsonrpc":"2.0","id":1,"method":"getSlot","params":[{"a":1,"a":2}]}' });
+check("a duplicate key nested inside params is rejected too", r.status === 400 && upstreamHits.length === before);
+r = await post(TOKEN_A, undefined, { raw: '[{"jsonrpc":"2.0","id":1,"method":"getSlot"},{"id":2,"id":3,"method":"getSlot"}]' });
+check("a duplicate key inside one batch element rejects the whole batch", r.status === 400 && upstreamHits.length === before);
+check("hasDuplicateKeys has no false positives (same key in different objects, key text inside strings, escaped quotes)",
+  !hasDuplicateKeys('{"a":1,"b":{"a":2},"c":[{"a":1},{"a":2}],"d":"\\"a\\":1,\\"a\\":2"}') && hasDuplicateKeys('{"a":{"x":1},"a":2}') && hasDuplicateKeys('{"k\\u0061":1,"ka":2}'));
+refill();
+r = await post(TOKEN_A, undefined, { raw: '{"method":"getSlot","params":[],"id":"x","evil":{"method":"sendTransaction"},"jsonrpc":"1.0"}' });
+const fwd = JSON.parse(upstreamHits[upstreamHits.length - 1]!.body);
+check("upstream receives ONLY the rebuilt {jsonrpc,id,method,params}: extra fields dropped, jsonrpc forced to 2.0",
+  r.status === 200 && JSON.stringify(fwd) === JSON.stringify({ jsonrpc: "2.0", id: "x", method: "getSlot", params: [] }));
+refill();
+await post(TOKEN_A, [{ ...call("getSlot"), extra: 1 }, { method: "getBalance", params: ["a"], id: 9 }]);
+check("a batch is forwarded as an array of rebuilt items", JSON.stringify(JSON.parse(upstreamHits[upstreamHits.length - 1]!.body)) === JSON.stringify([{ jsonrpc: "2.0", id: 7, method: "getSlot", params: [] }, { jsonrpc: "2.0", id: 9, method: "getBalance", params: ["a"] }]));
+refill();
+r = await post(TOKEN_A, { jsonrpc: "2.0", id: { x: 1 }, method: "getSlot" });
+check("an object id is rejected (400)", r.status === 400);
+
+// (3) upstream 429 circuit breaker
+upstreamMode = "429"; refill();
+await post(TOKEN_A, call("getSlot"));
+const hitsAfter429 = upstreamHits.length;
+upstreamMode = "ok";
+clock += 500; // still inside the 2 s Retry-After
+r = await post(TOKEN_B, call("getSlot"));
+check("after an upstream 429 the relay pauses: other tenants get 429 and NOTHING is forwarded during Retry-After", r.status === 429 && Number(r.headers.get("retry-after")) >= 1 && upstreamHits.length === hitsAfter429);
+clock += 3000;
+r = await post(TOKEN_B, call("getSlot"));
+check("forwarding resumes once Retry-After has passed", r.status === 200 && upstreamHits.length === hitsAfter429 + 1);
+{
+  // no Retry-After header => exponential backoff (1 s, then 2 s)
+  let c3 = 9_000_000; let mode429 = true; let hits3 = 0;
+  const fetch3 = (async () => { hits3++; return mode429 ? new Response("x", { status: 429 }) : new Response('{"jsonrpc":"2.0","id":1,"result":1}', { status: 200 }); }) as any;
+  const g = new RpcRelay({ upstreamUrl: UPSTREAM_URL, now: () => c3, fetchImpl: fetch3, limits: { tenantRps: 100, tenantBurst: 100, globalRps: 100, globalBurst: 100 } });
+  g.registerToken("a", TOKEN_A);
+  const go = () => g.handle({ method: "POST", url: `/rpc/${TOKEN_A}`, body: JSON.stringify(call("getSlot")) });
+  await go(); const h1 = hits3;
+  c3 += 500; const mid = await go();
+  c3 += 600; await go(); // 2nd upstream 429 => backoff doubles to 2 s
+  c3 += 1500; const still = await go();
+  check("exponential backoff without Retry-After: 1 s first, then 2 s", mid.status === 429 && hits3 === h1 + 1 && still.status === 429 && hits3 === h1 + 1);
+  c3 += 1000; mode429 = false; const back = await go();
+  check("...and recovers after the pause", back.status === 200);
+}
+
+// (4) parameter caps
+refill();
+before = upstreamHits.length;
+const capCases: Array<[string, unknown, boolean]> = [
+  ["getSignaturesForAddress limit 1000 (engine page size)", call("getSignaturesForAddress", ["a", { limit: 1000 }]), true],
+  ["getSignaturesForAddress without limit (RPC default 1000)", call("getSignaturesForAddress", ["a"]), true],
+  ["getSignaturesForAddress limit 1001", call("getSignaturesForAddress", ["a", { limit: 1001 }]), false],
+  ["getSignaturesForAddress limit 0", call("getSignaturesForAddress", ["a", { limit: 0 }]), false],
+  ["getSignaturesForAddress limit as string", call("getSignaturesForAddress", ["a", { limit: "5" }]), false],
+  ["getMultipleAccounts with 20 keys", call("getMultipleAccounts", [Array(20).fill("k")]), true],
+  ["getMultipleAccounts with 21 keys", call("getMultipleAccounts", [Array(21).fill("k")]), false],
+  ["getMultipleAccounts with no keys array", call("getMultipleAccounts", ["k"]), false],
+  ["getTokenAccountsByOwner with a mint filter", call("getTokenAccountsByOwner", ["o", { mint: "m" }, { encoding: "base64" }]), true],
+  ["getTokenAccountsByOwner with a programId filter", call("getTokenAccountsByOwner", ["o", { programId: "p" }]), false],
+  ["getTokenAccountsByOwner without a filter", call("getTokenAccountsByOwner", ["o"]), false],
+];
+for (const [name, body, allowed] of capCases) {
+  refill();
+  const b = upstreamHits.length;
+  const rr = await post(TOKEN_A, body);
+  check(`param cap: ${name} -> ${allowed ? "forwarded" : "rejected, not forwarded"}`, allowed ? rr.status === 200 && upstreamHits.length === b + 1 : rr.json?.error?.code === -32602 && upstreamHits.length === b);
+}
+{
+  const lim = { ...DEFAULT_LIMITS, maxSignaturesLimit: 100 };
+  check("a lower configured signatures ceiling applies (limit 100 ok, 101 and absent rejected)",
+    checkParams("getSignaturesForAddress", ["a", { limit: 100 }], lim) === undefined && checkParams("getSignaturesForAddress", ["a", { limit: 101 }], lim) !== undefined && checkParams("getSignaturesForAddress", ["a"], lim) !== undefined);
+}
+
+// (5) token revocation on stop
+{
+  const rv = new RpcRelay({ upstreamUrl: UPSTREAM_URL });
+  rv.registerToken("c1", TOKEN_A);
+  const hit = () => rv.handle({ method: "POST", url: `/rpc/${TOKEN_A}`, body: JSON.stringify(call("getSlot")) });
+  const ok1 = (await hit()).status;
+  rv.unregisterClient("c1");
+  check("unregisterClient revokes the tenant's token at once (403), re-registering restores it", ok1 === 200 && (await hit()).status === 403 && (rv.registerToken("c1", TOKEN_A), (await hit()).status === 200));
+}
+
+// (6) redirects are never followed
+{
+  const target = http.createServer((q, s) => { upstreamHits.push({ url: "REDIRECT-TARGET " + q.url, body: "" }); s.writeHead(200); s.end('{"jsonrpc":"2.0","id":1,"result":"followed"}'); });
+  await new Promise<void>((r2) => target.listen(0, "127.0.0.1", () => r2()));
+  const tport = (target.address() as AddressInfo).port;
+  const redir = http.createServer((q, s) => { s.writeHead(302, { location: `http://127.0.0.1:${tport}/stolen` }); s.end(); });
+  await new Promise<void>((r2) => redir.listen(0, "127.0.0.1", () => r2()));
+  const rr = new RpcRelay({ upstreamUrl: `http://127.0.0.1:${(redir.address() as AddressInfo).port}/?api-key=${KEY}` });
+  rr.registerToken("c", TOKEN_A);
+  const out = await rr.handle({ method: "POST", url: `/rpc/${TOKEN_A}`, body: JSON.stringify(call("getSlot")) });
+  check("an upstream redirect is NOT followed: 502 and the redirect target is never contacted", out.status === 502 && !upstreamHits.some((h) => h.url.startsWith("REDIRECT-TARGET")));
+  let seenRedirect = "";
+  const spy = new RpcRelay({ upstreamUrl: UPSTREAM_URL, fetchImpl: (async (_u: any, init: any) => { seenRedirect = init.redirect; return new Response("{}", { status: 200 }); }) as any });
+  spy.registerToken("c", TOKEN_A);
+  await spy.handle({ method: "POST", url: `/rpc/${TOKEN_A}`, body: JSON.stringify(call("getSlot")) });
+  check("fetch is always called with redirect:error", seenRedirect === "error");
+  await new Promise<void>((r2) => target.close(() => r2()));
+  await new Promise<void>((r2) => redir.close(() => r2()));
+}
+
+// (2)/(3) config: new defaults and the batch/burst invariant
+{
+  const d = DEFAULT_LIMITS;
+  check("defaults sized for the provider plan: tenant 3 rps / burst 6, global 8 rps / burst 16, 512 KiB response cap", d.tenantRps === 3 && d.tenantBurst === 6 && d.globalRps === 8 && d.globalBurst === 16 && d.maxResponseBytes === 512 * 1024);
+  const e = { RPC_RELAY_ENABLED: "true", ARIA_STREAM_RPC_HTTP_URL: "https://mainnet.helius-rpc.com/?api-key=" + KEY } as any;
+  const okc = parseRelayConfig(e, 8080);
+  check("default maxBatch (5) satisfies maxBatch <= min(tenantBurst, globalBurst)", okc.enabled && okc.limits.maxBatch <= Math.min(okc.limits.tenantBurst, okc.limits.globalBurst));
+  const bad = parseRelayConfig({ ...e, RPC_RELAY_MAX_BATCH: "9" }, 8080);
+  check("maxBatch above the tenant burst -> config validation error (disabled, reason, no value echoed)", !bad.enabled && /MAX_BATCH/.test(bad.reason) && !bad.reason.includes(KEY));
+  check("maxBatch above the global burst -> disabled", !parseRelayConfig({ ...e, RPC_RELAY_TENANT_BURST: "50", RPC_RELAY_GLOBAL_BURST: "4", RPC_RELAY_MAX_BATCH: "5" }, 8080).enabled);
+  let threw = false; try { new RpcRelay({ upstreamUrl: UPSTREAM_URL, limits: { tenantBurst: 2, maxBatch: 5 } }); } catch { threw = true; }
+  check("the RpcRelay constructor refuses maxBatch > burst too", threw);
+}
+{
+  // the scrub only runs when a fragment is present: a clean response is passed through byte-for-byte
+  const clean = '{"jsonrpc":"2.0","id":1,"result":{"v":"[REDACTED] literal in upstream data stays"}}';
+  const cr = new RpcRelay({ upstreamUrl: UPSTREAM_URL, fetchImpl: (async () => new Response(clean, { status: 200 })) as any });
+  cr.registerToken("c", TOKEN_A);
+  const out = await cr.handle({ method: "POST", url: `/rpc/${TOKEN_A}`, body: JSON.stringify(call("getSlot")) });
+  check("a response without any secret fragment is returned unchanged", JSON.stringify(out.body) === JSON.stringify(JSON.parse(clean)));
+}
+
 // ── 7. loopback-only binding ─────────────────────────────────────────
 const addr = relay.boundAddress()!;
 check("relay HTTP server is bound to 127.0.0.1 (not 0.0.0.0 / ::)", addr.address === "127.0.0.1" && RELAY_HOST === "127.0.0.1");
@@ -205,7 +337,7 @@ check("enabled but no upstream URL -> disabled", dis({ RPC_RELAY_ENABLED: "true"
 check("enabled with plain http non-loopback upstream -> disabled", dis({ RPC_RELAY_ENABLED: "true", ARIA_STREAM_RPC_HTTP_URL: "http://evil.example/?k=1" }).enabled === false);
 check("RPC_RELAY_PORT equal to the public PORT -> disabled", dis({ RPC_RELAY_ENABLED: "true", ARIA_STREAM_RPC_HTTP_URL: H, RPC_RELAY_PORT: "8080" }).enabled === false);
 const ok = dis({ RPC_RELAY_ENABLED: "true", ARIA_STREAM_RPC_HTTP_URL: H });
-check("enabled + https upstream -> enabled on default port 8899 with 5 rps / burst 10", ok.enabled && ok.port === 8899 && ok.limits.tenantRps === 5 && ok.limits.tenantBurst === 10);
+check("enabled + https upstream -> enabled on default port 8899 with 3 rps / burst 6", ok.enabled && ok.port === 8899 && ok.limits.tenantRps === 3 && ok.limits.tenantBurst === 6);
 const custom = dis({ RPC_RELAY_ENABLED: "1", ARIA_STREAM_RPC_HTTP_URL: H, RPC_RELAY_PORT: "9100", RPC_RELAY_TENANT_RPS: "2", RPC_RELAY_GLOBAL_RPS: "7" });
 check("limits and port are configurable; malformed values fall back to defaults", custom.enabled && custom.port === 9100 && custom.limits.tenantRps === 2 && custom.limits.globalRps === 7 && dis({ RPC_RELAY_ENABLED: "1", ARIA_STREAM_RPC_HTTP_URL: H, RPC_RELAY_TENANT_RPS: "abc" }).enabled);
 for (const e of [{ ARIA_STREAM_RPC_HTTP_URL: H }, { RPC_RELAY_ENABLED: "true" }, { RPC_RELAY_ENABLED: "true", ARIA_STREAM_RPC_HTTP_URL: "http://evil.example/?k=" + KEY }]) {
