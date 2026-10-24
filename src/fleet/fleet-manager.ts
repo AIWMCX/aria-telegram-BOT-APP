@@ -131,9 +131,14 @@ export function realEngineInvocation(engineRepoPath: string): EngineInvocation {
   return {
     buildStart: () => ({ command: process.execPath, args: ["--import", "tsx", "src/cli.ts", "paper", "start"], cwd: engineRepoPath }),
     buildStop: () => ({ command: process.execPath, args: ["--import", "tsx", "src/cli.ts", "paper", "stop"], cwd: engineRepoPath }),
-    readyMarker: "paper engine started",
+    // Matches both the legacy engine ("paper engine started") and the PR D paper sniper
+    // ("paper sniper engine started"); the old exact phrase never matched the sniper, so
+    // hosted sniper tenants stayed "Starting" forever in /paper_status.
+    readyMarker: ENGINE_READY_MARKER,
   };
 }
+
+export const ENGINE_READY_MARKER = "engine started";
 
 export interface FleetManagerOptions {
   /** How to invoke the engine for start/stop. Defaults to the real CLI if `engineRepoPath` is given. */
