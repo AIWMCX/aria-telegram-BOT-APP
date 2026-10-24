@@ -253,3 +253,73 @@ a redeploy, remove the two `ARIA_STREAM_*` variables the same way.
 
 **Unverified:** Linux/Railway behaviour (SIGTERM flush, volume permissions) and
 a run with a real paid provider key have not been exercised.
+
+## 14. Paper sniper (PAPER ONLY)
+
+The aria-engine honest paper sniper (`src/paper/sniper/*`, `docs/PAPER_SNIPER.md` in the
+engine repo) runs inside a hosted tenant when its `config.json` has
+`market.kind="real-discovery"` AND `discovery.source="file-tail"`. This control plane seeds
+exactly that, for allow-listed Telegram ids only, and adds a founder panel, a daily report,
+`/paper_report`, `/kill`, `/resume` and assisted-snipe alerts. **It never signs or sends a
+transaction.** If you trade an alert, you choose the amount and sign in your own wallet.
+
+**Prerequisites:** section 13 (shared discovery) working, `FLEET_ENABLED=true`, and the
+founder already has a hosted tenant (`/paper_start`).
+
+**Railway variables (control plane service):**
+
+| Variable | Value |
+| --- | --- |
+| `PAPER_SNIPER_ENABLED` | `true` (default false). |
+| `PAPER_SNIPER_TELEGRAM_IDS` | `<founder numeric Telegram id>` (comma list). **Enabled + blank/malformed refuses to boot.** Also keep the same id in `FLEET_ALLOWED_TELEGRAM_IDS` if that is set. |
+| `PAPER_SNIPER_REPORT_HOUR_UTC` | `0`-`23`, default `13`. The daily report is sent once, within 2 h of that hour. |
+| `PAPER_SNIPER_ALERTS_PER_HOUR` | optional, default `12` per recipient; excess alerts are dropped and summarised once. |
+| `ARIA_ENGINE_COMMIT_SHA` | build ARG, **bump to `4fadcd3554e67489cfd2eeb686a2815dbaeafbed` (or later) and redeploy**. An older engine has no sniper; `/healthz` says so. |
+
+Jupiter key: the engine reads an optional key from the env var NAMED in
+`launchSafety.jupiter.apiKeyEnvVar`, but hosted tenants receive no secret-looking variable
+(`buildTenantEnv` refuses them), so the sniper runs keyless against `api.jup.ag` (rate limits
+apply). Jupiter is OFF by default in the engine (`launchSafety.jupiter.enabled=false`).
+
+**What gets written to the tenant's `config.json`** (atomic, 0600, at the tenant's next
+spawn; keys verified against engine 4fadcd3): `market.kind="real-discovery"`, `sniper.buyLamports="50000000"`
+(0.05 SOL), `sniper.maxOpen=3`, `sniper.maxExposureLamports="300000000"` (0.3 SOL),
+`sniper.dailyLossHaltLamports="150000000"` (0.15 SOL, UTC day), `sniper.stopLossBps=3000`,
+`sniper.maxHoldMs=1800000`. The previous values are recorded in `<runtimeDir>/paper-sniper-seed.json`
+(never inside `config.json`). **A running tenant only picks this up after a restart:**
+`/paper_stop` then `/paper_start`.
+
+**Verify:**
+1. `GET /healthz` -> `"paperSniper": {"enabled": true, "tenants": 1}` (after the founder's tenant has
+   spawned once; `tenants` counts tenants seeded since this process booted). `enabled:false` carries a `reason`
+   (switch off, fleet off, discovery off, engine too old). Never a value.
+2. `/paper_start` (or restart), then look in the founder panel (Telegram Mini App) for the **Paper sniper**
+   section: state `RUNNING`, MAIN vs BASELINE table. The section is hidden for anyone not on the allow-list
+   and while the feature is off (`/api/paper-sniper/*` answers 404).
+3. `/paper_report` returns the same numbers as text. Files on the volume:
+   `<tenants>/<clientId>/.aria/state/sniper-ledger.jsonl`, `sniper-status.json`, `sniper-marks.json`.
+4. With the default engine safety gate (`minLiquiditySol=5`, top-10 holders <= 50%) almost every FRESH
+   launch is a `safety_block` skip. That is the engine's documented behaviour, not a bug; zero trades for
+   a long time is expected until the gate is deliberately relaxed in the tenant config.
+
+**Kill / resume:**
+- Fastest: `/kill` in Telegram (or the panel KILL button) writes `<runtimeDir>/KILL`; new entries stop in about 1 s, open
+  PAPER positions keep being managed. `/kill flatten` also closes them. `/resume` (or panel RESUME) removes the flag and
+  writes the `RESUME` token (also clears a latched consecutive-failure halt).
+- Fleet-wide: `/fleet_stop_all` (admin only, unchanged).
+- Full off: set `PAPER_SNIPER_ENABLED=false` and redeploy. At each tenant's next spawn only what we seeded is
+  reverted (market.kind and the six sniper keys, only where the value is still ours); `paper-sniper-seed.json` is removed.
+
+**Telegram:** daily report at the configured UTC hour; `/paper_report`, `/kill`, `/resume` for allow-listed ids
+(everyone else gets "This command is not available"). Entry alerts (MAIN strategy only) show the mint in copyable code
+formatting, source, which safety checks passed, paper entry details and a Jupiter SOL-to-token button; exit alerts (full
+and partial, with the reason) offer the token-to-SOL button (not for `honeypot_loss`/`exit_error_loss`). Every alert ends:
+"PAPER signal. If you trade, you choose the amount and sign in your own wallet. Verify afterwards in the founder panel."
+
+**Numbers are a model.** Fills, fees and exits are simulated; closed-trade statistics exclude open positions; below 200 closed
+trades every view says INSUFFICIENT SAMPLE. The summary is computed by `src/paper-sniper/data.ts`, a TS port of the engine's book +
+report (cross-checked against the engine's own `buildReport` on a fixture; the bootstrap CI, paired view and profit factor are not
+ported - run `aria paper report --json` in the tenant for those).
+
+**Unverified:** a real tenant running the sniper on Railway/Linux with a live feed; Telegram delivery of alerts and the Mini App panel
+in a real client; behaviour at ledger sizes beyond 64 MiB (newest window only, flagged `truncated`).

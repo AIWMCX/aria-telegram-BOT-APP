@@ -19,6 +19,7 @@ import { randomUUID } from "node:crypto";
 import { fleetManager } from "./fleet/instance.js";
 import { discoveryProcess, startDiscovery } from "./fleet/discovery-instance.js";
 import { tenantRehydrator } from "./fleet/rehydration-instance.js";
+import { startPaperSniperServices, stopPaperSniperServices } from "./paper-sniper/services.js";
 
 /**
  * Total budget for stopping every hosted tenant on SIGTERM/SIGINT. Railway
@@ -121,6 +122,9 @@ async function main(): Promise<void> {
     logger.error({ errName: (err as Error)?.name }, "shared discovery failed to start - tenants and the control plane are unaffected");
   }
 
+  // Paper sniper (PR E): assisted-snipe alert poller + daily report. Off unless PAPER_SNIPER_ENABLED and usable.
+  startPaperSniperServices(bot);
+
   // Rehydrate hosted tenants that were desired=running before this
   // (re)start. ASYNCHRONOUS and fire-and-forget: it must never delay boot or
   // /healthz, and a failure here must never take the process down. The server
@@ -214,6 +218,7 @@ async function main(): Promise<void> {
       // 1. Stop accepting new work: no more rehydration/approval ticks, and
       //    fleetManager.shutdownAll() latches so spawnTenant() now refuses.
       tenantRehydrator.stop();
+      stopPaperSniperServices();
       // 2. Stop every tenant (desired state is deliberately NOT changed, so
       //    they come back after the restart).
       const botStop = CONFIG.TELEGRAM_TRANSPORT === "polling" ? bot.stop().catch(() => undefined) : Promise.resolve();

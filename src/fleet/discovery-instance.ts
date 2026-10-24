@@ -1,4 +1,7 @@
-import { CONFIG } from "../config.js";
+import { CONFIG, FLEET_FLAGS, PAPER_SNIPER_FLAGS } from "../config.js";
+import { getClientById } from "../engine-clients.js";
+import { getUserById } from "../users.js";
+import { createSniperTenantPreparer, engineSupportsPaperSniper, sniperUnavailableReason } from "../paper-sniper/tenant-prepare.js";
 import { logger } from "../logger.js";
 import { parseDiscoveryFlags, parseEventStaleMs, discoveryPaths, type DiscoveryFlags } from "./discovery-config.js";
 import { DiscoveryProcess, engineSupportsDiscovery, type DiscoveryHealthBlock } from "./discovery-process.js";
@@ -35,9 +38,41 @@ export function discoveryHealth(): DiscoveryHealthBlock {
   return discoveryProcess!.health();
 }
 
-/** FleetManager.prepareTenantRuntime hook: seed (or un-seed) the tenant's discovery source before it spawns. Synchronous atomic file edit: no child process, no waiting. */
-export async function prepareTenantRuntime(_clientId: string, runtimeDir: string): Promise<void> {
-  if (flags.enabled && !engineSupportsDiscovery(ENGINE_PATH)) return;
-  const result = reconcileTenantDiscoverySync({ runtimeDir, feedPath: DISCOVERY_PATHS.feedPath, enabled: flags.enabled });
-  if (result === "enabled" || result === "disabled") logger.info({ result }, "tenant discovery source reconciled");
+/**
+ * PR E: the paper sniper seeding step + /healthz block. Usable only when the
+ * sniper switch, the fleet, the shared discovery AND an engine containing the
+ * sniper are all present; otherwise nothing is seeded and anything we seeded
+ * earlier is reverted at the tenant's next spawn.
+ */
+const sniperDeps = {
+  flags: PAPER_SNIPER_FLAGS,
+  discoveryUsable: () => flags.enabled && engineSupportsDiscovery(ENGINE_PATH),
+  engineHasSniper: () => engineSupportsPaperSniper(ENGINE_PATH),
+  feedPath: DISCOVERY_PATHS.feedPath,
+  ownerTelegramId: async (clientId: string) => {
+    const client = await getClientById(clientId);
+    if (!client) return undefined;
+    return (await getUserById(client.user_id))?.telegram_user_id;
+  },
+  log: logger,
+};
+const sniperPreparer = createSniperTenantPreparer(sniperDeps);
+
+/** /healthz `paperSniper` block: {enabled, tenants, reason}. `tenants` = tenants this process has seeded since boot. Never a value or id. */
+export function paperSniperHealth(): { enabled: boolean; tenants: number; reason?: string } {
+  const reason = sniperUnavailableReason(sniperDeps, FLEET_FLAGS.enabled);
+  return reason ? { enabled: false, tenants: 0, reason } : { enabled: true, tenants: sniperPreparer.seededCount() };
+}
+
+/** FleetManager.prepareTenantRuntime hook: seed (or un-seed) the tenant's discovery source, then its paper sniper config, before it spawns. Synchronous atomic file edits: no child process, no waiting (the sniper step does one DB read only when the sniper is enabled). */
+export async function prepareTenantRuntime(clientId: string, runtimeDir: string): Promise<void> {
+  if (!(flags.enabled && !engineSupportsDiscovery(ENGINE_PATH))) {
+    const result = reconcileTenantDiscoverySync({ runtimeDir, feedPath: DISCOVERY_PATHS.feedPath, enabled: flags.enabled });
+    if (result === "enabled" || result === "disabled") logger.info({ result }, "tenant discovery source reconciled");
+  }
+  try {
+    await sniperPreparer.prepare(clientId, runtimeDir);
+  } catch (err) {
+    logger.warn({ errName: (err as Error)?.name }, "tenant paper sniper config reconcile failed; starting with the existing config");
+  }
 }

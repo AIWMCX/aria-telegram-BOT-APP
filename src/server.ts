@@ -30,9 +30,11 @@ import { releaseInfo } from "./release.js";
 import { db } from "./db.js";
 import { getPostgresHealth } from "./pg-health.js";
 import { engineIdentity } from "./fleet/instance.js";
-import { discoveryHealth } from "./fleet/discovery-instance.js";
+import { discoveryHealth, paperSniperHealth } from "./fleet/discovery-instance.js";
+import { paperSniperRoutes } from "./paper-sniper/routes.js";
+import { sniperTenantRuntimeDir } from "./paper-sniper/runtime-dir.js";
 import { tenantRehydrator } from "./fleet/rehydration-instance.js";
-import { FLEET_FLAGS } from "./config.js";
+import { FLEET_FLAGS, PAPER_SNIPER_FLAGS } from "./config.js";
 
 export const app = new Hono();
 
@@ -151,6 +153,8 @@ app.get("/healthz", async (c) => {
     fleet: { enabled: FLEET_FLAGS.enabled, available: FLEET_FLAGS.enabled && engine.available, rehydration: tenantRehydrator.counts() },
     // Shared launch discovery: enabled/running/restarts/lastEventAgeMs + counters. Never a URL or key.
     discovery: discoveryHealth(),
+    // Paper sniper (PR E): enabled/tenants/reason only. Never an id or a value.
+    paperSniper: paperSniperHealth(),
   });
 });
 
@@ -763,6 +767,13 @@ app.route("/api/founder-review", externalReviewRoutes({
   founderId: CONFIG.ARIA_EXTERNAL_REVIEW_FOUNDER_ID ?? "",
   rpcUrl: CONFIG.ARIA_EXTERNAL_REVIEW_RPC_URL,
   authenticate: verifyInitData,
+}));
+
+app.route("/api/paper-sniper", paperSniperRoutes({
+  enabled: PAPER_SNIPER_FLAGS.enabled,
+  allowedTelegramIds: PAPER_SNIPER_FLAGS.allowedTelegramIds,
+  authenticate: verifyInitData,
+  resolveRuntimeDir: sniperTenantRuntimeDir,
 }));
 
 app.use("/*", serveStatic({ root: "./public" }));

@@ -125,9 +125,10 @@ async function main() {
   check("4th submission within an hour → 429 rate limited", lastStatus === 429);
 
   const rh = await app.request("/healthz");
-  const health = (await rh.json()) as { ok: boolean; paymentsEnabled: boolean };
+  const health = (await rh.json()) as { ok: boolean; paymentsEnabled: boolean; paperSniper?: { enabled: boolean; tenants: number; reason?: string } };
   check("/healthz reports ok:true", health.ok === true);
   check("/healthz reports paymentsEnabled:false (no Stripe configured)", health.paymentsEnabled === false);
+  check("/healthz reports paperSniper disabled with a reason (PR E)", health.paperSniper?.enabled === false && typeof health.paperSniper.reason === "string" && health.paperSniper.tenants === 0);
 
   const rCheckout = await app.request("/api/checkout", {
     method: "POST", headers: { "Content-Type": "application/json" },
