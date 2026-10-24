@@ -112,6 +112,8 @@ async function scenarioNotConfigured() {
   check("healthz fleet block reports enabled:false by default and available:false (kill switch)", hb.fleet?.enabled === false && hb.fleet?.available === false);
   const dhb = hb.discovery;
   check("healthz has a discovery block: fail closed when the engine cannot run it (enabled:false, running:false, reason)", dhb && dhb.enabled === false && dhb.running === false && typeof dhb.reason === "string");
+  const rrb = hb.rpcRelay;
+  check("healthz has an rpcRelay block with counts only (disabled by default)", rrb && rrb.enabled === false && JSON.stringify(Object.keys(rrb).sort()) === JSON.stringify(["enabled", "rateLimited", "rejectedMethod", "requests", "upstreamErrors"]) && [rrb.requests, rrb.rejectedMethod, rrb.rateLimited, rrb.upstreamErrors].every((n: unknown) => n === 0));
   check("healthz never contains the stream key, host or URL", !JSON.stringify(hb).includes(DISC_KEY) && !/example\.invalid|api-key/.test(JSON.stringify(hb)));
   const r = await app.request("/readyz");
   const rb = (await r.json()) as any;

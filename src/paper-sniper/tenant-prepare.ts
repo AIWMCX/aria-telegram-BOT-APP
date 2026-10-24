@@ -43,6 +43,8 @@ export function createSniperTenantPreparer(d: SniperPrepareDeps) {
   return {
     /** Number of tenants this process has seeded/confirmed for the sniper since boot. */
     seededCount: () => seeded.size,
+    /** True when the last prepare() left this tenant seeded for the sniper (used to decide RPC relay seeding). */
+    isSeeded: (clientId: string) => seeded.has(clientId),
     async prepare(clientId: string, runtimeDir: string): Promise<SniperSeedResult | "skipped"> {
       let want = d.flags.enabled && d.discoveryUsable() && d.engineHasSniper();
       if (want) {
