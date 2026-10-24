@@ -154,6 +154,18 @@ function loadFleetFlags(): FleetFlags {
 }
 export const FLEET_FLAGS: FleetFlags = loadFleetFlags();
 
+// Paper sniper switches (PR E). Same fail-closed boot refusal as FLEET_*.
+import { parsePaperSniperFlags, type PaperSniperFlags } from "./paper-sniper/config.js";
+function loadPaperSniperFlags(): PaperSniperFlags {
+  try {
+    return parsePaperSniperFlags(process.env);
+  } catch (err) {
+    console.error(`❌ ${(err as Error).message}`);
+    process.exit(1);
+  }
+}
+export const PAPER_SNIPER_FLAGS: PaperSniperFlags = loadPaperSniperFlags();
+
 export const TELEGRAM_WEBHOOK_PATH = "/api/telegram/webhook";
 
 /** True once Stripe secrets are present — gates the paid-tier endpoints. */

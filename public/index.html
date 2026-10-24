@@ -72,6 +72,24 @@
   <pre id="review-result" role="status" aria-live="polite"></pre>
 </section>
 
+<section class="panel full" id="paper-sniper" hidden aria-labelledby="sniper-title">
+  <div class="ph"><h2 id="sniper-title">Paper sniper</h2><span class="meta">PAPER ONLY · modelled fills · no real orders</span></div>
+  <p id="sniper-state" role="status" aria-live="polite"></p>
+  <p id="sniper-sample" role="alert" hidden></p>
+  <div class="review-fields">
+    <button class="plan-btn" id="sniper-kill" type="button">KILL (stop new entries)</button>
+    <button class="plan-btn" id="sniper-resume" type="button">RESUME</button>
+    <button class="plan-btn" id="sniper-refresh" type="button">REFRESH</button>
+  </div>
+  <h3>MAIN vs BASELINE</h3>
+  <pre id="sniper-summary"></pre>
+  <h3>Open positions</h3>
+  <pre id="sniper-open"></pre>
+  <h3>Recent closed trades</h3>
+  <pre id="sniper-closed"></pre>
+  <p>Figures are a model: fills, fees and exits are simulated. "At mark" values open positions at their last sell quote; "at zero" is the worst case. Closed-trade statistics exclude open positions. If you trade a signal yourself, you choose the amount and sign in your own wallet; verify it in the external wallet test above.</p>
+</section>
+
 <section class="panel full" id="first-run-success" hidden role="status">
   <div class="ph"><h2>ARIA is running</h2></div>
   <p>Your device is connected and PAPER trading is active.</p>
@@ -309,5 +327,6 @@
 <script src="time-label.js"></script>
 <script src="app.js"></script>
 <script src="founder-review.js"></script>
+<script src="paper-sniper.js"></script>
 </body>
 </html>

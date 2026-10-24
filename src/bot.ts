@@ -1,6 +1,6 @@
 import { Bot, GrammyError, InlineKeyboard, type Context, type CommandContext } from "grammy";
 import { randomUUID } from "node:crypto";
-import { CONFIG, USERS_DOMAIN_ENABLED } from "./config.js";
+import { CONFIG, PAPER_SNIPER_FLAGS, USERS_DOMAIN_ENABLED } from "./config.js";
 import { logger } from "./logger.js";
 import { totalLeads, getLatestLeadByTgUser } from "./leads.js";
 import { getActiveLicenseForLead } from "./licenses.js";
@@ -17,6 +17,8 @@ import { registerClient, getLatestActiveClientForUser, setHostingMode, rotateCli
 import { fleetManager, tenantRuntimeDir } from "./fleet/instance.js";
 import { tenantRehydrator } from "./fleet/rehydration-instance.js";
 import { fleetAccess } from "./fleet/access-instance.js";
+import { handleSniperCommand } from "./paper-sniper/commands.js";
+import { sniperTenantRuntimeDir } from "./paper-sniper/runtime-dir.js";
 import { generateHostedDeviceIdentity, writeHostedDeviceIdentityToDisk } from "./fleet/hosted-device-identity.js";
 import { seedHostedPairingState, renewHostedPairingStateIfNeeded } from "./fleet/hosted-pairing-seed.js";
 import { StartThrottle, handlePaperStart, handlePaperStop, handlePaperStatus, formatHostedStatusMessage, type HostedCommandsDeps } from "./fleet/hosted-commands.js";
@@ -508,6 +510,23 @@ bot.command("paper_status", async (ctx) => {
     await ctx.reply("Something went wrong checking your hosted PAPER engine status. Try again shortly.");
   }
 });
+
+/**
+ * Paper sniper commands (PR E). Allowed users only (PAPER_SNIPER_TELEGRAM_IDS);
+ * /fleet_stop_all stays admin-only. /kill and /resume write the engine's KILL
+ * flag file (effective within about a second, no engine restart).
+ */
+for (const kind of ["paper_report", "kill", "resume"] as const) {
+  bot.command(kind, async (ctx) => {
+    try {
+      const text = await handleSniperCommand(kind, { flags: PAPER_SNIPER_FLAGS, resolveRuntimeDir: (id) => sniperTenantRuntimeDir(id) }, ctx.from?.id, ctx.match, ctx.chat?.type);
+      await ctx.reply(text);
+    } catch (err) {
+      logger.error({ err: describeBotError(err) }, `${kind} command failed`);
+      await ctx.reply("Something went wrong. Check the founder panel or try again shortly.");
+    }
+  });
+}
 
 bot.command("support", async (ctx) => {
   // Was pointing at PUBLIC_URL + "/docs", a route that has never existed —
