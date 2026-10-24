@@ -1,6 +1,7 @@
 import { CONFIG, FLEET_FLAGS } from "../config.js";
 import { logger } from "../logger.js";
 import { FleetManager, realEngineInvocation } from "./fleet-manager.js";
+import { prepareTenantRuntime } from "./discovery-instance.js";
 import { resolveEngineIdentity, type EngineIdentity } from "./engine-identity.js";
 
 /**
@@ -37,6 +38,7 @@ export function engineIdentity(): EngineIdentity {
 export const fleetManager = new FleetManager({
   engineInvocation: realEngineInvocation(ENGINE_REPO_PATH),
   verifyEngineIdentity: engineIdentity,
+  prepareTenantRuntime,
   log: logger,
   tenantsRoot: CONFIG.FLEET_TENANTS_ROOT,
   logsRoot: CONFIG.FLEET_LOGS_ROOT,

@@ -190,3 +190,66 @@ Rollback / kill switch: admin `/fleet_stop_all` (stops all tenants and marks
 them stopped; the reply says how many failed; users can still `/paper_start` until `FLEET_ENABLED=false`), then `FLEET_ENABLED=false` and redeploy. `/healthz`
 `fleet.enabled:false` confirms. The Docker image build and Linux runtime
 behaviour have not been verified.
+
+## 13. Shared launch discovery (one process, key held only there)
+
+One supervised child, `aria discovery run --out /data/discovery/launches.ndjson`,
+holds the streaming endpoints and appends every decoded launch to an NDJSON
+file on the volume. Tenants tail that file (path only in their own
+`config.json`); they never receive a stream URL or key. Off by default.
+
+**Railway variables (control plane service):**
+
+| Variable | Value |
+| --- | --- |
+| `DISCOVERY_ENABLED` | `true` |
+| `ARIA_STREAM_RPC_URL` | `wss://...` (provider websocket, key inside) |
+| `ARIA_STREAM_RPC_HTTP_URL` | `https://...` (provider HTTP RPC, key inside) |
+| `ARIA_ENGINE_COMMIT_SHA` | the aria-engine commit that contains PR B2 (`aria discovery run`, `discovery.fileTail`). This is a build ARG: **bump it to the merged engine SHA and redeploy**. An older pinned engine is detected and discovery stays off (`reason` says so). |
+
+Only the two `ARIA_STREAM_*` variables (plus non-secret TLS trust vars `NODE_EXTRA_CA_CERTS`/`NODE_USE_SYSTEM_CA` if set) go to the discovery child, together
+with the same operating-system basics tenants get. `buildTenantEnv` is
+unchanged and additionally refuses any `ARIA_STREAM*` name in `extraEnv`.
+
+**Verify (`/healthz`, no auth):**
+
+```
+"discovery": { "enabled": true, "running": true, "state": "running",
+  "restarts": 0, "lastEventAgeMs": <ms, small>, "heartbeatAgeMs": <under ~15000>,
+  "stale": false, "counters": { "connected": true, "decoded": <growing>,
+  "authFailures": 0, "subscribeErrors": 0, ... }, "programsWatched": {"watched":3,"total":3} }
+```
+
+- `enabled:false` + `reason`: a variable is missing/malformed, or the packaged
+  engine is too old. Reasons never contain a value.
+- `authFailures > 0`: provider rejected the key. `stale:true`: the producer's
+  heartbeat is older than 60 s. `restarts` rising: the child keeps crashing;
+  read `/data/tenant-logs/discovery.log` (URLs and key fragments are redacted).
+- Public RPC endpoints drop events; use a paid streaming provider.
+
+**Tenants:** before each tenant spawn the control plane makes a direct, atomic
+edit of that tenant's `config.json` (only the `discovery` key: `file-tail` +
+`/data/discovery/launches.ndjson`; temp file + rename, mode 0600, nothing else
+touched). A tenant with no `config.json` yet (never started) is skipped and
+picked up at its next spawn. Note: a tenant only *consumes* the feed when its
+engine runs with `market.kind = "real-discovery"`; hosted tenants use the
+engine's default config today, so enabling discovery does not by itself change
+what they trade on (paper only either way).
+
+`stale` in the `/healthz` discovery block is true when the producer heartbeat
+is older than 60 s OR no launch has arrived for `DISCOVERY_MAX_EVENT_AGE_MS`
+(optional, default 900000 = 15 min, minimum 60000). `counters` also carries
+`writeErrors`, `rotations`, `linesWritten`; alarm on `writeErrors > 0`.
+
+The engine pin must contain `aria discovery run` AND the
+`discovery.fileTail` config key (engine PR #12 head or later); an engine
+pinned at the first PR #12 commit (58154f1) is reported as unsupported.
+
+**Disable:** set `DISCOVERY_ENABLED=false` (or delete it) and redeploy. The
+child is not started, `/healthz` shows `discovery.enabled:false`, and each
+tenant that still points at our feed is switched back to `polling` at its next
+spawn. Tenant desired state is never touched by any of this. To stop it without
+a redeploy, remove the two `ARIA_STREAM_*` variables the same way.
+
+**Unverified:** Linux/Railway behaviour (SIGTERM flush, volume permissions) and
+a run with a real paid provider key have not been exercised.

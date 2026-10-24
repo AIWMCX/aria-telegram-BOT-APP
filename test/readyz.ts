@@ -29,6 +29,11 @@ process.env.ARIA_LICENSE_PRIVATE_D = privJwk.d;
 process.env.ARIA_LICENSE_PUBLIC_X = pubJwk.x;
 process.env.DB_PATH = TEST_DB;
 process.env.LOG_LEVEL = "error";
+// PR B2: discovery asked for with a fake key, but the engine tree here cannot run it and startDiscovery() is never called -> /healthz must stay enabled:false and never show the key.
+const DISC_KEY = "FAKEDISCKEY-71c9";
+process.env.DISCOVERY_ENABLED = "true";
+process.env.ARIA_STREAM_RPC_URL = `wss://stream.example.invalid/?api-key=${DISC_KEY}`;
+process.env.ARIA_STREAM_RPC_HTTP_URL = `https://rpc.example.invalid/?api-key=${DISC_KEY}`;
 const { publicKey: entPub, privateKey: entPriv } = generateKeyPairSync("ed25519");
 process.env.ARIA_ENTITLEMENT_PRIVATE_D = (entPriv.export({ format: "jwk" }) as { d: string }).d;
 process.env.ARIA_ENTITLEMENT_PUBLIC_X = (entPub.export({ format: "jwk" }) as { x: string }).x;
@@ -105,6 +110,9 @@ async function scenarioNotConfigured() {
     typeof hb.fleet?.available === "boolean" && rh && JSON.stringify(Object.keys(rh).sort()) === JSON.stringify(["queued", "restarting", "running"]) &&
     Object.values(rh).every((v) => typeof v === "number"));
   check("healthz fleet block reports enabled:false by default and available:false (kill switch)", hb.fleet?.enabled === false && hb.fleet?.available === false);
+  const dhb = hb.discovery;
+  check("healthz has a discovery block: fail closed when the engine cannot run it (enabled:false, running:false, reason)", dhb && dhb.enabled === false && dhb.running === false && typeof dhb.reason === "string");
+  check("healthz never contains the stream key, host or URL", !JSON.stringify(hb).includes(DISC_KEY) && !/example\.invalid|api-key/.test(JSON.stringify(hb)));
   const r = await app.request("/readyz");
   const rb = (await r.json()) as any;
   check("not configured: /readyz 200 ready:true", r.status === 200 && rb.ready === true && rb.sqlite === true);
