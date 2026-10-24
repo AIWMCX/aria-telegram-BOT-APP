@@ -5,10 +5,10 @@
  * Run: npx tsx test/paper-sniper-alerts.ts
  */
 import assert from "node:assert/strict";
-import { appendFileSync, existsSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { AlertService } from "../src/paper-sniper/alerts.js";
-import { handleSniperCommand, NOT_AVAILABLE, NO_TENANT } from "../src/paper-sniper/commands.js";
+import { handleSniperCommand, NOT_AVAILABLE, NO_TENANT, PRIVATE_ONLY } from "../src/paper-sniper/commands.js";
 import { parsePaperSniperFlags } from "../src/paper-sniper/config.js";
 import { DailyReportScheduler } from "../src/paper-sniper/scheduler.js";
 import { formatDailyReport, formatEntryAlert, formatExitAlert, formatOnDemandReport, safetySummary, PAPER_SIGNAL_REMINDER, type AlertMessage } from "../src/paper-sniper/format.js";
@@ -213,6 +213,115 @@ await check("commands: /paper_report, /kill, /resume are allow-list only; kill w
   assert.ok(!existsSync(path.join(dir, "KILL")));
   await handleSniperCommand("kill", deps, 42, "flatten");
   assert.equal(JSON.parse((await import("node:fs")).readFileSync(path.join(dir, "KILL"), "utf8")).flatten, true);
+});
+
+function mkCustom(dir: string, o: { send?: (to: string, m: AlertMessage) => Promise<void>; perHour?: number; clock?: { t: number }; warns?: string[]; resolve?: () => Promise<string | undefined>; extra?: Record<string, number> } = {}) {
+  const sent: AlertMessage[] = []; const clock = o.clock ?? { t: NOW0 };
+  const svc = new AlertService({
+    allowedIds: () => ["42"], resolveRuntimeDir: o.resolve ?? (async () => dir), alertsPerHour: o.perHour ?? 50, now: () => clock.t,
+    send: o.send ?? (async (_to, m) => { sent.push(m); }), sendNote: async () => {},
+    log: { warn: (_o, m) => { o.warns?.push(m); } }, ...(o.extra ?? {}),
+  });
+  return { svc, sent, clock };
+}
+
+await check("scheduler: a throwing save/load never causes a send on every tick", async () => {
+  let t = Date.parse("2026-10-24T13:00:05Z"); let runs = 0;
+  const s = new DailyReportScheduler({ hourUtc: 13, now: () => t, loadLastDay: () => { throw new Error("disk"); }, saveLastDay: () => { throw new Error("disk"); }, run: async () => { runs++; } });
+  assert.equal(await s.tick(), true);
+  for (let i = 0; i < 5; i++) { t += 30_000; assert.equal(await s.tick(), false); }
+  assert.equal(runs, 1);
+  t = Date.parse("2026-10-25T13:00:05Z");
+  assert.equal(await s.tick(), true, "next UTC day fires again"); assert.equal(runs, 2);
+});
+
+await check("alerts: one malformed row cannot drop the rest of the batch; it is counted and logged", async () => {
+  const dir = tmpRuntime();
+  const f = writeLedger(dir, []);
+  const warns: string[] = [];
+  const { svc, sent } = mkCustom(dir, { warns });
+  await svc.tick();
+  append(f, [open("G1", "main", "not-a-valid-mint", NOW0 + 1), open("G2", "main", MINT_B, NOW0 + 2)]);
+  await svc.tick();
+  assert.equal(sent.length, 1, "the valid row after the malformed one is still delivered");
+  assert.ok(sent[0]!.html.includes(MINT_B));
+  assert.ok(warns.some((w) => w.includes("malformed ledger row")));
+  await svc.tick();
+  assert.equal(sent.length, 1, "offset advanced past the batch");
+});
+
+await check("alerts: exits for an alerted entry bypass the hourly limit (entry, entry, exit with perHour=2 sends all three)", async () => {
+  const dir = tmpRuntime();
+  const f = writeLedger(dir, []);
+  const { svc, sent } = mkCustom(dir, { perHour: 2 });
+  await svc.tick();
+  append(f, [open("L1", "main", MINT_A, NOW0 + 1), open("L2", "main", MINT_B, NOW0 + 2)]);
+  await svc.tick();
+  append(f, [sell("L1", NOW0 + 9, "70000000", "105000", "take_profit", true, "2034280")]);
+  await svc.tick();
+  assert.equal(sent.length, 3);
+  assert.ok(sent[2]!.html.includes("take_profit"));
+  // an exit whose ENTRY was dropped by the limit gets no bypass
+  append(f, [open("L3", "main", MINT_A, NOW0 + 20)]);
+  await svc.tick();
+  append(f, [sell("L3", NOW0 + 30, "1", "1", "stop_loss", true)]);
+  await svc.tick();
+  assert.equal(sent.length, 3, "L3 entry was rate-limited, so its exit is too");
+});
+
+await check("alerts: failed send is not remembered, is retried, is bounded; hung send times out", async () => {
+  const dir = tmpRuntime();
+  const f = writeLedger(dir, []);
+  let calls = 0; let failUntil = 1; const got: AlertMessage[] = [];
+  const { svc } = mkCustom(dir, { send: async (_t, m) => { calls++; if (calls <= failUntil) throw new Error("telegram down"); got.push(m); } });
+  await svc.tick();
+  append(f, [open("S1", "main", MINT_A, NOW0 + 1)]);
+  await svc.tick();
+  assert.equal(got.length, 0);
+  const sentKeys = () => (JSON.parse(readFileSync(path.join(dir, "paper-sniper-alerts.json"), "utf8")) as { sent: string[] }).sent;
+  assert.ok(!sentKeys().includes("entry:S1"), "a failed delivery is not recorded as sent");
+  await svc.tick();
+  assert.equal(got.length, 1, "retried on the next tick");
+  assert.ok(sentKeys().includes("entry:S1"), "recorded once delivered");
+  await svc.tick(); await svc.tick();
+  assert.equal(calls, 2, "delivered once, not resent");
+  // always failing: bounded at maxSendAttempts (3) in total
+  const dir2 = tmpRuntime(); const f2 = writeLedger(dir2, []); let calls2 = 0;
+  const b = mkCustom(dir2, { send: async () => { calls2++; throw new Error("down"); } });
+  await b.svc.tick();
+  append(f2, [open("S2", "main", MINT_A, NOW0 + 1)]);
+  for (let i = 0; i < 8; i++) await b.svc.tick();
+  assert.equal(calls2, 3);
+  // hung send
+  const dir3 = tmpRuntime(); const f3 = writeLedger(dir3, []); let calls3 = 0; const ok3: AlertMessage[] = [];
+  const c = mkCustom(dir3, { extra: { sendTimeoutMs: 20 }, send: async (_t, m) => { calls3++; if (calls3 === 1) await new Promise(() => {}); ok3.push(m); } });
+  await c.svc.tick();
+  append(f3, [open("S3", "main", MINT_A, NOW0 + 1)]);
+  await c.svc.tick();
+  await c.svc.tick();
+  assert.equal(ok3.length, 1, "timed out once, then delivered");
+});
+
+await check("alerts: a failing tenant lookup logs at most once per throttle window", async () => {
+  const warns: string[] = [];
+  const { svc, clock } = mkCustom("", { warns, resolve: async () => { throw new Error("db down"); } });
+  for (let i = 0; i < 10; i++) { clock.t += 5000; await svc.tick(); }
+  assert.equal(warns.length, 1);
+  clock.t += 600_001; await svc.tick();
+  assert.equal(warns.length, 2);
+});
+
+await check("commands: only answered in private chats", async () => {
+  const dir = tmpRuntime();
+  const flags = parsePaperSniperFlags({ PAPER_SNIPER_ENABLED: "true", PAPER_SNIPER_TELEGRAM_IDS: "42" });
+  const deps = { flags, resolveRuntimeDir: async () => dir };
+  for (const k of ["paper_report", "kill", "resume"] as const) {
+    assert.equal(await handleSniperCommand(k, deps, 42, "", "group"), PRIVATE_ONLY);
+    assert.equal(await handleSniperCommand(k, deps, 42, "", "supergroup"), PRIVATE_ONLY);
+    assert.equal(await handleSniperCommand(k, deps, 7, "", "group"), NOT_AVAILABLE);
+  }
+  assert.ok(!existsSync(path.join(dir, "KILL")), "a group /kill wrote nothing");
+  assert.match(await handleSniperCommand("kill", deps, 42, "", "private"), /KILL flag written/);
 });
 
 console.log(`${n} checks passed`);

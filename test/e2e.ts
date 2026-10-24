@@ -128,7 +128,7 @@ async function main() {
   const health = (await rh.json()) as { ok: boolean; paymentsEnabled: boolean; paperSniper?: { enabled: boolean; tenants: number; reason?: string } };
   check("/healthz reports ok:true", health.ok === true);
   check("/healthz reports paymentsEnabled:false (no Stripe configured)", health.paymentsEnabled === false);
-  check("/healthz reports paperSniper disabled with a reason (PR E)", health.paperSniper?.enabled === false && typeof health.paperSniper.reason === "string" && health.paperSniper.tenants === 0);
+  check("/healthz reports paperSniper disabled with a reason (PR E)", health.paperSniper?.enabled === false && health.paperSniper.tenants === 0 && !("reason" in health.paperSniper));
 
   const rCheckout = await app.request("/api/checkout", {
     method: "POST", headers: { "Content-Type": "application/json" },

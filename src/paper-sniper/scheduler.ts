@@ -20,6 +20,8 @@ export const DEFAULT_REPORT_GRACE_MS = 2 * 3_600_000;
 export class DailyReportScheduler {
   private timer: ReturnType<typeof setInterval> | undefined;
   private running = false;
+  /** In-memory fallback: a failing persisted load/save must never turn into a send on every tick. */
+  private memDay: string | undefined;
   private readonly now: () => number;
 
   constructor(private readonly d: DailyReportSchedulerDeps) {
@@ -33,11 +35,15 @@ export class DailyReportScheduler {
     const day = new Date(n).toISOString().slice(0, 10);
     const dueAt = Date.parse(`${day}T${String(this.d.hourUtc).padStart(2, "0")}:00:00.000Z`);
     if (n < dueAt || n - dueAt > (this.d.graceMs ?? DEFAULT_REPORT_GRACE_MS)) return false;
-    if (this.d.loadLastDay() === day) return false;
+    if (this.memDay === day) return false;
+    let persisted: string | undefined;
+    try { persisted = this.d.loadLastDay(); } catch { persisted = undefined; }
+    if (persisted === day) { this.memDay = day; return false; }
     this.running = true;
     try {
       // Mark BEFORE running: a crash mid-send must not turn into a second full send on restart.
-      this.d.saveLastDay(day);
+      this.memDay = day;
+      try { this.d.saveLastDay(day); } catch { /* memDay still prevents a repeat in this process */ }
       await this.d.run();
       return true;
     } finally { this.running = false; }

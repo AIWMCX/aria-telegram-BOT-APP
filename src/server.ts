@@ -153,8 +153,8 @@ app.get("/healthz", async (c) => {
     fleet: { enabled: FLEET_FLAGS.enabled, available: FLEET_FLAGS.enabled && engine.available, rehydration: tenantRehydrator.counts() },
     // Shared launch discovery: enabled/running/restarts/lastEventAgeMs + counters. Never a URL or key.
     discovery: discoveryHealth(),
-    // Paper sniper (PR E): enabled/tenants/reason only. Never an id or a value.
-    paperSniper: paperSniperHealth(),
+    // Paper sniper (PR E): enabled/tenants only on this public endpoint; the reason it is off goes to the boot log.
+    paperSniper: (({ enabled, tenants }) => ({ enabled, tenants }))(paperSniperHealth()),
   });
 });
 

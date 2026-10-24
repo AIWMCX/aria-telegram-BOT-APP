@@ -9,7 +9,7 @@ import path from "node:path";
 import { readNewLines, readSniperSnapshot, readTailText, foldLedger, parseLedgerLines } from "../src/paper-sniper/data.js";
 import { writeKillFlag, writeResumeFlag } from "../src/paper-sniper/control.js";
 import { paperSniperRoutes } from "../src/paper-sniper/routes.js";
-import { fixtureRows, tmpRuntime, writeLedger } from "./paper-sniper-fixture.js";
+import { fixtureRows, missed, tmpRuntime, writeLedger } from "./paper-sniper-fixture.js";
 
 let n = 0;
 const check = (name: string, fn: () => void | Promise<void>) => Promise.resolve(fn()).then(() => { n++; console.log(`ok - ${name}`); });
@@ -128,6 +128,17 @@ await check("kill writes the KILL flag, resume removes it and writes RESUME", ()
   assert.ok(!existsSync(path.join(dir, "KILL")));
   assert.ok(existsSync(path.join(dir, "RESUME")));
   writeResumeFlag(dir); // idempotent when KILL is already gone
+});
+
+await check("missed split: missed_inconsistent_read and missed_error are infrastructure, missed_no_route is market", () => {
+  const dir = tmpRuntime();
+  writeLedger(dir, [
+    missed("Q1", base, "missed_inconsistent_read", "0"), missed("Q2", base + 1, "missed_error", "0"),
+    missed("Q3", base + 2, "missed_no_route", "0"), missed("Q4", base + 3, "missed_landing_failed", "105000"),
+  ]);
+  const m = readSniperSnapshot(dir, { now: NOW }).main;
+  assert.equal(m.missed, 4); assert.equal(m.missedInfra, 2); assert.equal(m.missedMarket, 2);
+  assert.equal(m.missedByReason.missed_inconsistent_read, 1);
 });
 
 // ───────── API gate ─────────

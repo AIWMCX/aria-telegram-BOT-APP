@@ -39,6 +39,9 @@ interface TenantState {
   sentSet: Set<string>;
   times: number[];
   suppressed: number;
+  /** Deliveries that failed and will be retried on the next ticks (in memory only). */
+  retry: Array<{ key: string; msg: AlertMessage; attempts: number; bypass: boolean }>;
+  malformed: number;
 }
 
 export interface AlertServiceDeps {
@@ -50,6 +53,12 @@ export interface AlertServiceDeps {
   now?: () => number;
   log?: { warn: (o: Record<string, unknown>, m: string) => void };
   maxLedgerBytes?: number;
+  /** Per-send time budget (default 10 s): a hung Telegram call must not stall the poller. */
+  sendTimeoutMs?: number;
+  /** A failed delivery is retried on later ticks up to this many attempts in total (default 3). */
+  maxSendAttempts?: number;
+  /** Pass-level failures (for example a database lookup) are logged at most once per this many ms (default 10 min). */
+  warnThrottleMs?: number;
 }
 
 const big = (v: unknown): bigint => { try { return BigInt(v as string); } catch { return 0n; } };
@@ -57,6 +66,7 @@ const big = (v: unknown): bigint => { try { return BigInt(v as string); } catch 
 export class AlertService {
   private readonly tenants = new Map<string, TenantState>();
   private busy = false;
+  private lastWarnAt = -Infinity;
   private readonly now: () => number;
 
   constructor(private readonly d: AlertServiceDeps) {
@@ -69,7 +79,13 @@ export class AlertService {
     this.busy = true;
     try {
       for (const id of [...this.d.allowedIds()]) {
-        try { await this.tickUser(id); } catch (err) { this.d.log?.warn({ errName: (err as Error)?.name }, "paper sniper alert pass failed for one user"); }
+        try { await this.tickUser(id); } catch (err) {
+          const n = this.now();
+          if (n - this.lastWarnAt >= (this.d.warnThrottleMs ?? 600_000)) {
+            this.lastWarnAt = n;
+            this.d.log?.warn({ errName: (err as Error)?.name }, "paper sniper alert pass failed for one user (logged at most once per throttle window)");
+          }
+        }
       }
     } finally { this.busy = false; }
   }
@@ -94,7 +110,7 @@ export class AlertService {
 
   /** Builds the per-trade accumulators from history and decides the starting offset. Returns the rows that are NEW (after a persisted offset). */
   private async init(runtimeDir: string): Promise<{ t: TenantState; fresh: Json[] }> {
-    const t: TenantState = { runtimeDir, offset: 0, acc: new Map(), sent: [], sentSet: new Set(), times: [], suppressed: 0 };
+    const t: TenantState = { runtimeDir, offset: 0, acc: new Map(), sent: [], sentSet: new Set(), times: [], suppressed: 0, retry: [], malformed: 0 };
     let persistedOffset: number | undefined;
     try {
       const j = JSON.parse(readFileSync(this.statePath(runtimeDir), "utf8")) as { offset?: unknown; sent?: unknown };
@@ -155,7 +171,7 @@ export class AlertService {
     let key: string; let msg: AlertMessage;
     if (isOpen) {
       key = `entry:${a.tradeId}`;
-      if (t.sentSet.has(key)) return;
+      if (t.sentSet.has(key) || t.sentSet.has("drop:" + key)) return;
       msg = formatEntryAlert({
         mint: a.mint, source: a.source, tradeId: a.tradeId, safetyReport: r.safety_report, buyInLamports: a.buyIn.toString(), tokensRaw: String(r.tokens_raw ?? "0"),
         decimals: a.decimals, feeBuy: a.feeBuy.toString(), rentLamports: a.rent.toString(), latencyMs: Number(r.latency_ms) || 0,
@@ -164,20 +180,44 @@ export class AlertService {
       if (r.reason === "sell_failed" || big(r.tokens_sold_raw) === 0n) return; // a failed modelled sell is not an exit
       const final = r.final === true;
       key = `exit:${a.tradeId}:${Number(r.ts) || 0}:${final ? "f" : "p"}`;
-      if (t.sentSet.has(key)) return;
+      if (t.sentSet.has(key) || t.sentSet.has("drop:" + key)) return;
       const net = final ? (a.sellOut - a.buyIn - a.feeBuy - a.feeSell - a.rent - a.otherRent + big(r.rent_refunded)).toString() : null;
       msg = formatExitAlert({
         mint: a.mint, tradeId: a.tradeId, reason: String(r.reason ?? "unknown"), final, tier: typeof r.tier === "number" ? r.tier : undefined,
         sellOutLamports: String(r.sell_out_lamports ?? "0"), tokensSoldRaw: String(r.tokens_sold_raw ?? "0"), decimals: a.decimals, tradeNetLamports: net,
       });
     }
-    this.remember(t, key);
+    await this.deliver(telegramId, t, key, msg, !isOpen && t.sentSet.has(`entry:${a.tradeId}`));
+  }
+
+  private async withTimeout(p: Promise<void>): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([p, new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error("send timeout")), this.d.sendTimeoutMs ?? 10_000); })]);
+    } finally { if (timer) clearTimeout(timer); }
+  }
+
+  /**
+   * Rate limit, then send. `bypass` (an exit for a trade whose ENTRY was delivered) is never dropped, because the
+   * user may be holding that position. Only a SUCCESSFUL send is remembered; a failure is retried on later ticks.
+   */
+  private async deliver(telegramId: string, t: TenantState, key: string, msg: AlertMessage, bypass: boolean, attempts = 0): Promise<void> {
     const n = this.now();
     t.times = t.times.filter((x) => n - x < 3_600_000);
-    if (t.times.length >= this.d.alertsPerHour) { t.suppressed++; return; }
+    if (!bypass && t.times.length >= this.d.alertsPerHour) { this.remember(t, "drop:" + key); t.suppressed++; return; }
     t.times.push(n);
-    try { await this.d.send(telegramId, msg); } catch (err) {
-      this.d.log?.warn({ errName: (err as Error)?.name }, "paper sniper alert could not be delivered");
+    try {
+      await this.withTimeout(this.d.send(telegramId, msg));
+      this.remember(t, key);
+    } catch (err) {
+      const used = attempts + 1;
+      if (used >= (this.d.maxSendAttempts ?? 3)) {
+        this.remember(t, "drop:" + key);
+        this.d.log?.warn({ errName: (err as Error)?.name }, "paper sniper alert gave up after repeated delivery failures");
+      } else {
+        t.retry.push({ key, msg, attempts: used, bypass });
+        this.d.log?.warn({ errName: (err as Error)?.name }, "paper sniper alert delivery failed; will retry");
+      }
     }
   }
 
@@ -212,9 +252,16 @@ export class AlertService {
       t.offset = res.nextOffset;
       rows = parseLedgerLines(res.lines);
     }
-    for (const r of rows) await this.handle(telegramId, t, r);
+    const pending = t.retry.splice(0);
+    for (const p of pending) await this.deliver(telegramId, t, p.key, p.msg, p.bypass, p.attempts);
+    for (const r of rows) {
+      try { await this.handle(telegramId, t, r); } catch (err) {
+        t.malformed++;
+        this.d.log?.warn({ errName: (err as Error)?.name, malformed: t.malformed }, "paper sniper alert skipped a malformed ledger row");
+      }
+    }
     await this.flushSuppressed(telegramId, t);
-    if (rows.length > 0 || t.suppressed === 0) this.persist(t);
+    this.persist(t);
   }
 }
 

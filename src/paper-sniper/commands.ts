@@ -16,6 +16,7 @@ export interface SniperCommandDeps {
 }
 
 export const NOT_AVAILABLE = "This command is not available.";
+export const PRIVATE_ONLY = "Use a private chat with the bot for this command.";
 export const NO_TENANT = "No hosted PAPER engine for your account yet. Use /paper_start first.";
 
 export async function handleSniperCommand(
@@ -23,8 +24,10 @@ export async function handleSniperCommand(
   deps: SniperCommandDeps,
   telegramUserId: number | undefined,
   args = "",
+  chatType: string | undefined = "private",
 ): Promise<string> {
   if (!isSniperUserAllowed(deps.flags, telegramUserId)) return NOT_AVAILABLE;
+  if (chatType !== "private") return PRIVATE_ONLY; // never post positions or flip the kill flag from a group
   const dir = await deps.resolveRuntimeDir(telegramUserId!);
   if (!dir) return NO_TENANT;
   if (kind === "paper_report") {

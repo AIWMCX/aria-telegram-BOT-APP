@@ -519,7 +519,7 @@ bot.command("paper_status", async (ctx) => {
 for (const kind of ["paper_report", "kill", "resume"] as const) {
   bot.command(kind, async (ctx) => {
     try {
-      const text = await handleSniperCommand(kind, { flags: PAPER_SNIPER_FLAGS, resolveRuntimeDir: (id) => sniperTenantRuntimeDir(id) }, ctx.from?.id, ctx.match);
+      const text = await handleSniperCommand(kind, { flags: PAPER_SNIPER_FLAGS, resolveRuntimeDir: (id) => sniperTenantRuntimeDir(id) }, ctx.from?.id, ctx.match, ctx.chat?.type);
       await ctx.reply(text);
     } catch (err) {
       logger.error({ err: describeBotError(err) }, `${kind} command failed`);

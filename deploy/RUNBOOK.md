@@ -286,13 +286,17 @@ spawn; keys verified against engine 4fadcd3): `market.kind="real-discovery"`, `s
 (0.05 SOL), `sniper.maxOpen=3`, `sniper.maxExposureLamports="300000000"` (0.3 SOL),
 `sniper.dailyLossHaltLamports="150000000"` (0.15 SOL, UTC day), `sniper.stopLossBps=3000`,
 `sniper.maxHoldMs=1800000`. The previous values are recorded in `<runtimeDir>/paper-sniper-seed.json`
-(never inside `config.json`). **A running tenant only picks this up after a restart:**
+(never inside `config.json`). **While the sniper is enabled, every spawn re-asserts these six limits: an operator
+edit to one of them in a seeded tenant's `config.json` is overwritten at the next spawn.** Change the limits in code, or
+disable seeding, rather than hand-editing. (Disabling leaves a value alone only if it no longer equals what we wrote.)
+**A running tenant only picks this up after a restart:**
 `/paper_stop` then `/paper_start`.
 
 **Verify:**
 1. `GET /healthz` -> `"paperSniper": {"enabled": true, "tenants": 1}` (after the founder's tenant has
-   spawned once; `tenants` counts tenants seeded since this process booted). `enabled:false` carries a `reason`
-   (switch off, fleet off, discovery off, engine too old). Never a value.
+   spawned once; `tenants` counts tenants seeded since this process booted). The public endpoint carries only
+   `enabled` and `tenants`; when `enabled` is false the reason (switch off, fleet off, discovery off, engine too old)
+   is in the control-plane boot log line "paper sniper services are OFF" (never a value).
 2. `/paper_start` (or restart), then look in the founder panel (Telegram Mini App) for the **Paper sniper**
    section: state `RUNNING`, MAIN vs BASELINE table. The section is hidden for anyone not on the allow-list
    and while the feature is off (`/api/paper-sniper/*` answers 404).
@@ -315,6 +319,14 @@ spawn; keys verified against engine 4fadcd3): `market.kind="real-discovery"`, `s
 formatting, source, which safety checks passed, paper entry details and a Jupiter SOL-to-token button; exit alerts (full
 and partial, with the reason) offer the token-to-SOL button (not for `honeypot_loss`/`exit_error_loss`). Every alert ends:
 "PAPER signal. If you trade, you choose the amount and sign in your own wallet. Verify afterwards in the founder panel."
+
+**Alert delivery semantics:** at-least-once. A Telegram send has a 10 s timeout; a failed or timed-out send is NOT recorded as
+sent and is retried on the next polls (3 attempts in total, then logged and dropped; pending retries are in memory only).
+The byte offset and sent keys are persisted after each poll, so a crash between a send and that write can repeat an alert
+after restart. Rate-limited alerts are dropped (not retried late); exits for a trade whose entry alert was delivered always
+bypass the hourly limit. A malformed ledger row is skipped and logged without losing the rest of its batch. A failing
+database lookup in the alert poller logs a warning at most once per 10 minutes. `/paper_report`, `/kill` and `/resume`
+answer only in private chats. A failing report-state file cannot make the daily report repeat within a process.
 
 **Numbers are a model.** Fills, fees and exits are simulated; closed-trade statistics exclude open positions; below 200 closed
 trades every view says INSUFFICIENT SAMPLE. The summary is computed by `src/paper-sniper/data.ts`, a TS port of the engine's book +
